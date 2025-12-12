@@ -112,7 +112,7 @@ export default function HomePage() {
             {/* Contenu à gauche */}
             <div className="max-w-2xl pr-4 lg:pr-80">
               <div className="inline-block mb-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
-                <span className="text-xs font-medium text-primary">Expertise juridique depuis 2010</span>
+                <span className="text-xs font-medium text-primary">Expertise juridique reconnue</span>
               </div>
               <h1 className="text-4xl font-bold mb-3 text-foreground leading-tight text-left">
                 Votre partenaire juridique

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
@@ -22,8 +22,9 @@ function Button({ children, variant = 'default', className = '', ...props }: any
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
 }
 
-export default function ClientDashboardPage() {
+function ClientDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [stats, setStats] = useState({
     dossiers: 0,
@@ -38,8 +39,29 @@ export default function ClientDashboardPage() {
   const [unreadMessage, setUnreadMessage] = useState<any>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hasCheckedMessages, setHasCheckedMessages] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
+  const [hasToken, setHasToken] = useState(false);
+
+  // Vérifier si on a un token dans localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      setHasToken(!!token);
+    }
+  }, []);
 
   useEffect(() => {
+    // Vérifier le mode impersonation
+    const impersonateParam = searchParams?.get('impersonate');
+    const impersonateUserId = localStorage.getItem('impersonateUserId');
+    
+    if (impersonateParam === 'true' && impersonateUserId) {
+      setIsImpersonating(true);
+      loadImpersonatedUser(impersonateUserId);
+      return;
+    }
+
     // Vérifier si l'utilisateur a un token même sans session
     const token = localStorage.getItem('token');
     
@@ -71,10 +93,13 @@ export default function ClientDashboardPage() {
         return;
       }
       
-      // Si admin, rediriger vers l'espace admin
-      if ((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') {
-        router.push('/admin');
-        return;
+      // Si admin et pas en mode impersonation, rediriger vers l'espace admin
+      if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
+        // Ne pas rediriger si on est en mode impersonation
+        if (!impersonateUserId) {
+          router.push('/admin');
+          return;
+        }
       }
 
       // Charger les statistiques depuis l'API
@@ -87,7 +112,85 @@ export default function ClientDashboardPage() {
       loadUserProfile();
       checkUnreadMessages();
     }
-  }, [session, status, router]);
+  }, [session, status, router, searchParams, isImpersonating]);
+
+  const loadImpersonatedUser = async (userId: string) => {
+    try {
+      const response = await userAPI.getUserById(userId);
+      if (response.data.success) {
+        setImpersonatedUser(response.data.user);
+        // Charger les stats pour cet utilisateur
+        loadStatsForUser(userId);
+        loadUserProfileForUser(userId);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement de l\'utilisateur impersonné:', error);
+    }
+  };
+
+  const loadStatsForUser = async (userId: string) => {
+    setIsLoading(true);
+    try {
+      // Utiliser l'API admin avec l'ID de l'utilisateur impersonné
+      const dossiersResponse = await dossiersAPI.getAllDossiers({ userId });
+      if (dossiersResponse.data.success) {
+        const dossiers = dossiersResponse.data.dossiers || [];
+        setStats(prev => ({
+          ...prev,
+          dossiers: dossiers.length,
+          dossiersEnCours: dossiers.filter((d: any) => {
+            const statut = d.statut;
+            return statut === 'recu' || statut === 'accepte' || statut === 'en_attente_onboarding' || 
+                   statut === 'en_cours_instruction' || statut === 'pieces_manquantes' || 
+                   statut === 'dossier_complet' || statut === 'depose' || statut === 'en_instruction';
+          }).length,
+        }));
+        setRecentDossiers(dossiers.slice(0, 5));
+      }
+
+      // Charger les documents via l'API admin
+      const documentsResponse = await documentsAPI.getAllDocuments({ userId });
+      if (documentsResponse.data.success) {
+        setStats(prev => ({
+          ...prev,
+          documents: documentsResponse.data.documents?.length || 0,
+        }));
+      }
+
+      // Charger les rendez-vous via l'API admin
+      const appointmentsResponse = await appointmentsAPI.getAllAppointments({ userId });
+      if (appointmentsResponse.data.success) {
+        const appointments = appointmentsResponse.data.data || appointmentsResponse.data.appointments || [];
+        setStats(prev => ({
+          ...prev,
+          rendezVous: appointments.length,
+        }));
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadUserProfileForUser = async (userId: string) => {
+    try {
+      const response = await userAPI.getUserById(userId);
+      if (response.data.success) {
+        setUserProfile(response.data.user);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement du profil:', error);
+    }
+  };
+
+  const stopImpersonating = () => {
+    localStorage.removeItem('impersonateUserId');
+    localStorage.removeItem('impersonateAdminId');
+    setIsImpersonating(false);
+    setImpersonatedUser(null);
+    router.push('/admin');
+  };
 
   // Vérifier les messages non lus à la connexion
   const checkUnreadMessages = async () => {
@@ -134,6 +237,29 @@ export default function ClientDashboardPage() {
       console.error('Erreur lors du chargement du profil:', error);
     }
   };
+
+  // Calculer les jours restants jusqu'à l'échéance du titre de séjour
+  const calculateDaysRemaining = () => {
+    if (!userProfile?.dateExpiration) return null;
+    const expirationDate = new Date(userProfile.dateExpiration);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expirationDate.setHours(0, 0, 0, 0);
+    const diffTime = expirationDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Pré-calculer les valeurs qui seront utilisées dans le JSX (avant les return conditionnels)
+  const daysRemainingValue = calculateDaysRemaining();
+  const hasTitreInfoValue = userProfile?.numeroTitre && userProfile?.dateExpiration;
+
+  // Calculer les valeurs utilisateur (avant les return conditionnels)
+  const displayUser = isImpersonating && impersonatedUser ? impersonatedUser : (session?.user || {});
+  const userName = isImpersonating && impersonatedUser 
+    ? ((`${impersonatedUser?.firstName || ''} ${impersonatedUser?.lastName || ''}`).trim() || 'Utilisateur')
+    : (session?.user?.name || 'Utilisateur');
+  const userEmail = isImpersonating && impersonatedUser ? (impersonatedUser?.email || '') : (session?.user?.email || '');
 
   const loadStats = async () => {
     setIsLoading(true);
@@ -231,8 +357,7 @@ export default function ClientDashboardPage() {
   }
 
   // Si pas de session mais on a un token, afficher quand même (utilisateur vient de s'inscrire)
-  const token = localStorage.getItem('token');
-  if (!session && !token) {
+  if (!session && !hasToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -243,31 +368,39 @@ export default function ClientDashboardPage() {
     );
   }
 
-  // Calculer les jours restants jusqu'à l'échéance du titre de séjour
-  const calculateDaysRemaining = () => {
-    if (!userProfile?.dateExpiration) return null;
-    const expirationDate = new Date(userProfile.dateExpiration);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    expirationDate.setHours(0, 0, 0, 0);
-    const diffTime = expirationDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const daysRemaining = calculateDaysRemaining();
-  const hasTitreInfo = userProfile?.numeroTitre && userProfile?.dateExpiration;
-
-  // Utiliser les données de session ou des valeurs par défaut
-  const userName = session?.user?.name || 'Utilisateur';
-  const userEmail = session?.user?.email || '';
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
       {/* Header Professionnel */}
       <Header variant="client" />
 
       <main className="container mx-auto px-4 py-8">
+        {/* Banner d'impersonation */}
+        <div id="dashboard-top" className="scroll-mt-20"></div>
+        {isImpersonating && impersonatedUser && (
+          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👤</span>
+                <div>
+                  <p className="font-semibold text-yellow-900">
+                    Mode impersonation actif
+                  </p>
+                  <p className="text-sm text-yellow-700">
+                    Vous visualisez le dashboard de <strong>{userName}</strong> ({userEmail})
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={stopImpersonating}
+                variant="outline"
+                className="border-yellow-500 text-yellow-700 hover:bg-yellow-100"
+              >
+                Quitter l'impersonation
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* En-tête de bienvenue */}
         <div className="mb-8">
           <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
@@ -296,43 +429,43 @@ export default function ClientDashboardPage() {
             )}
             
             {/* Badge de renouvellement du titre de séjour */}
-            {hasTitreInfo && daysRemaining !== null && (
+            {hasTitreInfoValue && daysRemainingValue !== null && (
               <div className={`rounded-xl shadow-lg p-4 border-2 min-w-[280px] max-w-[320px] ${
-                daysRemaining < 0 
+                daysRemainingValue < 0 
                   ? 'bg-red-50 border-red-300' 
-                  : daysRemaining <= 30 
+                  : daysRemainingValue <= 30 
                   ? 'bg-orange-50 border-orange-300' 
-                  : daysRemaining <= 90 
+                  : daysRemainingValue <= 90 
                   ? 'bg-yellow-50 border-yellow-300' 
                   : 'bg-green-50 border-green-300'
               }`}>
                 <div className="flex items-center gap-3">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    daysRemaining < 0 
+                    daysRemainingValue < 0 
                       ? 'bg-red-100' 
-                      : daysRemaining <= 30 
+                      : daysRemainingValue <= 30 
                       ? 'bg-orange-100' 
-                      : daysRemaining <= 90 
+                      : daysRemainingValue <= 90 
                       ? 'bg-yellow-100' 
                       : 'bg-green-100'
                   }`}>
                     <span className="text-2xl">
-                      {daysRemaining < 0 ? '⚠️' : daysRemaining <= 30 ? '⏰' : daysRemaining <= 90 ? '📅' : '✅'}
+                      {daysRemainingValue < 0 ? '⚠️' : daysRemainingValue <= 30 ? '⏰' : daysRemainingValue <= 90 ? '📅' : '✅'}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-muted-foreground mb-1">Renouvellement du titre de séjour</p>
-                    {daysRemaining < 0 ? (
+                    {daysRemainingValue < 0 ? (
                       <p className="text-lg font-bold text-red-600">
-                        Expiré depuis {Math.abs(daysRemaining)} jour{Math.abs(daysRemaining) > 1 ? 's' : ''}
+                        Expiré depuis {Math.abs(daysRemainingValue)} jour{Math.abs(daysRemainingValue) > 1 ? 's' : ''}
                       </p>
-                    ) : daysRemaining === 0 ? (
+                    ) : daysRemainingValue === 0 ? (
                       <p className="text-lg font-bold text-orange-600">
                         Expire aujourd'hui
                       </p>
                     ) : (
                       <p className="text-lg font-bold text-foreground">
-                        {daysRemaining} jour{daysRemaining > 1 ? 's' : ''} restant{daysRemaining > 1 ? 's' : ''}
+                        {daysRemainingValue} jour{daysRemainingValue > 1 ? 's' : ''} restant{daysRemainingValue > 1 ? 's' : ''}
                       </p>
                     )}
                     {userProfile?.dateExpiration && (
@@ -346,20 +479,20 @@ export default function ClientDashboardPage() {
                     )}
                   </div>
                 </div>
-                {daysRemaining !== null && daysRemaining <= 90 && (
+                {daysRemainingValue !== null && daysRemainingValue <= 90 && (
                   <div className="mt-3 pt-3 border-t border-current/20">
                     <Link href="/dossiers/create">
                       <Button 
                         variant="outline" 
                         className={`w-full text-sm ${
-                          daysRemaining < 0 
+                          daysRemainingValue < 0 
                             ? 'border-red-300 text-red-600 hover:bg-red-100' 
-                            : daysRemaining <= 30 
+                            : daysRemainingValue <= 30 
                             ? 'border-orange-300 text-orange-600 hover:bg-orange-100' 
                             : 'border-yellow-300 text-yellow-600 hover:bg-yellow-100'
                         }`}
                       >
-                        {daysRemaining < 0 ? '⚠️ Demander le renouvellement' : '📋 Préparer le renouvellement'}
+                        {daysRemainingValue < 0 ? '⚠️ Demander le renouvellement' : '📋 Préparer le renouvellement'}
                       </Button>
                     </Link>
                   </div>
@@ -370,7 +503,7 @@ export default function ClientDashboardPage() {
         </div>
 
         {/* Statistiques - Design professionnel et chaleureux avec accès direct */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div id="dossiers-section" className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 scroll-mt-20">
           {/* Badge Dossiers avec lien direct - Fusion des deux badges */}
           <Link href="/client/dossiers" className="group">
             <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-primary hover:shadow-lg hover:border-primary/80 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
@@ -394,8 +527,9 @@ export default function ClientDashboardPage() {
           </Link>
 
           {/* Badge Documents avec lien direct */}
-          <Link href="/client/documents" className="group">
-            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 hover:shadow-lg hover:border-green-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
+          <div id="documents-section" className="scroll-mt-20">
+            <Link href="/client/documents" className="group">
+              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 hover:shadow-lg hover:border-green-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
                   <span className="text-2xl">📄</span>
@@ -412,10 +546,11 @@ export default function ClientDashboardPage() {
               </div>
             </div>
           </Link>
+          </div>
         </div>
 
         {/* Actions rapides - Seulement les sections sans doublons */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <div id="rendez-vous-section" className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 scroll-mt-20">
           <div className="group">
             <div className="bg-gradient-to-br from-white to-blue-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-blue-200 hover:border-blue-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
@@ -444,8 +579,9 @@ export default function ClientDashboardPage() {
             </div>
           </div>
 
-          <Link href="/client/temoignages" className="group">
-            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
+          <div id="temoignages-section" className="scroll-mt-20">
+            <Link href="/client/temoignages" className="group">
+              <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                   <span className="text-3xl">⭐</span>
@@ -572,21 +708,36 @@ export default function ClientDashboardPage() {
         </div>
       )}
       
-             {/* Badge flottant pour ouvrir le widget - toujours visible quand fermé, ou au scroll */}
-             <ReservationBadge 
-               onOpen={() => setIsWidgetOpen(true)}
-               alwaysVisible={!isWidgetOpen}
-             />
+      {/* Badge flottant pour ouvrir le widget - toujours visible quand fermé, ou au scroll */}
+      <ReservationBadge 
+        onOpen={() => setIsWidgetOpen(true)}
+        alwaysVisible={!isWidgetOpen}
+      />
 
-             {/* Modal de notification de message */}
-             <MessageNotificationModal
-               isOpen={showMessageModal}
-               onClose={() => {
-                 setShowMessageModal(false);
-                 setUnreadMessage(null);
-               }}
-               message={unreadMessage}
-             />
-           </div>
-         );
-       }
+      {/* Modal de notification de message */}
+      <MessageNotificationModal
+        isOpen={showMessageModal}
+        onClose={() => {
+          setShowMessageModal(false);
+          setUnreadMessage(null);
+        }}
+        message={unreadMessage}
+      />
+    </div>
+  );
+}
+
+export default function ClientDashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Chargement...</p>
+        </div>
+      </div>
+    }>
+      <ClientDashboardContent />
+    </Suspense>
+  );
+}

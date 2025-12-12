@@ -327,7 +327,7 @@ export default function AdminDashboardPage() {
 
       <main className="container mx-auto px-4 py-8">
         {/* En-tête avec navigation rapide */}
-        <div className="mb-8">
+        <div id="dashboard-top" className="mb-8 scroll-mt-20">
           <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
@@ -335,25 +335,11 @@ export default function AdminDashboardPage() {
               </h1>
               <p className="text-muted-foreground text-lg">Vue d'ensemble de votre cabinet juridique</p>
             </div>
-            {/* Navigation rapide vers le dashboard client */}
-            <Link href="/client">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all duration-200 cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                    <span className="text-xl">👤</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-blue-900">Vue Client</p>
-                    <p className="text-xs text-blue-700">Accéder au dashboard utilisateur</p>
-                  </div>
-                </div>
-              </div>
-            </Link>
           </div>
         </div>
 
         {/* Statistiques principales - Design professionnel et chaleureux avec accès direct */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div id="utilisateurs-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 scroll-mt-20">
           {/* Badge Utilisateurs avec lien direct */}
           <Link href="/admin/utilisateurs" className="group">
             <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-primary hover:shadow-lg hover:border-primary/80 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
@@ -377,24 +363,26 @@ export default function AdminDashboardPage() {
           </Link>
 
           {/* Badge Documents avec lien direct */}
-          <Link href="/admin/documents" className="group">
-            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500 hover:shadow-lg hover:border-purple-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                  <span className="text-2xl">📄</span>
+          <div id="documents-section" className="scroll-mt-20">
+            <Link href="/admin/documents" className="group">
+              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500 hover:shadow-lg hover:border-purple-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+                    <span className="text-2xl">📄</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-purple-600 transition-colors">{stats.documents}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-purple-600 transition-colors">{stats.documents}</p>
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
+                <p className="text-xs text-muted-foreground mb-3">Total des documents</p>
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <span className="text-xs text-muted-foreground">Téléversés par les clients</span>
+                  <span className="text-purple-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
                 </div>
               </div>
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
-              <p className="text-xs text-muted-foreground mb-3">Total des documents</p>
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <span className="text-xs text-muted-foreground">Téléversés par les clients</span>
-                <span className="text-purple-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
-              </div>
-            </div>
-          </Link>
+            </Link>
+          </div>
 
           {/* Badge Tâches - scroll vers la section */}
           <div 
@@ -424,7 +412,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Actions rapides - Seulement les sections sans doublons */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div id="dossiers-section" className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 scroll-mt-20">
           <Link href="/admin/dossiers" className="group">
             <div className="bg-gradient-to-br from-white to-blue-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-blue-200 hover:border-blue-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
@@ -445,14 +433,15 @@ export default function AdminDashboardPage() {
             </div>
           </Link>
 
-          <Link href="/admin/rendez-vous" className="group">
-            <div className="bg-gradient-to-br from-white to-green-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-green-200 hover:border-green-400 hover:scale-105">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                  <span className="text-3xl">📅</span>
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-foreground group-hover:text-green-600 transition-colors mb-1">Rendez-vous</h3>
+          <div id="rendez-vous-section" className="scroll-mt-20">
+            <Link href="/admin/rendez-vous" className="group">
+              <div className="bg-gradient-to-br from-white to-green-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-green-200 hover:border-green-400 hover:scale-105">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <span className="text-3xl">📅</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-foreground group-hover:text-green-600 transition-colors mb-1">Rendez-vous</h3>
                   <p className="text-sm text-muted-foreground">Gérez le calendrier</p>
                 </div>
               </div>
@@ -464,9 +453,11 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </Link>
+          </div>
 
-          <Link href="/admin/temoignages" className="group">
-            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
+          <div id="temoignages-section" className="scroll-mt-20">
+            <Link href="/admin/temoignages" className="group">
+              <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                   <span className="text-3xl">⭐</span>
@@ -484,9 +475,10 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </Link>
+          </div>
 
           {/* Navigation rapide vers le dashboard client */}
-          <Link href="/client" className="group">
+          <Link href="/admin/impersonate" className="group">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border-2 border-blue-200 hover:border-blue-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
@@ -667,107 +659,108 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Documents récents */}
-        {recentDocuments.length > 0 && (() => {
-          // Grouper les documents par utilisateur
-          const documentsByUser: { [userId: string]: any[] } = {};
-          recentDocuments.forEach((doc) => {
-            const userId = doc.user?._id || doc.user?.id || 'unknown';
-            if (!documentsByUser[userId]) {
-              documentsByUser[userId] = [];
-            }
-            documentsByUser[userId].push(doc);
-          });
-
-          // Convertir en tableau pour l'affichage
-          const groupedDocuments = Object.entries(documentsByUser).map(([userId, docs]) => ({
-            userId,
-            userName: docs[0]?.user ? `${docs[0].user.firstName} ${docs[0].user.lastName}` : 'Utilisateur inconnu',
-            documents: docs,
-          }));
-
-          return (
-            <div className="mt-8 bg-white rounded-xl shadow-md p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-foreground">Documents récents</h2>
-                <Link href="/admin/documents" className="text-sm text-primary hover:underline font-medium">
-                  Voir tous les documents →
-                </Link>
+        {recentDocuments.length > 0 && (
+          <div className="mt-8 bg-gradient-to-br from-white to-primary/5 rounded-2xl shadow-lg p-8 border border-primary/10">
+            {/* En-tête amélioré */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-white text-xl">📄</span>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Documents récents</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {recentDocuments.length} document{recentDocuments.length > 1 ? 's' : ''} récemment ajouté{recentDocuments.length > 1 ? 's' : ''}
+                  </p>
+                </div>
               </div>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {groupedDocuments.map((group) => {
-                  const currentIndex = documentIndices[group.userId] || 0;
-                  const currentDoc = group.documents[currentIndex];
-                  const hasMultipleDocs = group.documents.length > 1;
+              <Link 
+                href="/admin/documents" 
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg font-medium text-sm"
+              >
+                Voir tous les documents
+                <span className="text-lg">→</span>
+              </Link>
+            </div>
 
-                  return (
-                    <div key={group.userId} className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow relative">
-                      {/* Flèches de navigation si plusieurs documents */}
-                      {hasMultipleDocs && (
-                        <>
-                          {/* Flèche gauche */}
-                          {currentIndex > 0 && (
-                            <button
-                              onClick={() => {
-                                setDocumentIndices({
-                                  ...documentIndices,
-                                  [group.userId]: currentIndex - 1,
-                                });
-                              }}
-                              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white border border-border rounded-full flex items-center justify-center hover:bg-primary hover:text-white transition-colors shadow-md z-10"
-                              title="Document précédent"
-                            >
-                              ←
-                            </button>
-                          )}
-                          {/* Flèche droite */}
-                          {currentIndex < group.documents.length - 1 && (
-                            <button
-                              onClick={() => {
-                                setDocumentIndices({
-                                  ...documentIndices,
-                                  [group.userId]: currentIndex + 1,
-                                });
-                              }}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white border border-border rounded-full flex items-center justify-center hover:bg-primary hover:text-white transition-colors shadow-md z-10"
-                              title="Document suivant"
-                            >
-                              →
-                            </button>
-                          )}
-                          {/* Indicateur de position */}
-                          <div className="absolute top-2 right-2 bg-primary/10 text-primary text-xs px-2 py-1 rounded-full font-medium">
-                            {currentIndex + 1} / {group.documents.length}
+            {/* Liste de documents */}
+            <div className="space-y-3">
+              {recentDocuments.map((doc, index) => {
+                const userName = doc.user 
+                  ? `${doc.user.firstName || ''} ${doc.user.lastName || ''}`.trim() || 'Utilisateur inconnu'
+                  : 'Utilisateur inconnu';
+                const userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
+                return (
+                  <div
+                    key={doc._id || doc.id || index}
+                    className="group bg-white rounded-xl border-2 border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300 p-5"
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Icône du fichier */}
+                      <div className="w-12 h-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <span className="text-2xl">{getFileIcon(doc.typeMime)}</span>
+                      </div>
+
+                      {/* Informations du document */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-base text-foreground mb-2 group-hover:text-primary transition-colors">
+                          {doc.nom}
+                        </h3>
+                        <div className="flex items-center gap-4 flex-wrap">
+                          {/* Utilisateur */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-white text-xs font-bold">
+                                {userInitials}
+                              </span>
+                            </div>
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {userName}
+                            </span>
                           </div>
-                        </>
-                      )}
 
-                      <div className="flex items-start gap-3 mb-3">
-                        <span className="text-2xl">{getFileIcon(currentDoc.typeMime)}</span>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-sm truncate">{currentDoc.nom}</h3>
-                          <p className="text-xs text-muted-foreground">
-                            {group.userName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatFileSize(currentDoc.taille)} • {new Date(currentDoc.createdAt).toLocaleDateString('fr-FR')}
-                          </p>
+                          {/* Taille */}
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <span>📊</span>
+                            <span className="font-medium">{formatFileSize(doc.taille)}</span>
+                          </div>
+
+                          {/* Date */}
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <span>📅</span>
+                            <span className="font-medium">
+                              {new Date(doc.createdAt).toLocaleDateString('fr-FR', { 
+                                day: '2-digit', 
+                                month: '2-digit', 
+                                year: 'numeric' 
+                              })}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs"
-                        onClick={() => handleDownloadDocument(currentDoc._id || currentDoc.id, currentDoc.nom)}
-                      >
-                        📥 Télécharger
-                      </Button>
+
+                      {/* Bouton de téléchargement */}
+                      <div className="flex-shrink-0">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200 px-4"
+                          onClick={() => handleDownloadDocument(doc._id || doc.id, doc.nom)}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="text-base">📥</span>
+                            <span>Télécharger</span>
+                          </span>
+                        </Button>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         {/* Modal de création de tâche */}
         {showTaskModal && (

@@ -10,11 +10,11 @@ $connections = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContin
 if ($connections) {
     $processes = $connections | Select-Object -ExpandProperty OwningProcess -Unique
     
-    foreach ($pid in $processes) {
-        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    foreach ($processId in $processes) {
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if ($process) {
-            Write-Host "Arrêt du processus: $($process.ProcessName) (PID: $pid)" -ForegroundColor Red
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            Write-Host "Arrêt du processus: $($process.ProcessName) (PID: $processId)" -ForegroundColor Red
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
         }
     }
     

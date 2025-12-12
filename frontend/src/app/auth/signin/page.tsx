@@ -51,7 +51,7 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const isRedirecting = useRef(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
     
     if (isRedirecting.current) {
@@ -145,19 +145,18 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-primary/5 via-background to-primary/10">
+    <div className="min-h-screen flex bg-gradient-to-br from-primary/5 via-background to-primary/10 relative">
+      {/* Bouton retour à l'accueil - Position fixe en haut à gauche */}
+      <Link href="/" className="absolute top-4 left-4 z-50">
+        <Button variant="ghost" className="text-foreground hover:bg-primary/10 backdrop-blur-sm">
+          ← Retour à l'accueil
+        </Button>
+      </Link>
+
       {/* Section gauche - Informations */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary to-primary/80 items-center justify-center p-12 text-white">
         <div className="max-w-md">
           <div className="mb-8">
-            <Link href="/" className="inline-block mb-6">
-              <Button variant="ghost" className="text-white hover:bg-white/20">
-                ← Retour à l'accueil
-              </Button>
-            </Link>
-            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6 backdrop-blur-sm">
-              <span className="text-4xl">🔐</span>
-            </div>
             <h1 className="text-4xl font-bold mb-4">Bienvenue sur Paw Legal</h1>
             <p className="text-lg text-white/90 mb-6">
               Votre partenaire juridique de confiance pour toutes vos démarches administratives.
@@ -192,22 +191,24 @@ export default function SignInPage() {
       {/* Section droite - Formulaire de connexion */}
       <div className="w-full lg:w-1/2 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-6">
+            <Link href="/" className="inline-block">
+              <div className="flex flex-col items-center">
+                <span className="text-3xl font-bold text-orange-500 hover:text-orange-600 transition-colors">
+                  Paw Legal
+                </span>
+                <p className="text-xs text-muted-foreground font-medium mt-1">
+                  Accompagnement Juridique
+                </p>
+              </div>
+            </Link>
+          </div>
+
           <div className="bg-white rounded-xl shadow-xl border border-border overflow-hidden">
-            {/* Bouton retour à l'accueil (visible sur mobile) */}
-            <div className="lg:hidden px-8 pt-6 pb-2">
-              <Link href="/">
-                <Button variant="ghost" className="text-sm text-muted-foreground hover:text-foreground">
-                  ← Retour à l'accueil
-                </Button>
-              </Link>
-            </div>
-            
             {/* En-tête amélioré */}
             <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-8 py-6 border-b border-border">
               <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/70 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <span className="text-white font-bold text-2xl">🔐</span>
-                </div>
                 <h1 className="text-3xl font-bold text-foreground mb-2">Connexion</h1>
                 <p className="text-muted-foreground">
                   Connectez-vous à votre compte Paw Legal
@@ -298,6 +299,7 @@ export default function SignInPage() {
                 </Link>
               </p>
             </div>
+          </div>
           </div>
         </div>
       </div>

@@ -166,6 +166,52 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
   // Déterminer si l'utilisateur est connecté (session ou token)
   const isAuthenticated = !!session || !!userInfo;
 
+  // Mapping des sections pour la navigation par ancres
+  const sectionMapping: { [key: string]: { client: string; admin: string } } = {
+    'Mes dossiers': { client: 'dossiers-section', admin: 'dossiers-section' },
+    'Dossiers': { client: 'dossiers-section', admin: 'dossiers-section' },
+    'Rendez-vous': { client: 'rendez-vous-section', admin: 'rendez-vous-section' },
+    'Documents': { client: 'documents-section', admin: 'documents-section' },
+    'Messages': { client: 'messages-section', admin: 'messages-section' },
+    'Témoignage': { client: 'temoignages-section', admin: 'temoignages-section' },
+    'Témoignages': { client: 'temoignages-section', admin: 'temoignages-section' },
+    'Utilisateurs': { client: '', admin: 'utilisateurs-section' },
+    'Notifications': { client: 'notifications-section', admin: 'notifications-section' },
+    'Tableau de bord': { client: '', admin: 'dashboard-top' },
+  };
+
+  // Fonction pour obtenir le lien approprié selon la page actuelle
+  const getNavLink = (item: any) => {
+    const isOnDashboard = pathname === '/client' || pathname === '/admin';
+    const sectionId = sectionMapping[item.label]?.[variant] || '';
+    
+    if (isOnDashboard && sectionId) {
+      // Si on est sur le dashboard, utiliser une ancre
+      return `#${sectionId}`;
+    }
+    // Sinon, utiliser le lien normal
+    return item.href;
+  };
+
+  // Fonction pour gérer le clic sur les liens de navigation
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, item: any) => {
+    const isOnDashboard = pathname === '/client' || pathname === '/admin';
+    const sectionId = sectionMapping[item.label]?.[variant] || '';
+    
+    if (isOnDashboard && sectionId) {
+      e.preventDefault();
+      // Si c'est "Tableau de bord", scroller vers le haut
+      if (item.label === 'Tableau de bord' && sectionId === 'dashboard-top') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   // Navigation par défaut selon le variant
   const defaultNavItems = {
     home: [
@@ -299,10 +345,12 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
                     </button>
                   );
                 }
+                const navHref = getNavLink(item);
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={navHref}
+                    onClick={(e) => handleNavClick(e, item)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       (item as any).active
                         ? 'bg-primary text-primary-foreground'

@@ -328,10 +328,7 @@ export const appointmentsAPI = {
     api.patch(`/appointments/${id}/cancel`),
   
   // Admin - Récupérer tous les rendez-vous
-  getAllAppointments: (statut?: string, date?: string) => {
-    const params: any = {};
-    if (statut) params.statut = statut;
-    if (date) params.date = date;
+  getAllAppointments: (params?: { statut?: string; date?: string; userId?: string }) => {
     return api.get('/appointments/admin', { params });
   },
   
@@ -509,8 +506,9 @@ export const documentsAPI = {
     api.get('/user/documents'),
   
   // Admin - Récupérer tous les documents
-  getAllDocuments: () =>
-    api.get('/user/documents/admin'),
+  getAllDocuments: (params?: { userId?: string }) => {
+    return api.get('/user/documents/admin', { params });
+  },
   
   // Téléverser un document
   uploadDocument: (formData: FormData) =>
