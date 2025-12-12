@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { userAPI } from '@/lib/api';
+import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', disabled = false, ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none';
@@ -17,9 +18,30 @@ function Button({ children, variant = 'default', className = '', disabled = fals
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
 }
 
-function Input({ className = '', ...props }: any) {
+function Input({ className = '', type, value, onChange, ...props }: any) {
+  // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
+  if (type === 'date') {
+    return (
+      <DateInputComponent
+        value={value || ''}
+        onChange={(newValue) => {
+          if (onChange) {
+            const syntheticEvent = {
+              target: { value: newValue },
+              currentTarget: { value: newValue }
+            } as React.ChangeEvent<HTMLInputElement>;
+            onChange(syntheticEvent);
+          }
+        }}
+        className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+        {...props}
+      />
+    );
+  }
+  
   return (
     <input
+      type={type}
       className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />
@@ -43,7 +65,8 @@ export default function ComptePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
-  // Données du profil
+  // Données du profil - Tous les champs seront automatiquement pré-remplis avec les données de la base
+  // lors du chargement du profil via loadProfile()
   const [profileData, setProfileData] = useState({
     firstName: '',
     lastName: '',
@@ -65,6 +88,8 @@ export default function ComptePage() {
   });
 
   // Données pour le changement de mot de passe
+  // IMPORTANT : Le mot de passe n'est JAMAIS pré-rempli pour des raisons de sécurité
+  // L'utilisateur doit toujours saisir son mot de passe actuel pour le changer
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -89,10 +114,12 @@ export default function ComptePage() {
 
   const loadProfile = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const response = await userAPI.getProfile();
       if (response.data.success) {
         const user = response.data.user || response.data.data;
+        // Pré-remplir TOUS les champs avec les données existantes ou des valeurs vides par défaut
         setProfileData({
           firstName: user.firstName || '',
           lastName: user.lastName || '',
@@ -112,10 +139,12 @@ export default function ComptePage() {
           codePostal: user.codePostal || '',
           pays: user.pays || 'France',
         });
+      } else {
+        setError('Impossible de charger le profil');
       }
     } catch (error: any) {
       console.error('Erreur lors du chargement du profil:', error);
-      setError('Erreur lors du chargement du profil');
+      setError(error.response?.data?.message || 'Erreur lors du chargement du profil');
     } finally {
       setIsLoading(false);
     }
@@ -132,8 +161,13 @@ export default function ComptePage() {
       if (response.data.success) {
         setSuccess('Profil mis à jour avec succès');
         setTimeout(() => setSuccess(null), 3000);
+        // Recharger le profil pour avoir les données à jour (au cas où le backend modifie certaines valeurs)
+        await loadProfile();
+      } else {
+        setError(response.data.message || 'Erreur lors de la mise à jour du profil');
       }
     } catch (error: any) {
+      console.error('Erreur lors de la mise à jour du profil:', error);
       setError(error.response?.data?.message || 'Erreur lors de la mise à jour du profil');
     } finally {
       setIsSaving(false);

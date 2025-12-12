@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { appointmentsAPI } from '@/lib/api';
+import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -17,8 +18,28 @@ function Button({ children, variant = 'default', className = '', ...props }: any
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
 }
 
-function Input({ className = '', ...props }: any) {
-  return <input className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 ${className}`} {...props} />;
+function Input({ className = '', type, value, onChange, ...props }: any) {
+  // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
+  if (type === 'date') {
+    return (
+      <DateInputComponent
+        value={value || ''}
+        onChange={(newValue) => {
+          if (onChange) {
+            const syntheticEvent = {
+              target: { value: newValue },
+              currentTarget: { value: newValue }
+            } as React.ChangeEvent<HTMLInputElement>;
+            onChange(syntheticEvent);
+          }
+        }}
+        className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 ${className}`}
+        {...props}
+      />
+    );
+  }
+  
+  return <input type={type} className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 ${className}`} {...props} />;
 }
 
 function Textarea({ className = '', ...props }: any) {

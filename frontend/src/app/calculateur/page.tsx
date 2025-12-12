@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { Footer } from '@/components/layout/Footer';
 import { userAPI } from '@/lib/api';
+import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -16,9 +17,31 @@ function Button({ children, variant = 'default', className = '', ...props }: any
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
 }
 
-function Input({ className = '', ...props }: any) {
+function Input({ className = '', type, value, onChange, ...props }: any) {
+  // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
+  if (type === 'date') {
+    return (
+      <DateInputComponent
+        value={value || ''}
+        onChange={(newValue) => {
+          if (onChange) {
+            // Créer un événement synthétique pour maintenir la compatibilité
+            const syntheticEvent = {
+              target: { value: newValue },
+              currentTarget: { value: newValue }
+            } as React.ChangeEvent<HTMLInputElement>;
+            onChange(syntheticEvent);
+          }
+        }}
+        className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+        {...props}
+      />
+    );
+  }
+  
   return (
     <input
+      type={type}
       className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />
@@ -67,18 +90,6 @@ const typesDecisions = [
   { value: 'retrait_titre', label: 'Retrait de titre', delai: 30 },
   { value: 'refus_renouvellement', label: 'Refus de renouvellement', delai: 30 },
   { value: 'refus_enregistrement', label: 'Refus d\'enregistrement de demande', delai: 15 },
-];
-
-// Types de documents actuellement détenus
-const typesDocuments = [
-  { value: 'carte_sejour_temporaire', label: 'Carte de séjour temporaire' },
-  { value: 'carte_sejour_pluriannuelle', label: 'Carte de séjour pluriannuelle' },
-  { value: 'carte_resident', label: 'Carte de résident' },
-  { value: 'recepisse', label: 'Récépissé' },
-  { value: 'aps', label: 'APS (Autorisation Provisoire de Séjour)' },
-  { value: 'visa_long_sejour', label: 'Visa long séjour (VLS / VLS-TS)' },
-  { value: 'aucun', label: 'Aucun document / en attente' },
-  { value: 'autre', label: 'Autre' },
 ];
 
 // Types de visas
@@ -206,11 +217,37 @@ export default function CalculateurPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   
+  // Vérifier si l'utilisateur est un administrateur
+  const isAdmin = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin' || userProfile?.role === 'admin' || userProfile?.role === 'superadmin';
+  
+  // Fonction de déconnexion
+  const handleSignOut = async () => {
+    if (typeof window === 'undefined') return;
+    
+    // Nettoyer complètement l'état de l'utilisateur
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
+    setUserProfile(null);
+    
+    // Si on a une session NextAuth, la déconnecter
+    if (session) {
+      try {
+        await signOut({ redirect: false });
+      } catch (error) {
+        console.warn('Erreur lors de la déconnexion NextAuth:', error);
+      }
+    }
+    
+    // Rediriger immédiatement vers la page d'accueil
+    window.location.href = '/';
+  };
+  
   // Fonction pour obtenir la date du jour au format YYYY-MM-DD
   const getTodayDate = () => new Date().toISOString().split('T')[0];
 
   const [formData, setFormData] = useState({
     typeTitre: '',
+    typeTitreAutre: '', // Valeur personnalisée si "Autre" est sélectionné
     typeDemande: 'premiere', // 'premiere' ou 'renouvellement'
     prefecture: '',
     dateDelivrance: getTodayDate(),
@@ -218,8 +255,7 @@ export default function CalculateurPage() {
     dateDecision: getTodayDate(),
     natureDecision: '',
     dureeTitre: '',
-    situation: '', // 'demande', 'contentieux_visa', 'contentieux_titre'
-    natureDocumentActuel: '', // Nature du document actuellement détenu
+    situation: 'demande', // 'demande', 'contentieux_visa', 'contentieux_titre' - Par défaut, afficher le formulaire de dépôt
     dateAttributionTitre: '', // Date d'attribution du titre ou du visa
     dateExpirationTitre: '', // Date d'expiration du titre ou du visa
     // Champs pour recours visa
@@ -229,6 +265,7 @@ export default function CalculateurPage() {
     typeRefusVisa: '', // 'explicite' ou 'implicite'
     dateNotificationRefus: '', // Date de notification du refus (si explicite)
     dateDepotRapo: '', // Date de dépôt du RAPO
+    reponseRapoRecue: false, // Case à cocher "J'ai reçu une réponse à mon RAPO"
     dateReponseRapo: '', // Date de réponse RAPO
     demandeCommunicationMotifs: false, // Case à cocher pour demande de communication des motifs
     dateDemandeMotifs: '', // Date de demande de communication des motifs
@@ -278,6 +315,75 @@ export default function CalculateurPage() {
     }
   }, [session, status]);
 
+  // Recharger le profil lorsque l'utilisateur revient sur la page (après modification)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleFocus = () => {
+      if (status === 'authenticated' && session) {
+        loadUserProfile();
+      }
+    };
+
+    // Recharger quand la fenêtre reprend le focus (utilisateur revient de la page de modification)
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [session, status]);
+
+  // Préremplir les champs lorsque la situation change, si les champs sont vides
+  useEffect(() => {
+    if (userProfile && formData.situation) {
+      const formatDate = (date: any) => {
+        if (!date) return '';
+        try {
+          return new Date(date).toISOString().split('T')[0];
+        } catch {
+          return '';
+        }
+      };
+
+      const dateDelivranceFormatted = formatDate(userProfile.dateDelivrance);
+      const dateExpirationFormatted = formatDate(userProfile.dateExpiration);
+
+      // Préremplir seulement si les champs sont vides ou contiennent la date par défaut
+      setFormData(prev => {
+        const updates: any = {};
+        
+        // Type de titre (préremplir seulement si vide)
+        if (!prev.typeTitre && userProfile.typeTitre) {
+          updates.typeTitre = userProfile.typeTitre;
+        }
+        
+        // Dates d'attribution et d'expiration (préremplir seulement si vides)
+        if (!prev.dateAttributionTitre && dateDelivranceFormatted) {
+          updates.dateAttributionTitre = dateDelivranceFormatted;
+        }
+        if (!prev.dateExpirationTitre && dateExpirationFormatted) {
+          updates.dateExpirationTitre = dateExpirationFormatted;
+        }
+        
+        // Dates de délivrance et d'expiration (préremplir seulement si vides ou contiennent la date par défaut)
+        if ((!prev.dateDelivrance || prev.dateDelivrance === getTodayDate()) && dateDelivranceFormatted) {
+          updates.dateDelivrance = dateDelivranceFormatted;
+        }
+        if ((!prev.dateExpiration || prev.dateExpiration === getTodayDate()) && dateExpirationFormatted) {
+          updates.dateExpiration = dateExpirationFormatted;
+        }
+        
+        // Préfecture (préremplir seulement si vide)
+        if (!prev.prefecture && userProfile.prefecture) {
+          updates.prefecture = userProfile.prefecture;
+        }
+        
+        // Retourner les mises à jour seulement s'il y en a
+        return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+      });
+    }
+  }, [formData.situation, userProfile]);
+
   const loadUserProfile = async () => {
     setIsLoadingProfile(true);
     try {
@@ -294,37 +400,36 @@ export default function CalculateurPage() {
           const user = response.data.user;
         setUserProfile(user);
         
-        // Préremplir le formulaire UNIQUEMENT si l'utilisateur est un client (pas un admin)
-        const userRole = user?.role || (session?.user as any)?.role;
-        const isClient = userRole === 'client';
-        
-        if (isClient && user) {
-          // Préremplir le formulaire avec les informations du profil pour les clients uniquement
-          // Mapper le typeTitre vers natureDocumentActuel
-          let natureDoc = '';
-          if (user.typeTitre) {
-            // Mapping approximatif du type de titre vers le type de document
-            if (user.typeTitre.includes('resident') || user.typeTitre === 'resident') {
-              natureDoc = 'carte_resident';
-            } else if (user.typeTitre.includes('pluriannuelle') || user.typeTitre === 'pluriannuelle') {
-              natureDoc = 'carte_sejour_pluriannuelle';
-            } else {
-              natureDoc = 'carte_sejour_temporaire';
+        // Préremplir tous les formulaires avec les informations du profil pour tous les utilisateurs connectés
+        if (user) {
+          // Convertir les dates au format YYYY-MM-DD
+          const formatDate = (date: any) => {
+            if (!date) return '';
+            try {
+              return new Date(date).toISOString().split('T')[0];
+            } catch {
+              return '';
             }
-          }
+          };
+
+          const dateDelivranceFormatted = formatDate(user.dateDelivrance);
+          const dateExpirationFormatted = formatDate(user.dateExpiration);
 
           setFormData(prev => ({
             ...prev,
-            prefecture: user.prefecture || prev.prefecture,
-            dateDelivrance: user.dateDelivrance ? new Date(user.dateDelivrance).toISOString().split('T')[0] : prev.dateDelivrance,
-            dateExpiration: user.dateExpiration ? new Date(user.dateExpiration).toISOString().split('T')[0] : prev.dateExpiration,
-            typeTitre: user.typeTitre || prev.typeTitre,
-            dateAttributionTitre: user.dateDelivrance ? new Date(user.dateDelivrance).toISOString().split('T')[0] : prev.dateAttributionTitre,
-            dateExpirationTitre: user.dateExpiration ? new Date(user.dateExpiration).toISOString().split('T')[0] : prev.dateExpirationTitre,
-            natureDocumentActuel: natureDoc || prev.natureDocumentActuel,
+            // Informations générales (préremplir seulement si vide)
+            prefecture: prev.prefecture || user.prefecture || '',
+            // Type de titre de séjour (préremplir seulement si vide)
+            typeTitre: prev.typeTitre || user.typeTitre || '',
+            // Dates pour tous les formulaires (dépôt, recours titre, recours visa)
+            // Préremplir seulement si le champ est vide ou contient la date par défaut (aujourd'hui)
+            dateDelivrance: (prev.dateDelivrance && prev.dateDelivrance !== getTodayDate()) ? prev.dateDelivrance : (dateDelivranceFormatted || prev.dateDelivrance),
+            dateExpiration: (prev.dateExpiration && prev.dateExpiration !== getTodayDate()) ? prev.dateExpiration : (dateExpirationFormatted || prev.dateExpiration),
+            // Dates d'attribution et d'expiration du titre (utilisées dans tous les formulaires)
+            dateAttributionTitre: prev.dateAttributionTitre || dateDelivranceFormatted || prev.dateAttributionTitre,
+            dateExpirationTitre: prev.dateExpirationTitre || dateExpirationFormatted || prev.dateExpirationTitre,
           }));
         }
-        // Si c'est un admin, on charge le profil mais on ne pré-remplit PAS les formulaires
       }
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement du profil:', err);
@@ -353,36 +458,12 @@ export default function CalculateurPage() {
         if (formData.dateDepotRapo) {
           // Continuer avec le calcul normal ci-dessous
         }
-        // Si l'utilisateur a confirmé qu'aucun RAPO n'a été déposé
-        else if (formData.rapoDepose === false) {
-          setCalculs({
-            type: 'contentieux_visa',
-            erreur: true,
-            messageErreur: `Aucun recours n'est plus possible. Le délai de 4 mois pour le refus implicite est dépassé depuis ${joursDepuis4Mois} jour(s) et aucun Recours Administratif Préalable Obligatoire (RAPO) n'a été déposé.`,
-            dateConfirmationDepot: dateConfirmationDepot,
-            dateLimite4Mois: dateLimite4Mois,
-            joursDepuis4Mois: joursDepuis4Mois
-          });
-          return;
-        }
-        // Si la question n'a pas encore été posée ou si l'utilisateur n'a pas encore répondu
-        else if (formData.rapoDepose === null && !formData.typeRefusVisa) {
+        // Si aucun RAPO n'a été déposé, afficher le message d'information
+        else if (!formData.typeRefusVisa) {
           setCalculs({
             type: 'contentieux_visa',
             demandeRapo: true,
-            message: `Plus de 4 mois se sont écoulés depuis le dépôt (${joursDepuis4Mois} jour(s) de retard). Avez-vous déposé un Recours Administratif Préalable Obligatoire (RAPO) ?`,
-            dateConfirmationDepot: dateConfirmationDepot,
-            dateLimite4Mois: dateLimite4Mois,
-            joursDepuis4Mois: joursDepuis4Mois
-          });
-          return;
-        }
-        // Si l'utilisateur a répondu "oui" mais n'a pas encore rempli la date, demander la date
-        else if (formData.rapoDepose === true && !formData.dateDepotRapo) {
-          setCalculs({
-            type: 'contentieux_visa',
-            demandeDateRapo: true,
-            message: `Veuillez renseigner la date de dépôt du RAPO pour calculer les délais qui suivent.`,
+            message: `Plus de 4 mois se sont écoulés depuis la date de confirmation du dépôt (${joursDepuis4Mois} jour(s) de retard). En principe, aucun recours n'est plus possible après ce délai.`,
             dateConfirmationDepot: dateConfirmationDepot,
             dateLimite4Mois: dateLimite4Mois,
             joursDepuis4Mois: joursDepuis4Mois
@@ -532,8 +613,8 @@ export default function CalculateurPage() {
       
       // Ne mentionner le RAPO que si aucun RAPO n'a été déposé
       if (!formData.dateDepotRapo && joursRestantsRapo !== null && rapoDansDelais !== null) {
-        if (!rapoDansDelais) {
-          messagePersonnalise = `⚠️ Le délai du RAPO est dépassé de ${Math.abs(joursRestantsRapo)} jour(s).`;
+        if (!rapoDansDelais && dateLimiteRapo) {
+          messagePersonnalise = `⚠️ Le délai du RAPO est dépassé de ${Math.abs(joursRestantsRapo)} jour(s). La date limite était le ${formatDateCourte(dateLimiteRapo)}.`;
         } else if (joursRestantsRapo <= 7) {
           messagePersonnalise = `⚠️ URGENT : Il reste ${joursRestantsRapo} jour(s) pour déposer le RAPO.`;
         } else {
@@ -636,21 +717,6 @@ export default function CalculateurPage() {
         // Vérifier si le recours est introduit dans les délais
         const recoursDansDelais = joursRestants > 0;
         
-        // Adapter selon le type de document
-        let messagePersonnalise = '';
-        if (formData.natureDocumentActuel) {
-          const docLabel = typesDocuments.find(d => d.value === formData.natureDocumentActuel)?.label || '';
-          if (formData.dateExpirationTitre) {
-            const dateExpiration = new Date(formData.dateExpirationTitre);
-            const joursAvantExpirationDoc = Math.ceil((dateExpiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
-            if (joursAvantExpirationDoc < 0) {
-              messagePersonnalise = `⚠️ Votre ${docLabel} a expiré. Le recours doit être introduit dans les délais légaux.`;
-            } else if (joursAvantExpirationDoc <= 30) {
-              messagePersonnalise = `⚠️ Votre ${docLabel} expire dans ${joursAvantExpirationDoc} jour(s).`;
-            }
-          }
-        }
-        
         setCalculs({
           type: 'contentieux',
           delai: decision.delai,
@@ -660,10 +726,9 @@ export default function CalculateurPage() {
           typeRecours: getTypeRecours(formData.natureDecision),
           urgence: joursRestants <= 7,
           recoursDansDelais: recoursDansDelais,
-          messagePersonnalise: messagePersonnalise || (recoursDansDelais 
+          messagePersonnalise: recoursDansDelais 
             ? `✅ Vous avez encore ${joursRestants} jour(s) pour introduire votre recours.`
-            : `⚠️ Le délai de recours est dépassé de ${Math.abs(joursRestants)} jour(s). Consultez un avocat rapidement.`),
-          natureDocumentActuel: formData.natureDocumentActuel
+            : `⚠️ Le délai de recours est dépassé de ${Math.abs(joursRestants)} jour(s). Consultez un avocat rapidement.`
         });
       }
     } else if (formData.situation === 'demande' && formData.typeTitre) {
@@ -720,7 +785,6 @@ export default function CalculateurPage() {
             periodeRecommandee: `${infoTitre.delaiRenouvellement.min} à ${infoTitre.delaiRenouvellement.max} mois avant expiration`,
               risqueRupture: isUrgent,
               enRetard: isTardif,
-              natureDocumentActuel: formData.natureDocumentActuel,
               messagePersonnalise: isTardif 
                 ? `⚠️ Votre titre a expiré il y a ${Math.abs(joursAvantExpiration)} jour(s). Déposez immédiatement votre demande de renouvellement.`
                 : isUrgent
@@ -761,7 +825,12 @@ export default function CalculateurPage() {
   };
 
   const formatDateCourte = (date: Date): string => {
-    return date.toLocaleDateString('fr-FR');
+    // Format jour/mois/année (ex: 15/03/2024)
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
   };
 
   const getAlertColor = (jours: number): string => {
@@ -787,8 +856,43 @@ export default function CalculateurPage() {
               <Link href="/contact" className="hover:text-primary transition-colors">Contact</Link>
             </nav>
             <div className="flex items-center gap-4">
-              <Link href="/auth/signin"><Button variant="ghost">Connexion</Button></Link>
-              <Link href="/auth/signup"><Button>Créer un compte</Button></Link>
+              {session && (session.user || userProfile) ? (
+                <div className="flex items-center gap-3">
+                  <Link 
+                    href={(session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin' ? '/admin' : '/client'}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/70 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">
+                        {userProfile?.firstName?.[0]?.toUpperCase() || session?.user?.name?.[0]?.toUpperCase() || 'U'}
+                        {userProfile?.lastName?.[0]?.toUpperCase() || ''}
+                      </span>
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className="text-sm font-semibold text-foreground">
+                        {userProfile?.firstName && userProfile?.lastName
+                          ? `${userProfile.firstName} ${userProfile.lastName}`
+                          : session.user?.name || 'Utilisateur'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(userProfile?.role || (session.user as any)?.role || 'client').charAt(0).toUpperCase() + (userProfile?.role || (session.user as any)?.role || 'client').slice(1)}
+                      </p>
+                    </div>
+                  </Link>
+                  <Button 
+                    variant="outline" 
+                    className="text-xs"
+                    onClick={handleSignOut}
+                  >
+                    Déconnexion
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Link href="/auth/signin"><Button variant="ghost">Connexion</Button></Link>
+                  <Link href="/auth/signup"><Button>Créer un compte</Button></Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -798,12 +902,39 @@ export default function CalculateurPage() {
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Colonne 1 : Informations du profil utilisateur (à l'extrémité gauche) */}
           <div className="w-full lg:w-auto lg:flex-shrink-0 lg:self-start">
-            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20 lg:sticky lg:top-24 lg:w-64">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                  <span className="text-xl">👤</span>
+            <div className="bg-gradient-to-br from-white to-primary/5 rounded-xl shadow-xl p-6 border-2 border-primary/20 lg:sticky lg:top-24 lg:w-72">
+              {/* En-tête avec avatar et nom */}
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 rounded-full flex items-center justify-center shadow-lg">
+                    <span className="text-white font-bold text-lg">
+                      {userProfile?.firstName?.[0]?.toUpperCase() || session?.user?.name?.[0]?.toUpperCase() || 'U'}
+                      {userProfile?.lastName?.[0]?.toUpperCase() || ''}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-lg font-bold text-foreground">Mon Profil</h2>
+                    {session && (session.user || userProfile) && (
+                      <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full bg-primary/20 text-primary mt-1">
+                        {(userProfile?.role || (session.user as any)?.role || 'client').charAt(0).toUpperCase() + (userProfile?.role || (session.user as any)?.role || 'client').slice(1)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <h2 className="text-xl font-bold text-foreground">Mon Profil</h2>
+
+                {/* Nom et email en en-tête */}
+                {session && (session.user || userProfile) && (
+                  <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-primary/10 mb-4">
+                    <p className="text-sm font-bold text-foreground mb-1">
+                      {userProfile?.firstName && userProfile?.lastName
+                        ? `${userProfile.firstName} ${userProfile.lastName}`
+                        : session.user?.name || 'Utilisateur'}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {userProfile?.email || session.user?.email || ''}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {!session ? (
@@ -828,111 +959,292 @@ export default function CalculateurPage() {
                   <p className="text-muted-foreground text-sm">Chargement du profil...</p>
                 </div>
               ) : userProfile ? (
-                <div className="space-y-4">
-                  <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg p-4 border border-primary/20">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
-                        <span className="text-primary text-xl font-bold">
-                          {userProfile.firstName?.[0]?.toUpperCase() || 'U'}
-                          {userProfile.lastName?.[0]?.toUpperCase() || ''}
-                        </span>
+                <div className="space-y-5">
+                  {/* 🟦 1. Informations personnelles */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
+                      <h3 className="text-sm font-bold text-foreground">Informations personnelles</h3>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-3 border border-blue-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">👤</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Nom complet</p>
+                          <p className="text-xs font-medium text-blue-900 break-words">
+                            {userProfile.firstName && userProfile.lastName
+                              ? `${userProfile.firstName} ${userProfile.lastName}`
+                              : <span className="text-blue-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground text-sm">
-                          {userProfile.firstName} {userProfile.lastName}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">{userProfile.email}</p>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-3 border border-blue-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">📧</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Email</p>
+                          <p className="text-xs font-medium text-blue-900 break-all">
+                            {userProfile.email || <span className="text-blue-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg p-3 border border-green-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">📞</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-green-800 mb-1 uppercase tracking-wide">Téléphone</p>
+                          <p className="text-xs font-medium text-green-900">
+                            {userProfile.phone || <span className="text-green-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg p-3 border border-gray-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-gray-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">📍</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-gray-800 mb-1 uppercase tracking-wide">Adresse</p>
+                          <p className="text-xs font-medium text-gray-900 break-words">
+                            {(userProfile.adressePostale || userProfile.ville || userProfile.codePostal) ? (
+                              <>
+                                {userProfile.adressePostale || ''}
+                                {userProfile.adressePostale && (userProfile.ville || userProfile.codePostal) ? ', ' : ''}
+                                {userProfile.codePostal || ''}
+                                {userProfile.codePostal && userProfile.ville ? ' ' : ''}
+                                {userProfile.ville || ''}
+                                {userProfile.pays && (userProfile.ville || userProfile.codePostal || userProfile.adressePostale) ? `, ${userProfile.pays}` : ''}
+                              </>
+                            ) : (
+                              <span className="text-gray-600/70 italic">Information non fournie</span>
+                            )}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs">📧</span>
-                        <span className="text-xs font-semibold text-blue-800">Email</span>
+                  {/* 🟩 2. Informations administratives liées au séjour */}
+                  <div className="space-y-2.5 pt-4 border-t border-primary/20">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-green-500 rounded-full"></div>
+                      <h3 className="text-sm font-bold text-foreground">Informations administratives</h3>
+                    </div>
+                    
+                    {/* Catégorie du titre de séjour */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-lg p-3 border border-indigo-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">📋</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-indigo-800 mb-1 uppercase tracking-wide">Catégorie du titre</p>
+                          <p className="text-xs font-medium text-indigo-900 break-words">
+                            {userProfile.typeTitre 
+                              ? (typesTitres.find(t => t.value === userProfile.typeTitre)?.label || userProfile.typeTitre)
+                              : <span className="text-indigo-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-blue-900">{userProfile.email || 'Non renseigné'}</p>
                     </div>
 
-                    {userProfile.phone && (
-                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs">📞</span>
-                          <span className="text-xs font-semibold text-green-800">Téléphone</span>
+                    {/* Nature du document */}
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg p-3 border border-purple-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">🆔</span>
                         </div>
-                        <p className="text-xs text-green-900">{userProfile.phone}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Nature du document</p>
+                          <p className="text-xs font-medium text-purple-900 break-words">
+                            {userProfile.typeTitre 
+                              ? (userProfile.typeTitre.includes('visa') || userProfile.typeTitre.includes('VLS') 
+                                  ? 'Visa long séjour (VLS-TS ou visa autre nature)' 
+                                  : 'Titre de séjour')
+                              : <span className="text-purple-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
                       </div>
-                    )}
+                    </div>
 
-                    {userProfile.dateDelivrance && (
-                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs">📅</span>
-                          <span className="text-xs font-semibold text-purple-800">Date de délivrance</span>
+                    {/* Date de début de validité */}
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg p-3 border border-purple-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">📅</span>
                         </div>
-                        <p className="text-xs text-purple-900">
-                          {new Date(userProfile.dateDelivrance).toLocaleDateString('fr-FR', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Date de début</p>
+                          <p className="text-xs font-medium text-purple-900">
+                            {userProfile.dateDelivrance 
+                              ? formatDateCourte(new Date(userProfile.dateDelivrance))
+                              : <span className="text-purple-600/70 italic">Information non fournie</span>}
+                          </p>
+                        </div>
                       </div>
-                    )}
+                    </div>
 
-                    {userProfile.dateExpiration && (
-                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs">⏰</span>
-                          <span className="text-xs font-semibold text-orange-800">Date d'expiration</span>
+                    {/* Date d'expiration avec alertes */}
+                    <div className={`rounded-lg p-3 border shadow-sm ${
+                      userProfile.dateExpiration ? (() => {
+                        const expiration = new Date(userProfile.dateExpiration);
+                        const aujourdhui = new Date();
+                        const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+                        if (joursRestants < 0) {
+                          return 'bg-gradient-to-br from-red-50 to-red-100/50 border-red-300/50';
+                        } else if (Math.floor(joursRestants / 30) < 5) {
+                          return 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-300/50';
+                        }
+                        return 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50';
+                      })() : 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          userProfile.dateExpiration ? (() => {
+                            const expiration = new Date(userProfile.dateExpiration);
+                            const aujourdhui = new Date();
+                            const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+                            if (joursRestants < 0) {
+                              return 'bg-red-500/20';
+                            } else if (Math.floor(joursRestants / 30) < 5) {
+                              return 'bg-orange-500/20';
+                            }
+                            return 'bg-orange-500/20';
+                          })() : 'bg-orange-500/20'
+                        }`}>
+                          <span className="text-sm">⏰</span>
                         </div>
-                        <p className="text-xs text-orange-900">
-                          {new Date(userProfile.dateExpiration).toLocaleDateString('fr-FR', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </p>
-                        {(() => {
-                          const expiration = new Date(userProfile.dateExpiration);
-                          const aujourdhui = new Date();
-                          const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
-                          if (joursRestants < 0) {
-                            return <p className="text-xs text-red-600 font-medium mt-1">⚠️ Expiré depuis {Math.abs(joursRestants)} jour{Math.abs(joursRestants) > 1 ? 's' : ''}</p>;
-                          } else if (joursRestants <= 60) {
-                            return <p className="text-xs text-orange-600 font-medium mt-1">⚠️ {joursRestants} jour{joursRestants > 1 ? 's' : ''} restant{joursRestants > 1 ? 's' : ''}</p>;
-                          }
-                          return null;
-                        })()}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-orange-800 mb-1 uppercase tracking-wide">Date d'expiration</p>
+                          {userProfile.dateExpiration ? (
+                            <>
+                              <p className="text-xs font-bold text-orange-900 mb-2">
+                                {formatDateCourte(new Date(userProfile.dateExpiration))}
+                              </p>
+                              {(() => {
+                                const expiration = new Date(userProfile.dateExpiration);
+                                const aujourdhui = new Date();
+                                const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+                                const moisRestants = Math.floor(joursRestants / 30);
+                                
+                                if (joursRestants < 0) {
+                                  return (
+                                    <div className="mt-2 p-2.5 bg-red-100/80 border-2 border-red-400 rounded-lg shadow-sm">
+                                      <p className="text-[11px] text-red-900 font-bold mb-1">
+                                        ❌ Titre expiré
+                                      </p>
+                                      <p className="text-[10px] text-red-800">
+                                        Votre titre de séjour est expiré. Certaines démarches peuvent être affectées.
+                                      </p>
+                                      <p className="text-[10px] text-red-700 mt-1.5 font-semibold">
+                                        Expiré depuis {Math.abs(joursRestants)} jour{Math.abs(joursRestants) > 1 ? 's' : ''}
+                                      </p>
+                                    </div>
+                                  );
+                                } else if (moisRestants < 5) {
+                                  return (
+                                    <div className="mt-2 p-2.5 bg-orange-100/80 border-2 border-orange-400 rounded-lg shadow-sm">
+                                      <p className="text-[11px] text-orange-900 font-bold mb-1">
+                                        ⚠️ Expiration proche
+                                      </p>
+                                      <p className="text-[10px] text-orange-800">
+                                        Votre titre de séjour arrive bientôt à expiration. Pensez au renouvellement.
+                                      </p>
+                                      <p className="text-[10px] text-orange-700 mt-1.5 font-semibold">
+                                        {moisRestants} mois et {joursRestants % 30} jour{joursRestants % 30 > 1 ? 's' : ''} restant{joursRestants % 30 > 1 ? 's' : ''}
+                                      </p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </>
+                          ) : (
+                            <p className="text-xs text-orange-900">
+                              <span className="text-orange-600/70 italic">Information non fournie</span>
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
 
-                    {userProfile.typeTitre && (
-                      <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs">📄</span>
-                          <span className="text-xs font-semibold text-indigo-800">Type de titre</span>
+                    {/* Numéro du titre de séjour */}
+                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg p-3 border border-yellow-200/50 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm">🔢</span>
                         </div>
-                        <p className="text-xs text-indigo-900">{userProfile.typeTitre}</p>
-                      </div>
-                    )}
-
-                    {userProfile.prefecture && (
-                      <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs">🏛️</span>
-                          <span className="text-xs font-semibold text-yellow-800">Préfecture</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-yellow-800 mb-1 uppercase tracking-wide">Numéro de titre</p>
+                          <p className="text-xs font-medium text-yellow-900 break-all">
+                            {userProfile.numeroTitre || <span className="text-yellow-600/70 italic">Information non fournie</span>}
+                          </p>
                         </div>
-                        <p className="text-xs text-yellow-900">{userProfile.prefecture}</p>
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  <div className="pt-4 border-t">
-                    <Link href="/client/compte">
-                      <Button variant="outline" className="w-full text-xs">
-                        Modifier mon profil →
+                  {/* 🟥 3. Avertissements automatiques globaux */}
+                  {userProfile.dateExpiration && (() => {
+                    const expiration = new Date(userProfile.dateExpiration);
+                    const aujourdhui = new Date();
+                    const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+                    const moisRestants = Math.floor(joursRestants / 30);
+                    
+                    if (joursRestants < 0) {
+                      return (
+                        <div className="mt-4 p-3.5 bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-400 rounded-xl shadow-lg">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <span className="text-xl">❌</span>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-red-900 mb-1.5">Titre de séjour expiré</p>
+                              <p className="text-[11px] text-red-800 leading-relaxed">
+                                Votre titre de séjour est expiré. Certaines démarches peuvent être affectées.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    } else if (moisRestants < 5) {
+                      return (
+                        <div className="mt-4 p-3.5 bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-400 rounded-xl shadow-lg">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <span className="text-xl">⚠️</span>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-orange-900 mb-1.5">Expiration proche</p>
+                              <p className="text-[11px] text-orange-800 leading-relaxed">
+                                Votre titre de séjour arrive bientôt à expiration. Pensez au renouvellement.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* 🟨 4. Bouton de modification (pour tous les utilisateurs) */}
+                  <div className="pt-4 border-t border-primary/20">
+                    <Link href={(session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin' ? '/admin/compte' : '/client/compte'}>
+                      <Button variant="outline" className="w-full text-xs h-9 font-semibold border-2 hover:bg-primary/10 hover:border-primary transition-all shadow-sm">
+                        ✏️ Modifier mon profil
                       </Button>
                     </Link>
                   </div>
@@ -992,7 +1304,8 @@ export default function CalculateurPage() {
                         ...formData, 
                         situation: 'contentieux_titre',
                         typeDemande: '',
-                        typeTitre: ''
+                        typeTitre: '',
+                        typeTitreAutre: ''
                       })}
                       className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center gap-2 ${
                         formData.situation === 'contentieux_titre'
@@ -1013,11 +1326,13 @@ export default function CalculateurPage() {
                           situation: 'contentieux_visa',
                         typeDemande: '',
                           typeTitre: '',
+                          typeTitreAutre: '',
                           natureVisa: '',
                           dateConfirmationDepot: '',
                           typeRefusVisa: '',
                           dateNotificationRefus: '',
                           dateDepotRapo: '',
+                          reponseRapoRecue: false,
                           dateReponseRapo: '',
                           demandeCommunicationMotifs: false,
                           dateDemandeMotifs: '',
@@ -1060,7 +1375,14 @@ export default function CalculateurPage() {
                       <Select
                         id="typeTitre"
                         value={formData.typeTitre}
-                        onChange={(e) => setFormData({ ...formData, typeTitre: e.target.value })}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData({ 
+                            ...formData, 
+                            typeTitre: value,
+                            typeTitreAutre: value === 'autre' ? formData.typeTitreAutre : '' // Conserver la valeur si on revient à "Autre"
+                          });
+                        }}
                         required
                       >
                         <option value="">-- Sélectionner --</option>
@@ -1068,42 +1390,32 @@ export default function CalculateurPage() {
                           <option key={type.value} value={type.value}>{type.label}</option>
                         ))}
                       </Select>
-                    </div>
-
-                    {/* Nature du document actuellement détenu */}
-                    <div className="space-y-2">
-                      <Label htmlFor="natureDocumentActuel">Nature du document actuellement détenu *</Label>
-                      <Select
-                        id="natureDocumentActuel"
-                        value={formData.natureDocumentActuel}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData({ ...formData, natureDocumentActuel: value });
-                          // Si Visa long séjour est sélectionné, suggérer des dates
-                          if (value === 'visa_long_sejour') {
-                            const today = new Date();
-                            const expiration = new Date(today);
-                            expiration.setMonth(expiration.getMonth() + 12); // Visa généralement valable 12 mois
-                            setFormData(prev => ({
-                              ...prev,
-                              natureDocumentActuel: value,
-                              dateAttributionTitre: prev.dateAttributionTitre || today.toISOString().split('T')[0],
-                              dateExpirationTitre: prev.dateExpirationTitre || expiration.toISOString().split('T')[0]
-                            }));
-                          }
-                        }}
-                        required
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        {typesDocuments.map((doc) => (
-                          <option key={doc.value} value={doc.value}>{doc.label}</option>
-                        ))}
-                      </Select>
+                      {formData.typeTitre === 'autre' && (
+                        <div className="mt-2">
+                          <Input
+                            id="typeTitreAutre"
+                            type="text"
+                            value={formData.typeTitreAutre}
+                            onChange={(e) => setFormData({ ...formData, typeTitreAutre: e.target.value })}
+                            placeholder="Ex: Carte de séjour, Visa, etc."
+                            required
+                            className="mt-1 h-11 border-2 focus:border-primary transition-colors"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Saisissez le type de titre de séjour
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Période de validité */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
                       <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
+                      {!isAdmin && (
+                        <p className="text-xs text-muted-foreground mb-2 italic">
+                          ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
+                        </p>
+                      )}
                       
                       <div className="space-y-2">
                         <Label htmlFor="dateAttributionTitre">Date d'attribution du titre ou du visa *</Label>
@@ -1113,6 +1425,8 @@ export default function CalculateurPage() {
                           value={formData.dateAttributionTitre}
                           onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
                           required
+                          disabled={!isAdmin}
+                          className={!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
                         />
                       </div>
 
@@ -1124,7 +1438,8 @@ export default function CalculateurPage() {
                           value={formData.dateExpirationTitre}
                           onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
                           required
-                          className={dateErrors.dateExpirationTitre ? 'border-red-500' : ''}
+                          disabled={!isAdmin}
+                          className={`${dateErrors.dateExpirationTitre ? 'border-red-500' : ''} ${!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
                         />
                         {dateErrors.dateExpirationTitre && (
                           <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
@@ -1216,45 +1531,25 @@ export default function CalculateurPage() {
                       </div>
                     </div>
 
-                    {/* Question RAPO si plus de 4 mois */}
+                    {/* Message d'information si plus de 4 mois */}
                     {formData.dateConfirmationDepot && (() => {
                       const aujourdhui = new Date();
                       const dateConfirmationDepot = new Date(formData.dateConfirmationDepot);
                       const dateLimite4Mois = new Date(dateConfirmationDepot);
                       dateLimite4Mois.setMonth(dateLimite4Mois.getMonth() + 4);
                       const plusDe4Mois = aujourdhui > dateLimite4Mois;
+                      const joursDepuis4Mois = plusDe4Mois ? Math.ceil((aujourdhui.getTime() - dateLimite4Mois.getTime()) / (1000 * 60 * 60 * 24)) : 0;
                       
                       if (plusDe4Mois && formData.rapoDepose === null && !formData.dateDepotRapo) {
                         return (
                           <div className="bg-orange-50 rounded-lg p-4 border-2 border-orange-400 mb-4">
-                            <h3 className="font-semibold text-sm text-orange-800 mb-3">⚠️ Vérification nécessaire</h3>
+                            <h3 className="font-semibold text-sm text-orange-800 mb-3">⚠️ Attention</h3>
                             <p className="text-sm text-orange-700 mb-3">
-                              Plus de 4 mois se sont écoulés depuis le dépôt. Avez-vous déposé un Recours Administratif Préalable Obligatoire (RAPO) ?
+                              Plus de 4 mois se sont écoulés depuis la date de confirmation du dépôt ({joursDepuis4Mois} jour(s) de retard). En principe, aucun recours n'est plus possible après ce délai.
                             </p>
-                    <div className="space-y-2">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="rapoDepose"
-                                  value="oui"
-                                  checked={formData.rapoDepose === true}
-                                  onChange={() => setFormData({ ...formData, rapoDepose: true, dateDepotRapo: '' })}
-                                  className="w-4 h-4 text-primary"
-                                />
-                                <span className="text-sm">Oui, j'ai déposé un RAPO</span>
-                              </label>
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="rapoDepose"
-                                  value="non"
-                                  checked={formData.rapoDepose === false}
-                                  onChange={() => setFormData({ ...formData, rapoDepose: false, dateDepotRapo: '' })}
-                                  className="w-4 h-4 text-primary"
-                                />
-                                <span className="text-sm">Non, je n'ai pas déposé de RAPO</span>
-                              </label>
-                    </div>
+                            <p className="text-xs text-orange-600 mb-3">
+                              Si vous avez déposé un Recours Administratif Préalable Obligatoire (RAPO) avant l'expiration du délai, vous pouvez continuer en renseignant la date de dépôt du RAPO ci-dessous.
+                            </p>
                           </div>
                         );
                       }
@@ -1311,23 +1606,19 @@ export default function CalculateurPage() {
                       <div className="bg-orange-50 rounded-lg p-4 border border-orange-200 space-y-3">
                         <h3 className="font-semibold text-sm text-orange-800 mb-2">Recours Administratif Préalable Obligatoire (RAPO)</h3>
                         
-                        {/* Afficher le champ date si "Oui" est sélectionné OU si une date existe déjà */}
-                        {(formData.rapoDepose === true || formData.dateDepotRapo) && (
-                          <div className="space-y-2">
-                            <Label htmlFor="dateDepotRapo">Date de dépôt du RAPO *</Label>
-                            <Input
-                              id="dateDepotRapo"
-                              type="date"
-                              value={formData.dateDepotRapo}
-                              onChange={(e) => setFormData({ ...formData, dateDepotRapo: e.target.value })}
-                              required={formData.rapoDepose === true}
-                            />
-                            <p className="text-xs text-muted-foreground">Indiquez la date à laquelle vous avez déposé votre RAPO</p>
-                            {formData.rapoDepose === true && !formData.dateDepotRapo && (
-                              <p className="text-xs text-orange-600 font-medium">⚠️ Veuillez renseigner la date de dépôt pour calculer les délais</p>
-                            )}
-                          </div>
-                        )}
+                        {/* Afficher le champ date - toujours disponible si type de refus sélectionné */}
+                        <div className="space-y-2">
+                          <Label htmlFor="dateDepotRapo">Date de dépôt du RAPO (si applicable)</Label>
+                          <Input
+                            id="dateDepotRapo"
+                            type="date"
+                            value={formData.dateDepotRapo}
+                            onChange={(e) => setFormData({ ...formData, dateDepotRapo: e.target.value, rapoDepose: e.target.value ? true : null })}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Si vous avez déposé un RAPO, indiquez la date de dépôt pour calculer les délais qui suivent (réponse de la commission, recours tribunal, etc.).
+                          </p>
+                        </div>
 
                         {formData.dateDepotRapo && (() => {
                           const dateDepotRapo = new Date(formData.dateDepotRapo);
@@ -1354,18 +1645,43 @@ export default function CalculateurPage() {
                                 )}
                               </div>
 
+                              {/* Case à cocher pour indiquer qu'une réponse a été reçue */}
                               <div className="space-y-2">
-                                <Label htmlFor="dateReponseRapo">Date de réponse du RAPO (optionnel)</Label>
-                                <Input
-                                  id="dateReponseRapo"
-                                  type="date"
-                                  value={formData.dateReponseRapo}
-                                  onChange={(e) => setFormData({ ...formData, dateReponseRapo: e.target.value })}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  Si vous avez reçu une réponse de la commission, indiquez la date pour calculer les délais de recours tribunal.
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    id="reponseRapoRecue"
+                                    checked={formData.reponseRapoRecue}
+                                    onChange={(e) => setFormData({ 
+                                      ...formData, 
+                                      reponseRapoRecue: e.target.checked,
+                                      dateReponseRapo: e.target.checked ? formData.dateReponseRapo : '' // Réinitialiser la date si la case est décochée
+                                    })}
+                                    className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                  />
+                                  <span className="text-sm font-medium">J'ai reçu une réponse à mon RAPO</span>
+                                </label>
+                                <p className="text-xs text-muted-foreground ml-6">
+                                  Cochez cette case si vous avez reçu une réponse de la commission.
                                 </p>
                               </div>
+
+                              {/* Champ de date conditionnel */}
+                              {formData.reponseRapoRecue && (
+                                <div className="space-y-2">
+                                  <Label htmlFor="dateReponseRapo">Date de réponse du RAPO *</Label>
+                                  <Input
+                                    id="dateReponseRapo"
+                                    type="date"
+                                    value={formData.dateReponseRapo}
+                                    onChange={(e) => setFormData({ ...formData, dateReponseRapo: e.target.value })}
+                                    required
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    Indiquez la date de réception de la réponse pour calculer les délais de recours tribunal.
+                                  </p>
+                                </div>
+                              )}
 
                               {!formData.dateReponseRapo && (
                                 <div className="space-y-2">
@@ -1465,40 +1781,14 @@ export default function CalculateurPage() {
                       />
                     </div>
 
-                    {/* Nature du document actuellement détenu */}
-                    <div className="space-y-2">
-                      <Label htmlFor="natureDocumentActuel_titre">Nature du document actuellement détenu *</Label>
-                      <Select
-                        id="natureDocumentActuel_titre"
-                        value={formData.natureDocumentActuel}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData({ ...formData, natureDocumentActuel: value });
-                          // Si Visa long séjour est sélectionné, suggérer des dates
-                          if (value === 'visa_long_sejour') {
-                            const today = new Date();
-                            const expiration = new Date(today);
-                            expiration.setMonth(expiration.getMonth() + 12);
-                            setFormData(prev => ({
-                              ...prev,
-                              natureDocumentActuel: value,
-                              dateAttributionTitre: prev.dateAttributionTitre || today.toISOString().split('T')[0],
-                              dateExpirationTitre: prev.dateExpirationTitre || expiration.toISOString().split('T')[0]
-                            }));
-                          }
-                        }}
-                        required
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        {typesDocuments.map((doc) => (
-                          <option key={doc.value} value={doc.value}>{doc.label}</option>
-                        ))}
-                      </Select>
-                    </div>
-
                     {/* Période de validité */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
                       <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
+                      {!isAdmin && (
+                        <p className="text-xs text-muted-foreground mb-2 italic">
+                          ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
+                        </p>
+                      )}
                       
                       <div className="space-y-2">
                         <Label htmlFor="dateAttributionTitre_titre">Date d'attribution du titre ou du visa *</Label>
@@ -1508,6 +1798,8 @@ export default function CalculateurPage() {
                           value={formData.dateAttributionTitre}
                           onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
                           required
+                          disabled={!isAdmin}
+                          className={!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
                         />
                       </div>
 
@@ -1519,7 +1811,8 @@ export default function CalculateurPage() {
                           value={formData.dateExpirationTitre}
                           onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
                           required
-                          className={dateErrors.dateExpirationTitre ? 'border-red-500' : ''}
+                          disabled={!isAdmin}
+                          className={`${dateErrors.dateExpirationTitre ? 'border-red-500' : ''} ${!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
                         />
                         {dateErrors.dateExpirationTitre && (
                           <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
@@ -1558,16 +1851,16 @@ export default function CalculateurPage() {
                         </div>
                       )}
 
-                      {/* Message de demande de RAPO */}
+                      {/* Message d'information si plus de 4 mois */}
                       {calculs.demandeRapo && !calculs.erreur && (
                         <div className="rounded-lg p-4 border-2 bg-orange-50 border-orange-400">
                           <div className="flex items-start gap-3">
                             <span className="text-2xl">⚠️</span>
                             <div className="flex-1">
-                              <h3 className="font-bold text-lg mb-2 text-orange-800">Vérification nécessaire</h3>
+                              <h3 className="font-bold text-lg mb-2 text-orange-800">Attention</h3>
                               <p className="text-sm mb-3 text-orange-700">{calculs.message}</p>
                               <p className="text-xs text-orange-600 mb-3">
-                                Veuillez indiquer si vous avez déposé un RAPO en remplissant le champ "Date de dépôt du RAPO" ci-dessus.
+                                Si vous avez déposé un Recours Administratif Préalable Obligatoire (RAPO) avant l'expiration du délai de 4 mois, vous pouvez continuer en renseignant la date de dépôt du RAPO dans le champ ci-dessous.
                               </p>
                               {calculs.dateConfirmationDepot && (
                                 <div className="text-xs text-orange-600 space-y-1">
@@ -1637,15 +1930,13 @@ export default function CalculateurPage() {
                           </span>
                           <div className="flex-1">
                             <h3 className="font-bold text-lg mb-2">
-                              {calculs.joursRestantsRapo && calculs.joursRestantsRapo <= 7 ? 'URGENT - RAPO' : 'Recours contre refus de visa'}
+                              {calculs.joursRestantsRapo && calculs.joursRestantsRapo <= 7 
+                                ? `URGENT - RAPO (${calculs.joursRestantsRapo} jour(s) restant${calculs.joursRestantsRapo > 1 ? 's' : ''} pour déposer)` 
+                                : calculs.joursRestantsRapo !== null && calculs.joursRestantsRapo !== undefined && !formData.dateDepotRapo
+                                ? `RAPO - Délai pour déposer : ${calculs.joursRestantsRapo} jour(s) restant${calculs.joursRestantsRapo > 1 ? 's' : ''}`
+                                : 'Recours contre refus de visa'}
                             </h3>
                             <p className="text-sm mb-3">{calculs.messagePersonnalise}</p>
-                            
-                            {calculs.natureVisa && (
-                              <p className="text-xs text-muted-foreground mb-1">
-                                <strong>Nature du visa :</strong> {typesVisas.find(v => v.value === calculs.natureVisa)?.label || calculs.natureVisa}
-                              </p>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -1814,11 +2105,6 @@ export default function CalculateurPage() {
                             {calculs.urgence ? 'URGENT' : 'Délai de recours'}
                           </h3>
                           <p className="text-sm mb-2">{calculs.messagePersonnalise}</p>
-                          {calculs.natureDocumentActuel && (
-                            <p className="text-xs text-muted-foreground mb-2">
-                              Document actuel : {typesDocuments.find(d => d.value === calculs.natureDocumentActuel)?.label}
-                            </p>
-                          )}
                           <div className="text-xs space-y-1">
                             <p><strong>Date de décision :</strong> {formatDateCourte(calculs.dateDecision)}</p>
                             <p><strong>Date limite de recours :</strong> {formatDateCourte(calculs.dateLimite)}</p>
@@ -1845,11 +2131,6 @@ export default function CalculateurPage() {
                             {calculs.renouvellement.enRetard ? 'RENOUVELLEMENT URGENT' : calculs.renouvellement.risqueRupture ? 'RENOUVELLEMENT RECOMMANDÉ' : 'RENOUVELLEMENT'}
                           </h3>
                           <p className="text-sm mb-2">{calculs.renouvellement.messagePersonnalise}</p>
-                          {calculs.renouvellement.natureDocumentActuel && (
-                            <p className="text-xs text-muted-foreground mb-2">
-                              Document actuel : {typesDocuments.find(d => d.value === calculs.renouvellement.natureDocumentActuel)?.label}
-                            </p>
-                          )}
                           <div className="text-xs space-y-1">
                             <p><strong>Date d'expiration :</strong> {formatDateCourte(calculs.renouvellement.dateExpiration)}</p>
                             <p><strong>Jours avant expiration :</strong> <span className={getAlertColor(calculs.renouvellement.joursAvantExpiration).split(' ')[0]}>{calculs.renouvellement.joursAvantExpiration} jour(s)</span></p>

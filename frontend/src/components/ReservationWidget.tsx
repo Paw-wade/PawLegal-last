@@ -3,10 +3,32 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { appointmentsAPI, creneauxAPI, userAPI } from '@/lib/api';
+import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
-function Input({ className = '', ...props }: any) {
+function Input({ className = '', type, value, onChange, ...props }: any) {
+  // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
+  if (type === 'date') {
+    return (
+      <DateInputComponent
+        value={value || ''}
+        onChange={(newValue) => {
+          if (onChange) {
+            const syntheticEvent = {
+              target: { value: newValue },
+              currentTarget: { value: newValue }
+            } as React.ChangeEvent<HTMLInputElement>;
+            onChange(syntheticEvent);
+          }
+        }}
+        className={`flex h-7 w-full rounded border border-input bg-background px-2 py-0.5 text-[11px] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+        {...props}
+      />
+    );
+  }
+  
   return (
     <input
+      type={type}
       className={`flex h-7 w-full rounded border border-input bg-background px-2 py-0.5 text-[11px] ring-offset-background file:border-0 file:bg-transparent file:text-[11px] file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />

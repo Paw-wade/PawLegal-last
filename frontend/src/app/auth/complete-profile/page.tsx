@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signIn } from 'next-auth/react';
 import { userAPI } from '@/lib/api';
+import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 // Composants simplifiés
 function Button({ children, variant = 'default', className = '', disabled = false, type = 'button', ...props }: any) {
@@ -19,9 +20,30 @@ function Button({ children, variant = 'default', className = '', disabled = fals
   );
 }
 
-function Input({ className = '', ...props }: any) {
+function Input({ className = '', type, value, onChange, ...props }: any) {
+  // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
+  if (type === 'date') {
+    return (
+      <DateInputComponent
+        value={value || ''}
+        onChange={(newValue) => {
+          if (onChange) {
+            const syntheticEvent = {
+              target: { value: newValue },
+              currentTarget: { value: newValue }
+            } as React.ChangeEvent<HTMLInputElement>;
+            onChange(syntheticEvent);
+          }
+        }}
+        className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors ${className}`}
+        {...props}
+      />
+    );
+  }
+  
   return (
     <input
+      type={type}
       className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors ${className}`}
       {...props}
     />
