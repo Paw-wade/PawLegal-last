@@ -38,6 +38,60 @@ const upload = multer({
 // Middleware d'authentification pour toutes les routes
 router.use(protect);
 
+// IMPORTANT: Les routes spécifiques (comme /unread-count, /users) doivent être définies AVANT les routes paramétrées (/:id)
+// pour éviter que Express ne les intercepte avec le paramètre :id
+
+// @route   GET /api/messages/unread-count
+// @desc    Récupérer le nombre de messages non lus
+// @access  Private
+router.get('/unread-count', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const count = await MessageInterne.countDocuments({
+      destinataires: userId,
+      'lu.user': { $ne: userId },
+      'archive.user': { $ne: userId }
+    });
+
+    res.json({
+      success: true,
+      count: count
+    });
+  } catch (error) {
+    console.error('Erreur lors du comptage des messages non lus:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/messages/users
+// @desc    Récupérer la liste des utilisateurs pour la sélection du destinataire
+// @access  Private (tous les utilisateurs authentifiés)
+router.get('/users', async (req, res) => {
+  try {
+    // Tous les utilisateurs authentifiés peuvent voir la liste des utilisateurs actifs
+    const users = await User.find({ isActive: { $ne: false } })
+      .select('firstName lastName email role')
+      .sort({ role: 1, lastName: 1, firstName: 1 }); // Trier par rôle puis par nom
+
+    res.json({
+      success: true,
+      users: users
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des utilisateurs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   GET /api/messages
 // @desc    Récupérer les messages de l'utilisateur connecté
 // @access  Private
@@ -90,69 +144,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// @route   GET /api/messages/unread-count
-// @desc    Récupérer le nombre de messages non lus
-// @access  Private
-router.get('/unread-count', async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const count = await MessageInterne.countDocuments({
-      destinataires: userId,
-      'lu.user': { $ne: userId },
-      'archive.user': { $ne: userId }
-    });
-
-    res.json({
-      success: true,
-      count: count
-    });
-  } catch (error) {
-    console.error('Erreur lors du comptage des messages non lus:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur',
-      error: error.message
-    });
-  }
-});
-
-// @route   GET /api/messages/users
-// @desc    Récupérer la liste des utilisateurs pour la sélection du destinataire
-// @access  Private
-router.get('/users', async (req, res) => {
-  try {
-    const userRole = req.user.role;
-    
-    let query = {};
-    
-    // Seuls les admins peuvent voir tous les utilisateurs
-    if (userRole !== 'admin' && userRole !== 'superadmin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Accès refusé. Seuls les administrateurs peuvent voir tous les utilisateurs.'
-      });
-    }
-
-    // Pour les admins, retourner tous les utilisateurs actifs
-    const users = await User.find({ isActive: { $ne: false } })
-      .select('firstName lastName email role')
-      .sort({ lastName: 1, firstName: 1 });
-
-    res.json({
-      success: true,
-      users: users
-    });
-  } catch (error) {
-    console.error('Erreur lors de la récupération des utilisateurs:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur',
-      error: error.message
-    });
-  }
-});
-
 // @route   POST /api/messages
 // @desc    Envoyer un message
 // @access  Private
@@ -181,28 +172,23 @@ router.post(
 
       let destinatairesIds = [];
 
-      // Si l'utilisateur est un client, envoyer automatiquement à tous les admins
-      if (userRole === 'client') {
-        const admins = await User.find({ 
-          role: { $in: ['admin', 'superadmin'] },
-          isActive: { $ne: false }
-        }).select('_id');
-        destinatairesIds = admins.map(admin => admin._id);
-      } else if (userRole === 'admin' || userRole === 'superadmin') {
-        // Les admins peuvent sélectionner des destinataires
-        if (!destinataires || !Array.isArray(destinataires) || destinataires.length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'Veuillez sélectionner au moins un destinataire'
-          });
-        }
-        destinatairesIds = destinataires;
-      } else {
-        return res.status(403).json({
+      // Tous les utilisateurs peuvent sélectionner des destinataires
+      if (!destinataires || !Array.isArray(destinataires) || destinataires.length === 0) {
+        return res.status(400).json({
           success: false,
-          message: 'Vous n\'êtes pas autorisé à envoyer des messages'
+          message: 'Veuillez sélectionner au moins un destinataire'
         });
       }
+
+      // Vérifier que l'utilisateur ne s'envoie pas un message à lui-même
+      if (destinataires.includes(userId.toString())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vous ne pouvez pas vous envoyer un message à vous-même'
+        });
+      }
+
+      destinatairesIds = destinataires;
 
       // Vérifier que tous les destinataires existent
       const destinatairesValides = await User.find({
@@ -426,6 +412,55 @@ router.put('/:id/archive', async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur lors de l\'archivage du message:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   DELETE /api/messages/:id
+// @desc    Supprimer un message (seul l'expéditeur peut supprimer)
+// @access  Private
+router.delete('/:id', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const messageId = req.params.id;
+
+    const message = await MessageInterne.findOne({
+      _id: messageId,
+      expediteur: userId // Seul l'expéditeur peut supprimer
+    });
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message non trouvé ou vous n\'avez pas l\'autorisation de le supprimer'
+      });
+    }
+
+    // Supprimer les fichiers associés
+    if (message.piecesJointes && message.piecesJointes.length > 0) {
+      message.piecesJointes.forEach((pieceJointe: any) => {
+        if (fs.existsSync(pieceJointe.path)) {
+          try {
+            fs.unlinkSync(pieceJointe.path);
+          } catch (unlinkError) {
+            console.error('Erreur lors de la suppression du fichier:', unlinkError);
+          }
+        }
+      });
+    }
+
+    await MessageInterne.findByIdAndDelete(messageId);
+
+    res.json({
+      success: true,
+      message: 'Message supprimé avec succès'
+    });
+  } catch (error) {
+    console.error('Erreur lors de la suppression du message:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',

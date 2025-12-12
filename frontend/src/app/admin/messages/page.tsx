@@ -102,6 +102,24 @@ export default function AdminMessagesPage() {
     }
   };
 
+  // Organiser les utilisateurs par catégories
+  const getUsersByCategory = () => {
+    const admins = users.filter(user => user.role === 'admin' || user.role === 'superadmin');
+    const clients = users.filter(user => user.role === 'client');
+    return { admins, clients };
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setFormData(prev => {
+      const isSelected = prev.destinataires.includes(userId);
+      if (isSelected) {
+        return { ...prev, destinataires: prev.destinataires.filter(id => id !== userId) };
+      } else {
+        return { ...prev, destinataires: [...prev.destinataires, userId] };
+      }
+    });
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -318,24 +336,109 @@ export default function AdminMessagesPage() {
               <form onSubmit={handleSendMessage} className="p-6 space-y-4">
                 <div>
                   <Label htmlFor="destinataires">Destinataires *</Label>
-                  <select
-                    id="destinataires"
-                    multiple
-                    value={formData.destinataires}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setFormData({ ...formData, destinataires: selected });
-                    }}
-                    className="flex h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                    required
-                  >
-                    {users.map((user) => (
-                      <option key={user._id || user.id} value={user._id || user.id}>
-                        {user.firstName} {user.lastName} ({user.email}) - {user.role}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">Maintenez Ctrl (ou Cmd sur Mac) pour sélectionner plusieurs destinataires</p>
+                  <div className="mt-2 border border-input rounded-md p-4 max-h-96 overflow-y-auto bg-background">
+                    {(() => {
+                      const { admins, clients } = getUsersByCategory();
+                      const currentUserId = (session?.user as any)?.id;
+                      
+                      return (
+                        <div className="space-y-4">
+                          {/* Catégorie Administrateurs */}
+                          {admins.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
+                                👥 Administrateurs ({admins.length})
+                              </h3>
+                              <div className="space-y-2">
+                                {admins
+                                  .filter(user => (user._id || user.id) !== currentUserId)
+                                  .map((user) => {
+                                    const userId = user._id || user.id;
+                                    const isSelected = formData.destinataires.includes(userId);
+                                    return (
+                                      <label
+                                        key={userId}
+                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleUserSelection(userId)}
+                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                        />
+                                        <div className="flex-1">
+                                          <div className="font-medium text-sm">
+                                            {user.firstName} {user.lastName}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                                        </div>
+                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                          {user.role === 'superadmin' ? 'Super Admin' : 'Admin'}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Catégorie Utilisateurs */}
+                          {clients.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
+                                👤 Utilisateurs ({clients.length})
+                              </h3>
+                              <div className="space-y-2">
+                                {clients
+                                  .filter(user => (user._id || user.id) !== currentUserId)
+                                  .map((user) => {
+                                    const userId = user._id || user.id;
+                                    const isSelected = formData.destinataires.includes(userId);
+                                    return (
+                                      <label
+                                        key={userId}
+                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleUserSelection(userId)}
+                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                        />
+                                        <div className="flex-1">
+                                          <div className="font-medium text-sm">
+                                            {user.firstName} {user.lastName}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                                        </div>
+                                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          Client
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          )}
+
+                          {admins.length === 0 && clients.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              Aucun utilisateur disponible
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {formData.destinataires.length > 0 
+                      ? `${formData.destinataires.length} destinataire(s) sélectionné(s)`
+                      : 'Sélectionnez un ou plusieurs destinataires'}
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="sujet">Sujet *</Label>

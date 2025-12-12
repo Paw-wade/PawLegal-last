@@ -247,7 +247,24 @@ export default function AdminRendezVousPage() {
                   day: 'numeric' 
                 }) : rdv.date;
                 const formattedTime = rdv.heure ? rdv.heure.substring(0, 5) : '-';
-                const isPast = dateObj ? dateObj < new Date() : false;
+                
+                // Calculer si le rendez-vous est passé en tenant compte de la date ET de l'heure
+                let isPast = false;
+                if (dateObj && rdv.heure) {
+                  // Créer une date complète avec l'heure du rendez-vous
+                  const appointmentDateTime = new Date(dateObj);
+                  const [hours, minutes] = rdv.heure.split(':').map(Number);
+                  appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+                  
+                  // Comparer avec la date/heure actuelle
+                  const now = new Date();
+                  isPast = appointmentDateTime < now;
+                } else if (dateObj) {
+                  // Si pas d'heure, comparer seulement la date (fin de journée)
+                  const appointmentDateEnd = new Date(dateObj);
+                  appointmentDateEnd.setHours(23, 59, 59, 999);
+                  isPast = appointmentDateEnd < new Date();
+                }
                 const statut = rdv.statut || 'en_attente';
                 
                 const getStatutColor = (statut: string) => {
@@ -264,20 +281,30 @@ export default function AdminRendezVousPage() {
                   return 'En attente';
                 };
                 
+                // Déterminer le style en fonction de si le rendez-vous est passé
+                const getCardStyle = () => {
+                  if (isPast && statut !== 'termine' && statut !== 'terminé' && !rdv.effectue) {
+                    return 'bg-red-50 border-red-400 border-2';
+                  }
+                  if (rdv.effectue) {
+                    return 'bg-green-50/50 border-green-300';
+                  }
+                  if (getStatutColor(statut).split(' ')[0] === 'bg-green-100') {
+                    return 'bg-green-50/50 border-green-300';
+                  }
+                  if (getStatutColor(statut).split(' ')[0] === 'bg-red-100') {
+                    return 'bg-red-50/50 border-red-300';
+                  }
+                  if (getStatutColor(statut).split(' ')[0] === 'bg-yellow-100') {
+                    return 'bg-yellow-50/50 border-yellow-300';
+                  }
+                  return 'bg-white border-gray-200';
+                };
+
                 return (
                   <div
                     key={rdv._id || rdv.id}
-                    className={`border-2 rounded-xl p-5 hover:shadow-lg transition-all duration-200 ${
-                      isPast && statut !== 'termine' && statut !== 'terminé'
-                        ? 'bg-gray-50 border-gray-300 opacity-75'
-                        : getStatutColor(statut).split(' ')[0] === 'bg-green-100'
-                        ? 'bg-green-50/50 border-green-300'
-                        : getStatutColor(statut).split(' ')[0] === 'bg-red-100'
-                        ? 'bg-red-50/50 border-red-300'
-                        : getStatutColor(statut).split(' ')[0] === 'bg-yellow-100'
-                        ? 'bg-yellow-50/50 border-yellow-300'
-                        : 'bg-white border-gray-200'
-                    }`}
+                    className={`border-2 rounded-xl p-5 hover:shadow-lg transition-all duration-200 ${getCardStyle()}`}
                   >
                     {/* En-tête */}
                     <div className="flex items-start justify-between mb-4">
@@ -307,9 +334,14 @@ export default function AdminRendezVousPage() {
                           <p className="text-sm text-muted-foreground">
                             ⏰ {formattedTime}
                           </p>
-                          {isPast && statut !== 'termine' && statut !== 'terminé' && (
-                            <span className="text-xs text-orange-600 font-medium mt-1 inline-block">
-                              ⚠️ Rendez-vous passé
+                          {isPast && statut !== 'termine' && statut !== 'terminé' && !rdv.effectue && (
+                            <span className="text-xs text-red-600 font-bold mt-1 inline-block bg-red-100 px-2 py-1 rounded">
+                              ⚠️ Rendez-vous dépassé
+                            </span>
+                          )}
+                          {rdv.effectue && (
+                            <span className="text-xs text-green-700 font-bold mt-1 inline-block bg-green-100 px-2 py-1 rounded">
+                              ✅ Rendez-vous effectué
                             </span>
                           )}
                         </div>
@@ -345,6 +377,36 @@ export default function AdminRendezVousPage() {
 
                     {/* Actions */}
                     <div className="pt-4 border-t border-gray-200 space-y-2">
+                      {/* Case à cocher "Effectué" */}
+                      {isPast && statut !== 'annule' && statut !== 'annulé' && (
+                        <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                          <input
+                            type="checkbox"
+                            id={`effectue-${rdv._id || rdv.id}`}
+                            checked={rdv.effectue || false}
+                            onChange={async (e) => {
+                              try {
+                                const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { 
+                                  effectue: e.target.checked 
+                                });
+                                if (response.data.success) {
+                                  await loadAppointments();
+                                }
+                              } catch (err: any) {
+                                console.error('Erreur lors de la mise à jour:', err);
+                                setError(err.response?.data?.message || 'Erreur lors de la mise à jour');
+                              }
+                            }}
+                            className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                          />
+                          <label 
+                            htmlFor={`effectue-${rdv._id || rdv.id}`}
+                            className="text-sm font-medium text-foreground cursor-pointer"
+                          >
+                            Rendez-vous effectué
+                          </label>
+                        </div>
+                      )}
                       {statut === 'en_attente' && (
                         <div className="flex gap-2 mb-2">
                           <Button

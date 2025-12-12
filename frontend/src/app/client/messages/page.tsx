@@ -66,9 +66,7 @@ export default function MessagesPage() {
       router.push('/auth/signin');
     } else if (status === 'authenticated') {
       loadMessages();
-      if ((session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin') {
-        loadUsers();
-      }
+      loadUsers(); // Charger les utilisateurs pour tous les utilisateurs authentifiés
     }
   }, [session, status, router, filter]);
 
@@ -99,23 +97,44 @@ export default function MessagesPage() {
     }
   };
 
+  // Organiser les utilisateurs par catégories
+  const getUsersByCategory = () => {
+    const admins = users.filter(user => user.role === 'admin' || user.role === 'superadmin');
+    const clients = users.filter(user => user.role === 'client');
+    return { admins, clients };
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setFormData(prev => {
+      const isSelected = prev.destinataires.includes(userId);
+      if (isSelected) {
+        return { ...prev, destinataires: prev.destinataires.filter(id => id !== userId) };
+      } else {
+        return { ...prev, destinataires: [...prev.destinataires, userId] };
+      }
+    });
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
     try {
+      if (formData.destinataires.length === 0) {
+        setError('Veuillez sélectionner au moins un destinataire');
+        setIsSubmitting(false);
+        return;
+      }
+
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
       
-      // Pour les clients, ne pas envoyer de destinataires (sera automatiquement envoyé aux admins)
-      const userRole = (session?.user as any)?.role;
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        formData.destinataires.forEach(dest => {
-          formDataToSend.append('destinataires', dest);
-        });
-      }
+      // Tous les utilisateurs peuvent sélectionner des destinataires
+      formData.destinataires.forEach(dest => {
+        formDataToSend.append('destinataires', dest);
+      });
 
       // Ajouter les pièces jointes
       attachments.forEach((file) => {
@@ -313,36 +332,112 @@ export default function MessagesPage() {
                 <button onClick={() => setShowComposeModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
               </div>
               <form onSubmit={handleSendMessage} className="p-6 space-y-4">
-                {isAdmin && (
-                  <div>
-                    <Label htmlFor="destinataires">Destinataires *</Label>
-                    <select
-                      id="destinataires"
-                      multiple
-                      value={formData.destinataires}
-                      onChange={(e) => {
-                        const selected = Array.from(e.target.selectedOptions, option => option.value);
-                        setFormData({ ...formData, destinataires: selected });
-                      }}
-                      className="flex h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                      required={isAdmin}
-                    >
-                      {users.map((user) => (
-                        <option key={user._id || user.id} value={user._id || user.id}>
-                          {user.firstName} {user.lastName} ({user.email}) - {user.role}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-muted-foreground mt-1">Maintenez Ctrl (ou Cmd sur Mac) pour sélectionner plusieurs destinataires</p>
+                <div>
+                  <Label htmlFor="destinataires">Destinataires *</Label>
+                  <div className="mt-2 border border-input rounded-md p-4 max-h-96 overflow-y-auto bg-background">
+                    {(() => {
+                      const { admins, clients } = getUsersByCategory();
+                      const currentUserId = (session?.user as any)?.id;
+                      
+                      return (
+                        <div className="space-y-4">
+                          {/* Catégorie Administrateurs */}
+                          {admins.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
+                                👥 Administrateurs ({admins.length})
+                              </h3>
+                              <div className="space-y-2">
+                                {admins
+                                  .filter(user => (user._id || user.id) !== currentUserId)
+                                  .map((user) => {
+                                    const userId = user._id || user.id;
+                                    const isSelected = formData.destinataires.includes(userId);
+                                    return (
+                                      <label
+                                        key={userId}
+                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleUserSelection(userId)}
+                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                        />
+                                        <div className="flex-1">
+                                          <div className="font-medium text-sm">
+                                            {user.firstName} {user.lastName}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                                        </div>
+                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                          {user.role === 'superadmin' ? 'Super Admin' : 'Admin'}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Catégorie Utilisateurs */}
+                          {clients.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
+                                👤 Utilisateurs ({clients.length})
+                              </h3>
+                              <div className="space-y-2">
+                                {clients
+                                  .filter(user => (user._id || user.id) !== currentUserId)
+                                  .map((user) => {
+                                    const userId = user._id || user.id;
+                                    const isSelected = formData.destinataires.includes(userId);
+                                    return (
+                                      <label
+                                        key={userId}
+                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleUserSelection(userId)}
+                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                        />
+                                        <div className="flex-1">
+                                          <div className="font-medium text-sm">
+                                            {user.firstName} {user.lastName}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                                        </div>
+                                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          Client
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          )}
+
+                          {admins.length === 0 && clients.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              Aucun utilisateur disponible
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
-                )}
-                {!isAdmin && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-sm text-blue-800">
-                      Votre message sera automatiquement envoyé à l'équipe administrative.
-                    </p>
-                  </div>
-                )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {formData.destinataires.length > 0 
+                      ? `${formData.destinataires.length} destinataire(s) sélectionné(s)`
+                      : 'Sélectionnez un ou plusieurs destinataires'}
+                  </p>
+                </div>
                 <div>
                   <Label htmlFor="sujet">Sujet *</Label>
                   <Input

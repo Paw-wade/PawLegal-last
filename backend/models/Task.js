@@ -48,6 +48,17 @@ const taskSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  effectue: {
+    type: Boolean,
+    default: false
+  },
+  commentaireEffectue: {
+    type: String,
+    trim: true
+  },
+  dateEffectue: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now

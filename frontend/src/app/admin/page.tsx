@@ -36,6 +36,9 @@ export default function AdminDashboardPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
+  const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
+  const [weekTasks, setWeekTasks] = useState<any[]>([]);
   // Fonction pour obtenir la date du jour au format YYYY-MM-DD
   const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -53,6 +56,12 @@ export default function AdminDashboardPage() {
   const [unreadMessage, setUnreadMessage] = useState<any>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hasCheckedMessages, setHasCheckedMessages] = useState(false);
+  const [showTasksNotificationModal, setShowTasksNotificationModal] = useState(false);
+  const [hasShownTasksNotification, setHasShownTasksNotification] = useState(false);
+  const [selectedTaskForStatus, setSelectedTaskForStatus] = useState<any>(null);
+  const [showTaskStatusModal, setShowTaskStatusModal] = useState(false);
+  const [taskStatusComment, setTaskStatusComment] = useState('');
+  const [isUpdatingTaskStatus, setIsUpdatingTaskStatus] = useState(false);
   const hasChecked = useRef(false);
 
   useEffect(() => {
@@ -88,6 +97,7 @@ export default function AdminDashboardPage() {
     loadTasks();
     loadTeamMembers();
     checkUnreadMessages();
+    loadNotifications();
   }, [session, status]);
 
   // Vérifier les messages non lus à la connexion
@@ -224,6 +234,83 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const loadNotifications = async () => {
+    try {
+      // Charger tous les rendez-vous
+      const appointmentsResponse = await appointmentsAPI.getAllAppointments();
+      if (appointmentsResponse.data.success) {
+        const appointments = appointmentsResponse.data.data || appointmentsResponse.data.appointments || [];
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowEnd = new Date(tomorrow);
+        tomorrowEnd.setHours(23, 59, 59, 999);
+
+        // Filtrer les rendez-vous du jour
+        const todayApps = appointments.filter((apt: any) => {
+          if (!apt.date) return false;
+          const aptDate = new Date(apt.date);
+          aptDate.setHours(0, 0, 0, 0);
+          return aptDate.getTime() === today.getTime() && apt.statut !== 'annule' && apt.statut !== 'annulé';
+        });
+
+        // Filtrer les rendez-vous du lendemain
+        const tomorrowApps = appointments.filter((apt: any) => {
+          if (!apt.date) return false;
+          const aptDate = new Date(apt.date);
+          aptDate.setHours(0, 0, 0, 0);
+          return aptDate.getTime() === tomorrow.getTime() && apt.statut !== 'annule' && apt.statut !== 'annulé';
+        });
+
+        setTodayAppointments(todayApps);
+        setTomorrowAppointments(tomorrowApps);
+      }
+
+      // Charger les tâches de la semaine
+      const tasksResponse = await tasksAPI.getAllTasks();
+      if (tasksResponse.data.success && session) {
+        const allTasks = tasksResponse.data.tasks || [];
+        const now = new Date();
+        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        
+        const weekTasks = allTasks.filter((task: any) => {
+          if (!task.dateEcheance) return false;
+          const taskDate = new Date(task.dateEcheance);
+          return taskDate <= weekFromNow && 
+                 (task.statut === 'a_faire' || task.statut === 'en_cours' || task.statut === 'en_attente');
+        });
+        
+        setWeekTasks(weekTasks);
+        
+        // Filtrer les tâches assignées à l'admin connecté
+        const currentUserId = (session.user as any)?.id;
+        const tasksForAdmin = weekTasks.filter((task: any) => {
+          // Tâches assignées à l'admin connecté
+          if (task.assignedTo) {
+            if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) {
+              return true;
+            }
+            if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) {
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        // Afficher la pop-up si il y a des tâches et qu'elle n'a pas encore été affichée
+        if (tasksForAdmin.length > 0 && !hasShownTasksNotification) {
+          setTimeout(() => {
+            setShowTasksNotificationModal(true);
+            setHasShownTasksNotification(true);
+          }, 1000); // Délai de 1 seconde après le chargement
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des notifications:', error);
+    }
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskFormData.titre || !taskFormData.assignedTo) {
@@ -337,6 +424,115 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Notifications intelligentes */}
+        {(todayAppointments.length > 0 || tomorrowAppointments.length > 0 || weekTasks.length > 0) && (
+          <div className="mb-8 grid md:grid-cols-3 gap-4">
+            {/* Rendez-vous du jour */}
+            {todayAppointments.length > 0 && (
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-lg p-6 border-2 border-blue-300">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <span className="text-2xl">📅</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-blue-900">Rendez-vous du jour</h3>
+                    <p className="text-sm text-blue-700">{todayAppointments.length} rendez-vous</p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {todayAppointments.slice(0, 5).map((apt: any) => {
+                    const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
+                    const isPast = apt.date && apt.heure ? (() => {
+                      const dateObj = new Date(apt.date);
+                      const [hours, minutes] = apt.heure.split(':').map(Number);
+                      const appointmentDateTime = new Date(dateObj);
+                      appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+                      return appointmentDateTime < new Date();
+                    })() : false;
+                    return (
+                      <div key={apt._id || apt.id} className={`p-2 rounded-lg ${isPast && !apt.effectue ? 'bg-red-100 border border-red-300' : 'bg-white border border-blue-200'}`}>
+                        <p className="font-semibold text-sm text-foreground">{clientName}</p>
+                        <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
+                        {isPast && !apt.effectue && (
+                          <p className="text-xs text-red-600 font-bold mt-1">⚠️ Dépassé</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Link href="/admin/rendez-vous?filter=today" className="mt-4 inline-block text-sm text-blue-700 hover:text-blue-900 font-semibold">
+                  Voir tous →
+                </Link>
+              </div>
+            )}
+
+            {/* Rendez-vous du lendemain */}
+            {tomorrowAppointments.length > 0 && (
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl shadow-lg p-6 border-2 border-orange-300">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <span className="text-2xl">📆</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-orange-900">Rendez-vous demain</h3>
+                    <p className="text-sm text-orange-700">{tomorrowAppointments.length} rendez-vous</p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {tomorrowAppointments.slice(0, 5).map((apt: any) => {
+                    const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
+                    return (
+                      <div key={apt._id || apt.id} className="p-2 rounded-lg bg-white border border-orange-200">
+                        <p className="font-semibold text-sm text-foreground">{clientName}</p>
+                        <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Link href="/admin/rendez-vous" className="mt-4 inline-block text-sm text-orange-700 hover:text-orange-900 font-semibold">
+                  Voir tous →
+                </Link>
+              </div>
+            )}
+
+            {/* Tâches de la semaine */}
+            {weekTasks.length > 0 && (
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl shadow-lg p-6 border-2 border-purple-300">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center">
+                    <span className="text-2xl">✅</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-purple-900">Tâches de la semaine</h3>
+                    <p className="text-sm text-purple-700">{weekTasks.length} tâches</p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {weekTasks.slice(0, 5).map((task: any) => {
+                    const assignedUser = teamMembers.find((m: any) => m._id === task.assignedTo);
+                    return (
+                      <div key={task._id || task.id} className="p-2 rounded-lg bg-white border border-purple-200">
+                        <p className="font-semibold text-sm text-foreground line-clamp-1">{task.titre}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {assignedUser ? `👤 ${assignedUser.firstName} ${assignedUser.lastName}` : 'Non assigné'}
+                        </p>
+                        {task.dateEcheance && (
+                          <p className="text-xs text-muted-foreground">
+                            📅 {new Date(task.dateEcheance).toLocaleDateString('fr-FR')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Link href="/admin?section=tasks" className="mt-4 inline-block text-sm text-purple-700 hover:text-purple-900 font-semibold">
+                  Voir toutes →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Statistiques principales - Design professionnel et chaleureux avec accès direct */}
         <div id="utilisateurs-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 scroll-mt-20">
@@ -565,6 +761,27 @@ export default function AdminDashboardPage() {
                         <span className="font-semibold text-foreground truncate">{task.dossier.titre}</span>
                       </div>
                     )}
+                    {task.effectue && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-green-600 font-semibold">✅ Tâche effectuée</span>
+                        {task.commentaireEffectue && (
+                          <span className="text-muted-foreground italic">- {task.commentaireEffectue}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-orange-100 flex justify-end">
+                    <Button
+                      onClick={() => {
+                        setSelectedTaskForStatus(task);
+                        setTaskStatusComment(task.commentaireEffectue || '');
+                        setShowTaskStatusModal(true);
+                      }}
+                      variant="outline"
+                      className="text-sm"
+                    >
+                      {task.effectue ? 'Modifier le statut' : 'Marquer comme effectuée'}
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -852,6 +1069,219 @@ export default function AdminDashboardPage() {
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de notification des tâches */}
+        {showTasksNotificationModal && weekTasks.filter((task: any) => {
+          const currentUserId = (session?.user as any)?.id;
+          if (task.assignedTo) {
+            if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) return true;
+            if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) return true;
+          }
+          return false;
+        }).length > 0 && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowTasksNotificationModal(false)}>
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* En-tête */}
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                      <span className="text-2xl">✅</span>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold">Tâches à effectuer</h2>
+                      <p className="text-purple-100 text-sm">Vous avez {weekTasks.filter((task: any) => {
+                        const currentUserId = (session?.user as any)?.id;
+                        if (task.assignedTo) {
+                          if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) return true;
+                          if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) return true;
+                        }
+                        return false;
+                      }).length} tâche(s) à réaliser</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowTasksNotificationModal(false)}
+                    className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  >
+                    <span className="text-xl">×</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Liste des tâches */}
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="space-y-3">
+                  {weekTasks.filter((task: any) => {
+                    const currentUserId = (session?.user as any)?.id;
+                    if (task.assignedTo) {
+                      if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) return true;
+                      if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) return true;
+                    }
+                    return false;
+                  }).map((task: any) => {
+                    const assignedUser = teamMembers.find((m: any) => 
+                      (task.assignedTo && typeof task.assignedTo === 'object' && m._id === task.assignedTo._id) ||
+                      (task.assignedTo && typeof task.assignedTo === 'string' && m._id === task.assignedTo)
+                    );
+                    const isUrgent = task.dateEcheance && new Date(task.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+                    
+                    return (
+                      <div key={task._id || task.id} className={`p-4 rounded-lg border-2 ${
+                        isUrgent 
+                          ? 'bg-red-50 border-red-300' 
+                          : task.priorite === 'haute' 
+                          ? 'bg-orange-50 border-orange-300' 
+                          : 'bg-white border-gray-200'
+                      }`}>
+                        <div className="flex items-start justify-between mb-2">
+                          <h3 className="font-bold text-lg text-foreground flex-1">{task.titre}</h3>
+                          <div className="flex gap-2 ml-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatutColor(task.statut)}`}>
+                              {getStatutLabel(task.statut)}
+                            </span>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(task.priorite)}`}>
+                              {task.priorite}
+                            </span>
+                          </div>
+                        </div>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{task.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          {assignedUser ? (
+                            <span className="flex items-center gap-1">
+                              <span>👤</span>
+                              <span>{assignedUser.firstName} {assignedUser.lastName}</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-orange-600 font-semibold">
+                              <span>⚠️</span>
+                              <span>Non assignée</span>
+                            </span>
+                          )}
+                          {task.dateEcheance && (
+                            <span className={`flex items-center gap-1 ${isUrgent ? 'text-red-600 font-bold' : ''}`}>
+                              <span>📅</span>
+                              <span>Échéance: {new Date(task.dateEcheance).toLocaleDateString('fr-FR')}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Pied de page */}
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                <Link href="/admin?section=tasks" onClick={() => setShowTasksNotificationModal(false)}>
+                  <Button variant="outline" className="border-purple-300 text-purple-600 hover:bg-purple-50">
+                    Voir toutes les tâches →
+                  </Button>
+                </Link>
+                <Button onClick={() => setShowTasksNotificationModal(false)} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700">
+                  J'ai compris
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de notification de message */}
+        <MessageNotificationModal
+          isOpen={showMessageModal}
+          onClose={() => {
+            setShowMessageModal(false);
+            setUnreadMessage(null);
+          }}
+          message={unreadMessage}
+        />
+
+        {/* Modal pour marquer une tâche comme effectuée/non effectuée */}
+        {showTaskStatusModal && selectedTaskForStatus && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
+                <h2 className="text-2xl font-bold">
+                  {selectedTaskForStatus.effectue ? 'Modifier le statut de la tâche' : 'Marquer la tâche comme effectuée'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowTaskStatusModal(false);
+                    setSelectedTaskForStatus(null);
+                    setTaskStatusComment('');
+                  }}
+                  className="text-muted-foreground hover:text-foreground text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Tâche:</p>
+                  <p className="font-semibold text-lg">{selectedTaskForStatus.titre}</p>
+                  {selectedTaskForStatus.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{selectedTaskForStatus.description}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="taskStatusComment" className="block text-sm font-medium mb-2">
+                    Commentaire (optionnel)
+                  </label>
+                  <textarea
+                    id="taskStatusComment"
+                    value={taskStatusComment}
+                    onChange={(e) => setTaskStatusComment(e.target.value)}
+                    placeholder="Ajoutez un commentaire sur l'état de la tâche..."
+                    rows={4}
+                    className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+                <div className="flex gap-3 justify-end pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowTaskStatusModal(false);
+                      setSelectedTaskForStatus(null);
+                      setTaskStatusComment('');
+                    }}
+                    disabled={isUpdatingTaskStatus}
+                  >
+                    Annuler
+                  </Button>
+                  {!selectedTaskForStatus.effectue && (
+                    <Button
+                      onClick={() => handleUpdateTaskStatus(true)}
+                      disabled={isUpdatingTaskStatus}
+                      className="bg-green-500 hover:bg-green-600 text-white"
+                    >
+                      {isUpdatingTaskStatus ? 'Enregistrement...' : 'Marquer comme effectuée'}
+                    </Button>
+                  )}
+                  {selectedTaskForStatus.effectue && (
+                    <>
+                      <Button
+                        onClick={() => handleUpdateTaskStatus(false)}
+                        disabled={isUpdatingTaskStatus}
+                        className="bg-orange-500 hover:bg-orange-600 text-white"
+                      >
+                        {isUpdatingTaskStatus ? 'Enregistrement...' : 'Marquer comme non effectuée'}
+                      </Button>
+                      <Button
+                        onClick={() => handleUpdateTaskStatus(true)}
+                        disabled={isUpdatingTaskStatus}
+                        className="bg-green-500 hover:bg-green-600 text-white"
+                      >
+                        {isUpdatingTaskStatus ? 'Enregistrement...' : 'Mettre à jour'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}

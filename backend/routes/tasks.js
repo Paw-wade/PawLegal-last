@@ -5,6 +5,7 @@ const { body, validationResult } = require('express-validator');
 const Task = require('../models/Task');
 const User = require('../models/User');
 const Dossier = require('../models/Dossier');
+const Notification = require('../models/Notification');
 
 // @route   GET /api/tasks
 // @desc    Récupérer toutes les tâches (Admin seulement)
@@ -301,9 +302,56 @@ router.put(
       if (dossier !== undefined) task.dossier = dossier || null;
       if (notes !== undefined) task.notes = notes;
 
+      // Gérer le statut effectué (seul l'utilisateur assigné peut modifier)
+      const wasEffectue = task.effectue;
+      if (effectue !== undefined && isAssigned) {
+        task.effectue = effectue;
+        if (effectue) {
+          task.dateEffectue = new Date();
+          // Si marqué comme effectué, mettre le statut à "termine" si ce n'est pas déjà fait
+          if (task.statut !== 'termine') {
+            task.statut = 'termine';
+            if (!task.dateFin) {
+              task.dateFin = new Date();
+            }
+          }
+        } else {
+          task.dateEffectue = null;
+        }
+      }
+      
+      // Gérer le commentaire (seul l'utilisateur assigné peut modifier)
+      if (commentaireEffectue !== undefined && isAssigned) {
+        task.commentaireEffectue = commentaireEffectue || null;
+      }
+
       // Si le statut passe à "termine", enregistrer la date de fin
       if (statut === 'termine' && !task.dateFin) {
         task.dateFin = new Date();
+      }
+
+      // Créer une notification pour le créateur si la tâche est marquée comme effectuée
+      if (effectue === true && !wasEffectue && task.createdBy) {
+        try {
+          const assignedUser = await User.findById(req.user.id);
+          const assignedUserName = assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Un utilisateur';
+          
+          await Notification.create({
+            user: task.createdBy,
+            type: 'other',
+            titre: 'Tâche effectuée',
+            message: `${assignedUserName} a marqué la tâche "${task.titre}" comme effectuée.${commentaireEffectue ? ` Commentaire: ${commentaireEffectue}` : ''}`,
+            lien: `/admin?section=tasks`,
+            metadata: {
+              taskId: task._id.toString(),
+              assignedUserId: req.user.id,
+              commentaire: commentaireEffectue || null
+            }
+          });
+        } catch (notifError) {
+          console.error('Erreur lors de la création de la notification:', notifError);
+          // Ne pas bloquer la mise à jour si la notification échoue
+        }
       }
 
       await task.save();

@@ -64,13 +64,13 @@ export default function AdminCreneauxPage() {
     setIsLoading(true);
     setError(null);
     try {
-      console.log('🔄 Chargement des créneaux pour:', selectedDate);
-      // Charger TOUS les créneaux pour la date (fermés et non fermés) pour avoir une vue complète
-      const response = await creneauxAPI.getAllCreneaux({ date: selectedDate });
+      console.log('🔄 Chargement des créneaux fermés pour:', selectedDate);
+      // Charger UNIQUEMENT les créneaux fermés pour la date sélectionnée
+      const response = await creneauxAPI.getAllCreneaux({ date: selectedDate, ferme: true });
       console.log('✅ Réponse chargement créneaux:', response.data);
       if (response.data.success) {
         const creneauxRecus = response.data.creneaux || [];
-        console.log('📋 Créneaux reçus (tous):', creneauxRecus.map((c: any) => ({
+        console.log('📋 Créneaux fermés reçus:', creneauxRecus.length, creneauxRecus.map((c: any) => ({
           id: c._id || c.id,
           date: c.date ? new Date(c.date).toISOString().split('T')[0] : 'N/A',
           heure: c.heure,
@@ -78,7 +78,7 @@ export default function AdminCreneauxPage() {
           motif: c.motifFermeture
         })));
         
-        // Filtrer pour ne garder que les créneaux fermés
+        // Filtrer pour s'assurer que la date correspond (double vérification)
         const creneauxFermes = creneauxRecus.filter((c: any) => {
           // Vérifier que la date correspond
           if (!c.date) {
@@ -95,9 +95,14 @@ export default function AdminCreneauxPage() {
               return false;
             }
             
+            // Vérifier que le créneau est bien fermé
             const isFerme = c.ferme === true || c.ferme === 'true' || String(c.ferme) === 'true';
-            console.log(`Créneau ${c.heure}: ferme=${c.ferme} (type: ${typeof c.ferme}), isFerme=${isFerme}`);
-            return isFerme;
+            if (!isFerme) {
+              console.log(`⚠️ Créneau ${c.heure} ignoré: n'est pas marqué comme fermé`);
+              return false;
+            }
+            
+            return true;
           } catch (err) {
             console.error('Erreur lors du filtrage:', err, c);
             return false;

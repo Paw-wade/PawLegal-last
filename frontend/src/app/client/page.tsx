@@ -250,17 +250,6 @@ function ClientDashboardContent() {
     return diffDays;
   };
 
-  // Pré-calculer les valeurs qui seront utilisées dans le JSX (avant les return conditionnels)
-  const daysRemainingValue = calculateDaysRemaining();
-  const hasTitreInfoValue = userProfile?.numeroTitre && userProfile?.dateExpiration;
-
-  // Calculer les valeurs utilisateur (avant les return conditionnels)
-  const displayUser = isImpersonating && impersonatedUser ? impersonatedUser : (session?.user || {});
-  const userName = isImpersonating && impersonatedUser 
-    ? ((`${impersonatedUser?.firstName || ''} ${impersonatedUser?.lastName || ''}`).trim() || 'Utilisateur')
-    : (session?.user?.name || 'Utilisateur');
-  const userEmail = isImpersonating && impersonatedUser ? (impersonatedUser?.email || '') : (session?.user?.email || '');
-
   const loadStats = async () => {
     setIsLoading(true);
     try {
@@ -344,6 +333,34 @@ function ClientDashboardContent() {
       setIsLoading(false);
     }
   };
+
+  // Helper functions pour calculer les valeurs utilisateur
+  const getDisplayUser = () => {
+    if (isImpersonating && impersonatedUser) return impersonatedUser;
+    return session?.user || {};
+  };
+
+  const getUserName = () => {
+    if (isImpersonating && impersonatedUser) {
+      const name = `${impersonatedUser?.firstName || ''} ${impersonatedUser?.lastName || ''}`.trim();
+      return name || 'Utilisateur';
+    }
+    return session?.user?.name || 'Utilisateur';
+  };
+
+  const getUserEmail = () => {
+    if (isImpersonating && impersonatedUser) {
+      return impersonatedUser?.email || '';
+    }
+    return session?.user?.email || '';
+  };
+
+  // Pré-calculer les valeurs qui seront utilisées dans le JSX (après toutes les fonctions, avant les return conditionnels)
+  const daysRemainingValue = calculateDaysRemaining();
+  const hasTitreInfoValue = userProfile?.numeroTitre && userProfile?.dateExpiration;
+  const displayUser = getDisplayUser();
+  const userName = getUserName();
+  const userEmail = getUserEmail();
 
   if (status === 'loading') {
     return (
@@ -530,22 +547,22 @@ function ClientDashboardContent() {
           <div id="documents-section" className="scroll-mt-20">
             <Link href="/client/documents" className="group">
               <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 hover:shadow-lg hover:border-green-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
-                  <span className="text-2xl">📄</span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
+                    <span className="text-2xl">📄</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-green-600 transition-colors">{stats.documents}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-green-600 transition-colors">{stats.documents}</p>
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
+                <p className="text-xs text-muted-foreground mb-3">Documents disponibles</p>
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <span className="text-xs text-muted-foreground">Tous vos documents</span>
+                  <span className="text-green-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
                 </div>
               </div>
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
-              <p className="text-xs text-muted-foreground mb-3">Documents disponibles</p>
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <span className="text-xs text-muted-foreground">Tous vos documents</span>
-                <span className="text-green-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
-              </div>
-            </div>
-          </Link>
+            </Link>
           </div>
         </div>
 
@@ -582,23 +599,24 @@ function ClientDashboardContent() {
           <div id="temoignages-section" className="scroll-mt-20">
             <Link href="/client/temoignages" className="group">
               <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                  <span className="text-3xl">⭐</span>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <span className="text-3xl">⭐</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-foreground group-hover:text-purple-600 transition-colors mb-1">Témoignage</h3>
+                    <p className="text-sm text-muted-foreground">Partagez votre expérience</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-foreground group-hover:text-purple-600 transition-colors mb-1">Témoignage</h3>
-                  <p className="text-sm text-muted-foreground">Partagez votre expérience</p>
+                <div className="flex items-center justify-between pt-4 border-t border-purple-200">
+                  <span className="text-xs font-medium text-purple-600">Accéder →</span>
+                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                    <span className="text-purple-600 text-sm">→</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between pt-4 border-t border-purple-200">
-                <span className="text-xs font-medium text-purple-600">Accéder →</span>
-                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                  <span className="text-purple-600 text-sm">→</span>
-                </div>
-              </div>
-            </div>
-          </Link>
+            </Link>
+          </div>
 
           <Link href="/client/compte" className="group">
             <div className="bg-gradient-to-br from-white to-indigo-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-indigo-200 hover:border-indigo-400 hover:scale-105">

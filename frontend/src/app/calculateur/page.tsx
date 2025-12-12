@@ -69,12 +69,28 @@ const typesDecisions = [
   { value: 'refus_enregistrement', label: 'Refus d\'enregistrement de demande', delai: 15 },
 ];
 
-// Préfectures
-const prefectures = [
-  'Paris', 'Seine-Saint-Denis', 'Hauts-de-Seine', 'Val-de-Marne', 'Seine-et-Marne',
-  'Yvelines', 'Essonne', 'Val-d\'Oise', 'Bouches-du-Rhône', 'Rhône', 'Nord', 'Loire',
-  'Gironde', 'Haute-Garonne', 'Isère', 'Bas-Rhin', 'Hérault', 'Alpes-Maritimes',
-  'Autre'
+// Types de documents actuellement détenus
+const typesDocuments = [
+  { value: 'carte_sejour_temporaire', label: 'Carte de séjour temporaire' },
+  { value: 'carte_sejour_pluriannuelle', label: 'Carte de séjour pluriannuelle' },
+  { value: 'carte_resident', label: 'Carte de résident' },
+  { value: 'recepisse', label: 'Récépissé' },
+  { value: 'aps', label: 'APS (Autorisation Provisoire de Séjour)' },
+  { value: 'visa_long_sejour', label: 'Visa long séjour (VLS / VLS-TS)' },
+  { value: 'aucun', label: 'Aucun document / en attente' },
+  { value: 'autre', label: 'Autre' },
+];
+
+// Types de visas
+const typesVisas = [
+  { value: 'visa_court_sejour', label: 'Visa de court séjour (Schengen)' },
+  { value: 'visa_long_sejour', label: 'Visa de long séjour' },
+  { value: 'visa_transit', label: 'Visa de transit' },
+  { value: 'visa_etudiant', label: 'Visa étudiant' },
+  { value: 'visa_travailleur', label: 'Visa travailleur' },
+  { value: 'visa_familial', label: 'Visa vie privée et familiale' },
+  { value: 'visa_talent', label: 'Visa Passeport Talent' },
+  { value: 'autre', label: 'Autre type de visa' },
 ];
 
 // Informations sur les titres
@@ -202,14 +218,59 @@ export default function CalculateurPage() {
     dateDecision: getTodayDate(),
     natureDecision: '',
     dureeTitre: '',
-    situation: '' // 'demande', 'contentieux_visa', 'contentieux_titre'
+    situation: '', // 'demande', 'contentieux_visa', 'contentieux_titre'
+    natureDocumentActuel: '', // Nature du document actuellement détenu
+    dateAttributionTitre: '', // Date d'attribution du titre ou du visa
+    dateExpirationTitre: '', // Date d'expiration du titre ou du visa
+    // Champs pour recours visa
+    natureVisa: '', // Nature du visa
+    consulatDepot: '', // Consulat du dépôt
+    dateConfirmationDepot: '', // Date de confirmation du dépôt
+    typeRefusVisa: '', // 'explicite' ou 'implicite'
+    dateNotificationRefus: '', // Date de notification du refus (si explicite)
+    dateDepotRapo: '', // Date de dépôt du RAPO
+    dateReponseRapo: '', // Date de réponse RAPO
+    demandeCommunicationMotifs: false, // Case à cocher pour demande de communication des motifs
+    dateDemandeMotifs: '', // Date de demande de communication des motifs
+    dateReceptionMotifs: '', // Date de réception des motifs
+    actionApresRapo: '', // 'saisir_tribunal' ou 'demander_motifs'
+    rapoDepose: null as boolean | null // null = pas encore demandé, true = oui, false = non
   });
+
+  const [dateErrors, setDateErrors] = useState<{ [key: string]: string }>({});
 
   const [calculs, setCalculs] = useState<any>(null);
 
   useEffect(() => {
     calculerDelais();
+    validateDates();
   }, [formData]);
+
+  const validateDates = () => {
+    const errors: { [key: string]: string } = {};
+    
+    // Valider que date d'expiration >= date d'attribution
+    if (formData.dateAttributionTitre && formData.dateExpirationTitre) {
+      const dateAttribution = new Date(formData.dateAttributionTitre);
+      const dateExpiration = new Date(formData.dateExpirationTitre);
+      
+      if (dateExpiration < dateAttribution) {
+        errors.dateExpirationTitre = 'La date d\'expiration doit être postérieure à la date d\'attribution';
+      }
+    }
+    
+    // Valider que date d'expiration du titre actuel >= date de délivrance (pour renouvellement)
+    if (formData.dateDelivrance && formData.dateExpiration && formData.typeDemande === 'renouvellement') {
+      const dateDelivrance = new Date(formData.dateDelivrance);
+      const dateExpiration = new Date(formData.dateExpiration);
+      
+      if (dateExpiration < dateDelivrance) {
+        errors.dateExpiration = 'La date d\'expiration doit être postérieure à la date de délivrance';
+      }
+    }
+    
+    setDateErrors(errors);
+  };
 
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -230,17 +291,40 @@ export default function CalculateurPage() {
 
       const response = await userAPI.getProfile();
       if (response.data.success) {
-        setUserProfile(response.data.user);
-        // Préremplir le formulaire avec les informations du profil
-        if (response.data.user) {
           const user = response.data.user;
+        setUserProfile(user);
+        
+        // Préremplir le formulaire UNIQUEMENT si l'utilisateur est un client (pas un admin)
+        const userRole = user?.role || (session?.user as any)?.role;
+        const isClient = userRole === 'client';
+        
+        if (isClient && user) {
+          // Préremplir le formulaire avec les informations du profil pour les clients uniquement
+          // Mapper le typeTitre vers natureDocumentActuel
+          let natureDoc = '';
+          if (user.typeTitre) {
+            // Mapping approximatif du type de titre vers le type de document
+            if (user.typeTitre.includes('resident') || user.typeTitre === 'resident') {
+              natureDoc = 'carte_resident';
+            } else if (user.typeTitre.includes('pluriannuelle') || user.typeTitre === 'pluriannuelle') {
+              natureDoc = 'carte_sejour_pluriannuelle';
+            } else {
+              natureDoc = 'carte_sejour_temporaire';
+            }
+          }
+
           setFormData(prev => ({
             ...prev,
             prefecture: user.prefecture || prev.prefecture,
             dateDelivrance: user.dateDelivrance ? new Date(user.dateDelivrance).toISOString().split('T')[0] : prev.dateDelivrance,
             dateExpiration: user.dateExpiration ? new Date(user.dateExpiration).toISOString().split('T')[0] : prev.dateExpiration,
+            typeTitre: user.typeTitre || prev.typeTitre,
+            dateAttributionTitre: user.dateDelivrance ? new Date(user.dateDelivrance).toISOString().split('T')[0] : prev.dateAttributionTitre,
+            dateExpirationTitre: user.dateExpiration ? new Date(user.dateExpiration).toISOString().split('T')[0] : prev.dateExpirationTitre,
+            natureDocumentActuel: natureDoc || prev.natureDocumentActuel,
           }));
         }
+        // Si c'est un admin, on charge le profil mais on ne pré-remplit PAS les formulaires
       }
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement du profil:', err);
@@ -250,7 +334,296 @@ export default function CalculateurPage() {
   };
 
   const calculerDelais = () => {
-    if ((formData.situation === 'contentieux_visa' || formData.situation === 'contentieux_titre') && formData.dateDecision && formData.natureDecision) {
+    // Calcul spécifique pour recours contre refus de visa
+    if (formData.situation === 'contentieux_visa' && formData.dateConfirmationDepot) {
+      const aujourdhui = new Date();
+      const dateConfirmationDepot = new Date(formData.dateConfirmationDepot);
+      
+      // Calculer la date limite (4 mois après le dépôt)
+      const dateLimite4Mois = new Date(dateConfirmationDepot);
+      dateLimite4Mois.setMonth(dateLimite4Mois.getMonth() + 4);
+      
+      // Vérifier si plus de 4 mois se sont écoulés
+      const plusDe4Mois = aujourdhui > dateLimite4Mois;
+      const joursDepuis4Mois = Math.ceil((aujourdhui.getTime() - dateLimite4Mois.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Si plus de 4 mois se sont écoulés
+      if (plusDe4Mois) {
+        // Si un RAPO a été déposé (dateDepotRapo remplie), on continue avec le calcul normal
+        if (formData.dateDepotRapo) {
+          // Continuer avec le calcul normal ci-dessous
+        }
+        // Si l'utilisateur a confirmé qu'aucun RAPO n'a été déposé
+        else if (formData.rapoDepose === false) {
+          setCalculs({
+            type: 'contentieux_visa',
+            erreur: true,
+            messageErreur: `Aucun recours n'est plus possible. Le délai de 4 mois pour le refus implicite est dépassé depuis ${joursDepuis4Mois} jour(s) et aucun Recours Administratif Préalable Obligatoire (RAPO) n'a été déposé.`,
+            dateConfirmationDepot: dateConfirmationDepot,
+            dateLimite4Mois: dateLimite4Mois,
+            joursDepuis4Mois: joursDepuis4Mois
+          });
+          return;
+        }
+        // Si la question n'a pas encore été posée ou si l'utilisateur n'a pas encore répondu
+        else if (formData.rapoDepose === null && !formData.typeRefusVisa) {
+          setCalculs({
+            type: 'contentieux_visa',
+            demandeRapo: true,
+            message: `Plus de 4 mois se sont écoulés depuis le dépôt (${joursDepuis4Mois} jour(s) de retard). Avez-vous déposé un Recours Administratif Préalable Obligatoire (RAPO) ?`,
+            dateConfirmationDepot: dateConfirmationDepot,
+            dateLimite4Mois: dateLimite4Mois,
+            joursDepuis4Mois: joursDepuis4Mois
+          });
+          return;
+        }
+        // Si l'utilisateur a répondu "oui" mais n'a pas encore rempli la date, demander la date
+        else if (formData.rapoDepose === true && !formData.dateDepotRapo) {
+          setCalculs({
+            type: 'contentieux_visa',
+            demandeDateRapo: true,
+            message: `Veuillez renseigner la date de dépôt du RAPO pour calculer les délais qui suivent.`,
+            dateConfirmationDepot: dateConfirmationDepot,
+            dateLimite4Mois: dateLimite4Mois,
+            joursDepuis4Mois: joursDepuis4Mois
+          });
+          return;
+        }
+      }
+      
+      // Si pas de type de refus sélectionné, ne pas calculer
+      if (!formData.typeRefusVisa) {
+        setCalculs(null);
+        return;
+      }
+      
+      let dateRefus: Date;
+      let dateRejetImplicite: Date | null = null;
+      
+      // Calculer la date de refus selon le type
+      if (formData.typeRefusVisa === 'explicite' && formData.dateNotificationRefus) {
+        dateRefus = new Date(formData.dateNotificationRefus);
+      } else if (formData.typeRefusVisa === 'implicite') {
+        // Refus implicite = date_confirmation_depot + 4 mois
+        dateRejetImplicite = new Date(dateConfirmationDepot);
+        dateRejetImplicite.setMonth(dateRejetImplicite.getMonth() + 4);
+        dateRefus = dateRejetImplicite;
+      } else {
+        setCalculs(null);
+        return;
+      }
+      
+      // Calcul RAPO (seulement si aucun RAPO n'a été déposé)
+      let dateDebutRapo: Date | null = null;
+      let dateLimiteRapo: Date | null = null;
+      let joursRestantsRapo: number | null = null;
+      let rapoDansDelais: boolean | null = null;
+      
+      // Ne calculer le délai RAPO que si aucun RAPO n'a été déposé
+      if (!formData.dateDepotRapo) {
+        dateDebutRapo = new Date(dateRefus);
+        dateDebutRapo.setDate(dateDebutRapo.getDate() + 1);
+        
+        dateLimiteRapo = new Date(dateRefus);
+        dateLimiteRapo.setDate(dateLimiteRapo.getDate() + 30);
+        
+        joursRestantsRapo = Math.ceil((dateLimiteRapo.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+        rapoDansDelais = joursRestantsRapo > 0;
+      }
+      
+      // Timeline
+      const timeline: any[] = [
+        { label: 'Date de confirmation du dépôt', date: dateConfirmationDepot, type: 'depot' },
+        { label: formData.typeRefusVisa === 'implicite' ? 'Naissance du refus implicite' : 'Date de notification du refus', date: dateRefus, type: 'refus' },
+      ];
+      
+      // Ajouter les dates RAPO seulement si aucun RAPO n'a été déposé
+      if (dateDebutRapo && dateLimiteRapo) {
+        timeline.push({ label: 'Début possible du RAPO', date: dateDebutRapo, type: 'rapo_debut' });
+        timeline.push({ label: 'Date limite du RAPO', date: dateLimiteRapo, type: 'rapo_limite', urgent: joursRestantsRapo !== null && joursRestantsRapo <= 7 });
+      }
+      
+      let dateLimiteReponseCommission: Date | null = null;
+      let dateDebutTribunal: Date | null = null;
+      let dateFinTribunal: Date | null = null;
+      let dateLimiteMotifs: Date | null = null;
+      let joursRestantsCommission: number | undefined = undefined;
+      
+      // Si RAPO déposé
+      if (formData.dateDepotRapo) {
+        const dateDepotRapo = new Date(formData.dateDepotRapo);
+        dateLimiteReponseCommission = new Date(dateDepotRapo);
+        dateLimiteReponseCommission.setMonth(dateLimiteReponseCommission.getMonth() + 2);
+        
+        joursRestantsCommission = Math.ceil((dateLimiteReponseCommission.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+        
+        timeline.push({ label: 'Date de dépôt du RAPO', date: dateDepotRapo, type: 'rapo_depot' });
+        timeline.push({ label: 'Date limite de réponse de la commission', date: dateLimiteReponseCommission, type: 'commission_limite' });
+        
+        // Si réponse reçue
+        if (formData.dateReponseRapo) {
+          const dateReponseRapo = new Date(formData.dateReponseRapo);
+          dateDebutTribunal = new Date(dateReponseRapo);
+          dateDebutTribunal.setDate(dateDebutTribunal.getDate() + 1);
+          
+          dateFinTribunal = new Date(dateReponseRapo);
+          dateFinTribunal.setMonth(dateFinTribunal.getMonth() + 2);
+          
+          timeline.push({ label: 'Date de réponse du RAPO', date: dateReponseRapo, type: 'rapo_reponse' });
+          timeline.push({ label: 'Début possible du recours tribunal', date: dateDebutTribunal, type: 'tribunal_debut' });
+          timeline.push({ label: 'Date limite du recours tribunal', date: dateFinTribunal, type: 'tribunal_limite', urgent: true });
+        } else if (formData.actionApresRapo === 'saisir_tribunal' && dateLimiteReponseCommission) {
+          // Pas de réponse, saisir tribunal
+          dateDebutTribunal = new Date(dateLimiteReponseCommission);
+          dateDebutTribunal.setDate(dateDebutTribunal.getDate() + 1);
+          
+          dateFinTribunal = new Date(dateLimiteReponseCommission);
+          dateFinTribunal.setMonth(dateFinTribunal.getMonth() + 2);
+          
+          timeline.push({ label: 'Début possible du recours tribunal (pas de réponse)', date: dateDebutTribunal, type: 'tribunal_debut' });
+          timeline.push({ label: 'Date limite du recours tribunal', date: dateFinTribunal, type: 'tribunal_limite', urgent: true });
+        }
+      }
+      
+      // Communication des motifs
+      if (formData.demandeCommunicationMotifs || formData.actionApresRapo === 'demander_motifs') {
+        if (formData.dateDemandeMotifs) {
+          const dateDemandeMotifs = new Date(formData.dateDemandeMotifs);
+          dateLimiteMotifs = new Date(dateDemandeMotifs);
+          dateLimiteMotifs.setMonth(dateLimiteMotifs.getMonth() + 1);
+          
+          timeline.push({ label: 'Date de demande de communication des motifs', date: dateDemandeMotifs, type: 'demande_motifs' });
+          timeline.push({ label: 'Date limite de réponse (motifs)', date: dateLimiteMotifs, type: 'motifs_limite' });
+          
+          if (formData.dateReceptionMotifs) {
+            // Motifs reçus
+            const dateReceptionMotifs = new Date(formData.dateReceptionMotifs);
+            dateDebutTribunal = new Date(dateReceptionMotifs);
+            dateDebutTribunal.setDate(dateDebutTribunal.getDate() + 1);
+            
+            dateFinTribunal = new Date(dateReceptionMotifs);
+            dateFinTribunal.setMonth(dateFinTribunal.getMonth() + 2);
+            
+            timeline.push({ label: 'Date de réception des motifs', date: dateReceptionMotifs, type: 'reception_motifs' });
+            timeline.push({ label: 'Début possible du recours tribunal', date: dateDebutTribunal, type: 'tribunal_debut' });
+            timeline.push({ label: 'Date limite du recours tribunal', date: dateFinTribunal, type: 'tribunal_limite', urgent: true });
+          } else {
+            // Motifs non reçus
+            dateDebutTribunal = new Date(dateDemandeMotifs);
+            dateDebutTribunal.setDate(dateDebutTribunal.getDate() + 30);
+            
+            dateFinTribunal = new Date(dateDemandeMotifs);
+            dateFinTribunal.setMonth(dateFinTribunal.getMonth() + 2);
+            
+            timeline.push({ label: 'Début possible du recours tribunal (motifs non reçus)', date: dateDebutTribunal, type: 'tribunal_debut' });
+            timeline.push({ label: 'Date limite du recours tribunal', date: dateFinTribunal, type: 'tribunal_limite', urgent: true });
+          }
+        }
+      }
+      
+      // Calculer les jours restants pour le tribunal
+      let joursRestantsTribunal: number | null = null;
+      if (dateFinTribunal) {
+        joursRestantsTribunal = Math.ceil((dateFinTribunal.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+      }
+      
+      // Message personnalisé
+      let messagePersonnalise = '';
+      
+      // Ne mentionner le RAPO que si aucun RAPO n'a été déposé
+      if (!formData.dateDepotRapo && joursRestantsRapo !== null && rapoDansDelais !== null) {
+        if (!rapoDansDelais) {
+          messagePersonnalise = `⚠️ Le délai du RAPO est dépassé de ${Math.abs(joursRestantsRapo)} jour(s).`;
+        } else if (joursRestantsRapo <= 7) {
+          messagePersonnalise = `⚠️ URGENT : Il reste ${joursRestantsRapo} jour(s) pour déposer le RAPO.`;
+        } else {
+          messagePersonnalise = `✅ Vous avez ${joursRestantsRapo} jour(s) pour déposer le RAPO.`;
+        }
+      } else if (formData.dateDepotRapo) {
+        // Si un RAPO a été déposé, commencer par un message positif
+        const dateDepotRapo = new Date(formData.dateDepotRapo);
+        messagePersonnalise = `✅ RAPO déposé le ${formatDateCourte(dateDepotRapo)}. `;
+        
+        // Calculer la date limite de réponse de la commission (2 mois après dépôt)
+        const dateLimiteCommission = new Date(dateDepotRapo);
+        dateLimiteCommission.setMonth(dateLimiteCommission.getMonth() + 2);
+        const joursRestantsCommissionCalc = Math.ceil((dateLimiteCommission.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Si réponse reçue, calculer les délais tribunal
+        if (formData.dateReponseRapo) {
+          const dateReponseRapo = new Date(formData.dateReponseRapo);
+          const dateFinTribunalCalc = new Date(dateReponseRapo);
+          dateFinTribunalCalc.setMonth(dateFinTribunalCalc.getMonth() + 2);
+          const joursRestantsTribunalCalc = Math.ceil((dateFinTribunalCalc.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (joursRestantsTribunalCalc < 0) {
+            messagePersonnalise += `⚠️ Le délai du recours tribunal est dépassé de ${Math.abs(joursRestantsTribunalCalc)} jour(s).`;
+          } else if (joursRestantsTribunalCalc <= 7) {
+            messagePersonnalise += `⚠️ URGENT : Il reste ${joursRestantsTribunalCalc} jour(s) pour saisir le tribunal.`;
+          } else {
+            messagePersonnalise += `✅ Délai tribunal : ${joursRestantsTribunalCalc} jour(s) restants.`;
+          }
+        } 
+        // Si pas de réponse mais action choisie (saisir tribunal)
+        else if (formData.actionApresRapo === 'saisir_tribunal' && dateLimiteReponseCommission) {
+          const dateFinTribunalCalc = new Date(dateLimiteReponseCommission);
+          dateFinTribunalCalc.setMonth(dateFinTribunalCalc.getMonth() + 2);
+          const joursRestantsTribunalCalc = Math.ceil((dateFinTribunalCalc.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (joursRestantsTribunalCalc < 0) {
+            messagePersonnalise += `⚠️ Le délai du recours tribunal est dépassé de ${Math.abs(joursRestantsTribunalCalc)} jour(s).`;
+          } else if (joursRestantsTribunalCalc <= 7) {
+            messagePersonnalise += `⚠️ URGENT : Il reste ${joursRestantsTribunalCalc} jour(s) pour saisir le tribunal.`;
+          } else {
+            messagePersonnalise += `✅ Délai tribunal : ${joursRestantsTribunalCalc} jour(s) restants.`;
+          }
+        }
+        // Si pas de réponse et pas d'action choisie, indiquer l'attente de la commission
+        else if (!formData.dateReponseRapo && dateLimiteReponseCommission && joursRestantsCommission !== undefined) {
+          if (joursRestantsCommission < 0) {
+            messagePersonnalise += `⏳ En attente de réponse de la commission (délai dépassé de ${Math.abs(joursRestantsCommission)} jour(s)). Vous pouvez saisir le tribunal ou demander communication des motifs.`;
+          } else {
+            messagePersonnalise += `⏳ En attente de réponse de la commission (${joursRestantsCommission} jour(s) restants).`;
+          }
+        }
+      }
+      
+      // Ajouter les informations sur le tribunal (pour les cas de communication des motifs)
+      if (joursRestantsTribunal !== null && !formData.dateDepotRapo) {
+        if (joursRestantsTribunal < 0) {
+          messagePersonnalise += ` ⚠️ Le délai du recours tribunal est dépassé de ${Math.abs(joursRestantsTribunal)} jour(s).`;
+        } else if (joursRestantsTribunal <= 7) {
+          messagePersonnalise += ` ⚠️ URGENT : Il reste ${joursRestantsTribunal} jour(s) pour saisir le tribunal.`;
+        } else {
+          messagePersonnalise += ` ✅ Délai tribunal : ${joursRestantsTribunal} jour(s) restants.`;
+        }
+      }
+      
+      setCalculs({
+        type: 'contentieux_visa',
+        dateConfirmationDepot: dateConfirmationDepot,
+        dateRefus: dateRefus,
+        dateRejetImplicite: dateRejetImplicite,
+        typeRefus: formData.typeRefusVisa,
+        dateDebutRapo: dateDebutRapo,
+        dateLimiteRapo: dateLimiteRapo,
+        joursRestantsRapo: joursRestantsRapo,
+        rapoDansDelais: rapoDansDelais,
+        dateLimiteReponseCommission: dateLimiteReponseCommission,
+        dateDebutTribunal: dateDebutTribunal,
+        dateFinTribunal: dateFinTribunal,
+        joursRestantsTribunal: joursRestantsTribunal,
+        joursRestantsCommission: joursRestantsCommission,
+        dateLimiteMotifs: dateLimiteMotifs,
+        timeline: timeline.sort((a, b) => a.date.getTime() - b.date.getTime()),
+        messagePersonnalise: messagePersonnalise,
+        natureVisa: formData.natureVisa,
+      });
+      return;
+    }
+    
+    // Calcul pour recours concernant le titre de séjour
+    if (formData.situation === 'contentieux_titre' && formData.dateDecision && formData.natureDecision) {
       const decision = typesDecisions.find(d => d.value === formData.natureDecision);
       if (decision) {
         const dateDecision = new Date(formData.dateDecision);
@@ -260,6 +633,24 @@ export default function CalculateurPage() {
         const aujourdhui = new Date();
         const joursRestants = Math.ceil((dateLimite.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
         
+        // Vérifier si le recours est introduit dans les délais
+        const recoursDansDelais = joursRestants > 0;
+        
+        // Adapter selon le type de document
+        let messagePersonnalise = '';
+        if (formData.natureDocumentActuel) {
+          const docLabel = typesDocuments.find(d => d.value === formData.natureDocumentActuel)?.label || '';
+          if (formData.dateExpirationTitre) {
+            const dateExpiration = new Date(formData.dateExpirationTitre);
+            const joursAvantExpirationDoc = Math.ceil((dateExpiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+            if (joursAvantExpirationDoc < 0) {
+              messagePersonnalise = `⚠️ Votre ${docLabel} a expiré. Le recours doit être introduit dans les délais légaux.`;
+            } else if (joursAvantExpirationDoc <= 30) {
+              messagePersonnalise = `⚠️ Votre ${docLabel} expire dans ${joursAvantExpirationDoc} jour(s).`;
+            }
+          }
+        }
+        
         setCalculs({
           type: 'contentieux',
           delai: decision.delai,
@@ -267,7 +658,12 @@ export default function CalculateurPage() {
           dateLimite: dateLimite,
           joursRestants: joursRestants,
           typeRecours: getTypeRecours(formData.natureDecision),
-          urgence: joursRestants <= 7
+          urgence: joursRestants <= 7,
+          recoursDansDelais: recoursDansDelais,
+          messagePersonnalise: messagePersonnalise || (recoursDansDelais 
+            ? `✅ Vous avez encore ${joursRestants} jour(s) pour introduire votre recours.`
+            : `⚠️ Le délai de recours est dépassé de ${Math.abs(joursRestants)} jour(s). Consultez un avocat rapidement.`),
+          natureDocumentActuel: formData.natureDocumentActuel
         });
       }
     } else if (formData.situation === 'demande' && formData.typeTitre) {
@@ -285,8 +681,15 @@ export default function CalculateurPage() {
             message: 'Vous pouvez déposer votre première demande dès maintenant.',
             delaiRecommandé: infoTitre.delaiPremiereDemande
           };
-        } else if (formData.typeDemande === 'renouvellement' && formData.dateExpiration) {
-          const dateExpiration = new Date(formData.dateExpiration);
+        } else if (formData.typeDemande === 'renouvellement') {
+          // Utiliser dateExpirationTitre si disponible, sinon dateExpiration
+          const dateExpiration = formData.dateExpirationTitre 
+            ? new Date(formData.dateExpirationTitre) 
+            : formData.dateExpiration 
+            ? new Date(formData.dateExpiration) 
+            : null;
+          
+          if (dateExpiration) {
           const aujourdhui = new Date();
           
           // Date recommandée pour déposer (2 à 4 mois avant expiration)
@@ -301,6 +704,13 @@ export default function CalculateurPage() {
           
           const joursAvantExpiration = Math.ceil((dateExpiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
           
+            // Déterminer l'urgence selon le type de document
+            const isUrgent = joursAvantExpiration < 60;
+            const isTardif = joursAvantExpiration < 0;
+            const isRecoursTardif = formData.dateAttributionTitre && formData.dateExpirationTitre 
+              ? new Date(formData.dateExpirationTitre) < aujourdhui 
+              : false;
+          
           calculsResult.renouvellement = {
             dateExpiration: dateExpiration,
             dateRecommandeeMin: dateRecommandeeMin,
@@ -308,9 +718,16 @@ export default function CalculateurPage() {
             dateLimite: dateLimite,
             joursAvantExpiration: joursAvantExpiration,
             periodeRecommandee: `${infoTitre.delaiRenouvellement.min} à ${infoTitre.delaiRenouvellement.max} mois avant expiration`,
-            risqueRupture: joursAvantExpiration < 60,
-            enRetard: joursAvantExpiration < 0
-          };
+              risqueRupture: isUrgent,
+              enRetard: isTardif,
+              natureDocumentActuel: formData.natureDocumentActuel,
+              messagePersonnalise: isTardif 
+                ? `⚠️ Votre titre a expiré il y a ${Math.abs(joursAvantExpiration)} jour(s). Déposez immédiatement votre demande de renouvellement.`
+                : isUrgent
+                ? `⚠️ Votre titre expire dans ${joursAvantExpiration} jour(s). Déposez votre demande de renouvellement dès maintenant.`
+                : `✅ Votre titre expire dans ${joursAvantExpiration} jour(s). Période recommandée pour déposer : ${formatDateCourte(dateRecommandeeMin)} au ${formatDateCourte(dateRecommandeeMax)}.`
+            };
+          }
         }
 
         setCalculs(calculsResult);
@@ -378,10 +795,10 @@ export default function CalculateurPage() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-12 gap-6">
-          {/* Colonne 1 : Informations du profil utilisateur (à gauche, largeur réduite) */}
-          <div className="lg:col-span-3">
-            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20 sticky top-24">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* Colonne 1 : Informations du profil utilisateur (à l'extrémité gauche) */}
+          <div className="w-full lg:w-auto lg:flex-shrink-0 lg:self-start">
+            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20 lg:sticky lg:top-24 lg:w-64">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
                   <span className="text-xl">👤</span>
@@ -534,21 +951,21 @@ export default function CalculateurPage() {
             </div>
           </div>
 
-          {/* Colonne 2 : Informations sur le titre de séjour */}
-          <div className="lg:col-span-5">
-            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20 sticky top-24">
-              <div className="flex items-center gap-3 mb-6">
+          {/* Colonne 2 : Informations sur le titre de séjour (centré, largeur augmentée) */}
+          <div className="flex-1 w-full lg:max-w-4xl mx-auto lg:self-start">
+            <div className="bg-white rounded-xl shadow-lg p-4 border-2 border-primary/20 lg:sticky lg:top-24">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
                   <span className="text-xl">📋</span>
                 </div>
                 <h2 className="text-xl font-bold text-foreground">Nature du calcul</h2>
               </div>
 
-              <form className="space-y-6">
+              <form className="space-y-4">
                 {/* Badges de choix */}
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <Label className="text-base font-bold">Sélectionnez le type de calcul :</Label>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-nowrap gap-3 overflow-x-auto pb-2">
                     {/* Badge Dépôt de titre de séjour */}
                     <button
                       type="button"
@@ -566,25 +983,6 @@ export default function CalculateurPage() {
                     >
                       <span className="text-lg">📄</span>
                       <span>Dépôt de titre de séjour</span>
-                    </button>
-
-                    {/* Badge Recours contre refus de visa */}
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ 
-                        ...formData, 
-                        situation: 'contentieux_visa',
-                        typeDemande: '',
-                        typeTitre: ''
-                      })}
-                      className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center gap-2 ${
-                        formData.situation === 'contentieux_visa'
-                          ? 'bg-orange-500 text-white shadow-lg scale-105'
-                          : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-2 border-orange-300'
-                      }`}
-                    >
-                      <span className="text-lg">✈️</span>
-                      <span>Recours contre un refus de visa</span>
                     </button>
 
                     {/* Badge Recours concernant le titre de séjour */}
@@ -605,12 +1003,44 @@ export default function CalculateurPage() {
                       <span className="text-lg">⚖️</span>
                       <span>Recours concernant le titre de séjour</span>
                     </button>
+
+                    {/* Badge Recours contre refus de visa */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({ 
+                        ...formData, 
+                          situation: 'contentieux_visa',
+                        typeDemande: '',
+                          typeTitre: '',
+                          natureVisa: '',
+                          dateConfirmationDepot: '',
+                          typeRefusVisa: '',
+                          dateNotificationRefus: '',
+                          dateDepotRapo: '',
+                          dateReponseRapo: '',
+                          demandeCommunicationMotifs: false,
+                          dateDemandeMotifs: '',
+                          dateReceptionMotifs: '',
+                          actionApresRapo: ''
+                        });
+                        setCalculs(null);
+                      }}
+                      className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center gap-2 ${
+                        formData.situation === 'contentieux_visa'
+                          ? 'bg-orange-500 text-white shadow-lg scale-105'
+                          : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-2 border-orange-300'
+                      }`}
+                    >
+                      <span className="text-lg">✈️</span>
+                      <span>Recours contre un refus de visa</span>
+                    </button>
                   </div>
                 </div>
 
                 {/* Champs pour Dépôt de titre de séjour */}
                 {formData.situation === 'demande' && (
-                  <div className="space-y-4 pt-4 border-t">
+                  <div className="space-y-3 pt-3 border-t">
                     <div className="space-y-2">
                       <Label htmlFor="typeDemande">Type de demande *</Label>
                       <Select
@@ -640,18 +1070,66 @@ export default function CalculateurPage() {
                       </Select>
                     </div>
 
+                    {/* Nature du document actuellement détenu */}
                     <div className="space-y-2">
-                      <Label htmlFor="prefecture">Préfecture compétente</Label>
+                      <Label htmlFor="natureDocumentActuel">Nature du document actuellement détenu *</Label>
                       <Select
-                        id="prefecture"
-                        value={formData.prefecture}
-                        onChange={(e) => setFormData({ ...formData, prefecture: e.target.value })}
+                        id="natureDocumentActuel"
+                        value={formData.natureDocumentActuel}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData({ ...formData, natureDocumentActuel: value });
+                          // Si Visa long séjour est sélectionné, suggérer des dates
+                          if (value === 'visa_long_sejour') {
+                            const today = new Date();
+                            const expiration = new Date(today);
+                            expiration.setMonth(expiration.getMonth() + 12); // Visa généralement valable 12 mois
+                            setFormData(prev => ({
+                              ...prev,
+                              natureDocumentActuel: value,
+                              dateAttributionTitre: prev.dateAttributionTitre || today.toISOString().split('T')[0],
+                              dateExpirationTitre: prev.dateExpirationTitre || expiration.toISOString().split('T')[0]
+                            }));
+                          }
+                        }}
+                        required
                       >
                         <option value="">-- Sélectionner --</option>
-                        {prefectures.map((pref) => (
-                          <option key={pref} value={pref}>{pref}</option>
+                        {typesDocuments.map((doc) => (
+                          <option key={doc.value} value={doc.value}>{doc.label}</option>
                         ))}
                       </Select>
+                    </div>
+
+                    {/* Période de validité */}
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
+                      <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="dateAttributionTitre">Date d'attribution du titre ou du visa *</Label>
+                        <Input
+                          id="dateAttributionTitre"
+                          type="date"
+                          value={formData.dateAttributionTitre}
+                          onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="dateExpirationTitre">Date d'expiration du titre ou du visa *</Label>
+                        <Input
+                          id="dateExpirationTitre"
+                          type="date"
+                          value={formData.dateExpirationTitre}
+                          onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
+                          required
+                          className={dateErrors.dateExpirationTitre ? 'border-red-500' : ''}
+                        />
+                        {dateErrors.dateExpirationTitre && (
+                          <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
+                        )}
+                      </div>
                     </div>
 
                     {formData.typeDemande === 'renouvellement' && (
@@ -664,7 +1142,11 @@ export default function CalculateurPage() {
                             value={formData.dateExpiration}
                             onChange={(e) => setFormData({ ...formData, dateExpiration: e.target.value })}
                             required
+                            className={dateErrors.dateExpiration ? 'border-red-500' : ''}
                           />
+                          {dateErrors.dateExpiration && (
+                            <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpiration}</p>
+                          )}
                         </div>
 
                         <div className="space-y-2">
@@ -698,50 +1180,265 @@ export default function CalculateurPage() {
 
                 {/* Champs pour Recours contre refus de visa */}
                 {formData.situation === 'contentieux_visa' && (
-                  <div className="space-y-4 pt-4 border-t">
+                  <div className="space-y-3 pt-3 border-t">
+                    {/* Champs de base */}
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-4">
+                      <h3 className="font-semibold text-sm text-blue-800 mb-3">Informations de base</h3>
+                      
+                      <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label htmlFor="natureDecision_visa">Nature de la décision *</Label>
+                          <Label htmlFor="natureVisa">Nature du visa *</Label>
                       <Select
-                        id="natureDecision_visa"
-                        value={formData.natureDecision}
-                        onChange={(e) => setFormData({ ...formData, natureDecision: e.target.value })}
+                            id="natureVisa"
+                            value={formData.natureVisa}
+                            onChange={(e) => setFormData({ ...formData, natureVisa: e.target.value })}
                         required
                       >
                         <option value="">-- Sélectionner --</option>
-                        <option value="refus_visa">Refus de visa</option>
+                            {typesVisas.map((visa) => (
+                              <option key={visa.value} value={visa.value}>{visa.label}</option>
+                            ))}
                       </Select>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="dateDecision_visa">Date de la décision *</Label>
+                          <Label htmlFor="dateConfirmationDepot">Date de confirmation du dépôt *</Label>
                       <Input
-                        id="dateDecision_visa"
+                            id="dateConfirmationDepot"
                         type="date"
-                        value={formData.dateDecision}
-                        onChange={(e) => setFormData({ ...formData, dateDecision: e.target.value })}
+                            value={formData.dateConfirmationDepot}
+                            onChange={(e) => {
+                              setFormData({ ...formData, dateConfirmationDepot: e.target.value, rapoDepose: null });
+                            }}
                         required
                       />
+                        </div>
+                      </div>
                     </div>
 
+                    {/* Question RAPO si plus de 4 mois */}
+                    {formData.dateConfirmationDepot && (() => {
+                      const aujourdhui = new Date();
+                      const dateConfirmationDepot = new Date(formData.dateConfirmationDepot);
+                      const dateLimite4Mois = new Date(dateConfirmationDepot);
+                      dateLimite4Mois.setMonth(dateLimite4Mois.getMonth() + 4);
+                      const plusDe4Mois = aujourdhui > dateLimite4Mois;
+                      
+                      if (plusDe4Mois && formData.rapoDepose === null && !formData.dateDepotRapo) {
+                        return (
+                          <div className="bg-orange-50 rounded-lg p-4 border-2 border-orange-400 mb-4">
+                            <h3 className="font-semibold text-sm text-orange-800 mb-3">⚠️ Vérification nécessaire</h3>
+                            <p className="text-sm text-orange-700 mb-3">
+                              Plus de 4 mois se sont écoulés depuis le dépôt. Avez-vous déposé un Recours Administratif Préalable Obligatoire (RAPO) ?
+                            </p>
                     <div className="space-y-2">
-                      <Label htmlFor="prefecture_visa">Consulat / Autorité compétente</Label>
-                      <Select
-                        id="prefecture_visa"
-                        value={formData.prefecture}
-                        onChange={(e) => setFormData({ ...formData, prefecture: e.target.value })}
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        {prefectures.map((pref) => (
-                          <option key={pref} value={pref}>{pref}</option>
-                        ))}
-                      </Select>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="rapoDepose"
+                                  value="oui"
+                                  checked={formData.rapoDepose === true}
+                                  onChange={() => setFormData({ ...formData, rapoDepose: true, dateDepotRapo: '' })}
+                                  className="w-4 h-4 text-primary"
+                                />
+                                <span className="text-sm">Oui, j'ai déposé un RAPO</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="rapoDepose"
+                                  value="non"
+                                  checked={formData.rapoDepose === false}
+                                  onChange={() => setFormData({ ...formData, rapoDepose: false, dateDepotRapo: '' })}
+                                  className="w-4 h-4 text-primary"
+                                />
+                                <span className="text-sm">Non, je n'ai pas déposé de RAPO</span>
+                              </label>
                     </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* Type de refus */}
+                    <div className="space-y-2">
+                      <Label>Type de refus *</Label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="typeRefusVisa"
+                            value="explicite"
+                            checked={formData.typeRefusVisa === 'explicite'}
+                            onChange={(e) => setFormData({ ...formData, typeRefusVisa: e.target.value, dateNotificationRefus: '' })}
+                            className="w-4 h-4 text-primary"
+                            required
+                          />
+                          <span className="text-sm">J'ai reçu une notification de refus (refus explicite)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="typeRefusVisa"
+                            value="implicite"
+                            checked={formData.typeRefusVisa === 'implicite'}
+                            onChange={(e) => setFormData({ ...formData, typeRefusVisa: e.target.value, dateNotificationRefus: '' })}
+                            className="w-4 h-4 text-primary"
+                            required
+                          />
+                          <span className="text-sm">Je n'ai pas reçu de réponse après 4 mois (refus implicite)</span>
+                        </label>
+                    </div>
+                    </div>
+
+                    {/* Date de notification (si refus explicite) */}
+                    {formData.typeRefusVisa === 'explicite' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="dateNotificationRefus">Date de notification du refus *</Label>
+                        <Input
+                          id="dateNotificationRefus"
+                          type="date"
+                          value={formData.dateNotificationRefus}
+                          onChange={(e) => setFormData({ ...formData, dateNotificationRefus: e.target.value })}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    {/* Section RAPO */}
+                    {(formData.typeRefusVisa === 'explicite' || formData.typeRefusVisa === 'implicite') && (
+                      <div className="bg-orange-50 rounded-lg p-4 border border-orange-200 space-y-3">
+                        <h3 className="font-semibold text-sm text-orange-800 mb-2">Recours Administratif Préalable Obligatoire (RAPO)</h3>
+                        
+                        {/* Afficher le champ date si "Oui" est sélectionné OU si une date existe déjà */}
+                        {(formData.rapoDepose === true || formData.dateDepotRapo) && (
+                          <div className="space-y-2">
+                            <Label htmlFor="dateDepotRapo">Date de dépôt du RAPO *</Label>
+                            <Input
+                              id="dateDepotRapo"
+                              type="date"
+                              value={formData.dateDepotRapo}
+                              onChange={(e) => setFormData({ ...formData, dateDepotRapo: e.target.value })}
+                              required={formData.rapoDepose === true}
+                            />
+                            <p className="text-xs text-muted-foreground">Indiquez la date à laquelle vous avez déposé votre RAPO</p>
+                            {formData.rapoDepose === true && !formData.dateDepotRapo && (
+                              <p className="text-xs text-orange-600 font-medium">⚠️ Veuillez renseigner la date de dépôt pour calculer les délais</p>
+                            )}
+                          </div>
+                        )}
+
+                        {formData.dateDepotRapo && (() => {
+                          const dateDepotRapo = new Date(formData.dateDepotRapo);
+                          const dateLimiteReponse = new Date(dateDepotRapo);
+                          dateLimiteReponse.setMonth(dateLimiteReponse.getMonth() + 2);
+                          const aujourdhui = new Date();
+                          const joursRestantsCommission = Math.ceil((dateLimiteReponse.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+                          const delaiDepasse = joursRestantsCommission < 0;
+                          
+                          return (
+                            <>
+                              {/* Affichage de la date limite de réponse de la commission */}
+                              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200 mb-3">
+                                <p className="text-xs font-semibold text-blue-800 mb-1">📅 Date limite de réponse de la commission</p>
+                                <p className="text-sm text-blue-700 font-medium">{formatDateCourte(dateLimiteReponse)}</p>
+                                {delaiDepasse ? (
+                                  <p className="text-xs text-red-600 font-medium mt-1">
+                                    ⚠️ Délai dépassé de {Math.abs(joursRestantsCommission)} jour(s)
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-blue-600 mt-1">
+                                    {joursRestantsCommission} jour(s) restant{joursRestantsCommission > 1 ? 's' : ''}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="dateReponseRapo">Date de réponse du RAPO (optionnel)</Label>
+                                <Input
+                                  id="dateReponseRapo"
+                                  type="date"
+                                  value={formData.dateReponseRapo}
+                                  onChange={(e) => setFormData({ ...formData, dateReponseRapo: e.target.value })}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Si vous avez reçu une réponse de la commission, indiquez la date pour calculer les délais de recours tribunal.
+                                </p>
+                              </div>
+
+                              {!formData.dateReponseRapo && (
+                                <div className="space-y-2">
+                                  <Label>Action après 2 mois sans réponse *</Label>
+                                  <p className="text-xs text-muted-foreground mb-2">
+                                    Si vous n'avez pas reçu de réponse après {formatDateCourte(dateLimiteReponse)}, choisissez votre action :
+                                  </p>
+                                  <div className="space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name="actionApresRapo"
+                                        value="saisir_tribunal"
+                                        checked={formData.actionApresRapo === 'saisir_tribunal'}
+                                        onChange={(e) => setFormData({ ...formData, actionApresRapo: e.target.value, demandeCommunicationMotifs: false })}
+                                        className="w-4 h-4 text-primary"
+                                      />
+                                      <span className="text-sm">Saisir le tribunal</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name="actionApresRapo"
+                                        value="demander_motifs"
+                                        checked={formData.actionApresRapo === 'demander_motifs'}
+                                        onChange={(e) => setFormData({ ...formData, actionApresRapo: e.target.value, demandeCommunicationMotifs: true })}
+                                        className="w-4 h-4 text-primary"
+                                      />
+                                      <span className="text-sm">Demander communication des motifs</span>
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Communication des motifs */}
+                    {(formData.demandeCommunicationMotifs || formData.actionApresRapo === 'demander_motifs') && (
+                      <div className="bg-purple-50 rounded-lg p-4 border border-purple-200 space-y-3">
+                        <h3 className="font-semibold text-sm text-purple-800 mb-2">Communication des motifs</h3>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="dateDemandeMotifs">Date de demande de communication des motifs *</Label>
+                          <Input
+                            id="dateDemandeMotifs"
+                            type="date"
+                            value={formData.dateDemandeMotifs}
+                            onChange={(e) => setFormData({ ...formData, dateDemandeMotifs: e.target.value })}
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="dateReceptionMotifs">Date de réception des motifs (optionnel)</Label>
+                          <Input
+                            id="dateReceptionMotifs"
+                            type="date"
+                            value={formData.dateReceptionMotifs}
+                            onChange={(e) => setFormData({ ...formData, dateReceptionMotifs: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Si vous avez reçu les motifs</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* Champs pour Recours concernant le titre de séjour */}
                 {formData.situation === 'contentieux_titre' && (
-                  <div className="space-y-4 pt-4 border-t">
+                  <div className="space-y-3 pt-3 border-t">
                     <div className="space-y-2">
                       <Label htmlFor="natureDecision_titre">Nature de la décision *</Label>
                       <Select
@@ -768,28 +1465,425 @@ export default function CalculateurPage() {
                       />
                     </div>
 
+                    {/* Nature du document actuellement détenu */}
                     <div className="space-y-2">
-                      <Label htmlFor="prefecture_titre">Préfecture / Autorité compétente</Label>
+                      <Label htmlFor="natureDocumentActuel_titre">Nature du document actuellement détenu *</Label>
                       <Select
-                        id="prefecture_titre"
-                        value={formData.prefecture}
-                        onChange={(e) => setFormData({ ...formData, prefecture: e.target.value })}
+                        id="natureDocumentActuel_titre"
+                        value={formData.natureDocumentActuel}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData({ ...formData, natureDocumentActuel: value });
+                          // Si Visa long séjour est sélectionné, suggérer des dates
+                          if (value === 'visa_long_sejour') {
+                            const today = new Date();
+                            const expiration = new Date(today);
+                            expiration.setMonth(expiration.getMonth() + 12);
+                            setFormData(prev => ({
+                              ...prev,
+                              natureDocumentActuel: value,
+                              dateAttributionTitre: prev.dateAttributionTitre || today.toISOString().split('T')[0],
+                              dateExpirationTitre: prev.dateExpirationTitre || expiration.toISOString().split('T')[0]
+                            }));
+                          }
+                        }}
+                        required
                       >
                         <option value="">-- Sélectionner --</option>
-                        {prefectures.map((pref) => (
-                          <option key={pref} value={pref}>{pref}</option>
+                        {typesDocuments.map((doc) => (
+                          <option key={doc.value} value={doc.value}>{doc.label}</option>
                         ))}
                       </Select>
+                    </div>
+
+                    {/* Période de validité */}
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
+                      <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="dateAttributionTitre_titre">Date d'attribution du titre ou du visa *</Label>
+                        <Input
+                          id="dateAttributionTitre_titre"
+                          type="date"
+                          value={formData.dateAttributionTitre}
+                          onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="dateExpirationTitre_titre">Date d'expiration du titre ou du visa *</Label>
+                        <Input
+                          id="dateExpirationTitre_titre"
+                          type="date"
+                          value={formData.dateExpirationTitre}
+                          onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
+                          required
+                          className={dateErrors.dateExpirationTitre ? 'border-red-500' : ''}
+                        />
+                        {dateErrors.dateExpirationTitre && (
+                          <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
               </form>
+
+              {/* Affichage des résultats du calcul */}
+              {calculs && (
+                <div className="mt-6 pt-6 border-t border-primary/20">
+                  {/* Résultats pour recours contre refus de visa */}
+                  {calculs.type === 'contentieux_visa' && (
+                    <div className="space-y-4">
+                      {/* Message d'erreur si aucun recours n'est plus possible */}
+                      {calculs.erreur && (
+                        <div className="rounded-lg p-4 border-2 bg-red-50 border-red-500">
+                          <div className="flex items-start gap-3">
+                            <span className="text-2xl">🚫</span>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-lg mb-2 text-red-800">Aucun recours possible</h3>
+                              <p className="text-sm mb-3 text-red-700 font-semibold">{calculs.messageErreur}</p>
+                              {calculs.dateConfirmationDepot && (
+                                <div className="text-xs text-red-600 space-y-1">
+                                  <p><strong>Date de confirmation du dépôt :</strong> {formatDateCourte(calculs.dateConfirmationDepot)}</p>
+                                  <p><strong>Date limite (4 mois après dépôt) :</strong> {formatDateCourte(calculs.dateLimite4Mois)}</p>
+                                  {calculs.joursDepuis4Mois && (
+                                    <p><strong>Délai dépassé depuis :</strong> {calculs.joursDepuis4Mois} jour(s)</p>
+                                  )}
+            </div>
+                              )}
+          </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message de demande de RAPO */}
+                      {calculs.demandeRapo && !calculs.erreur && (
+                        <div className="rounded-lg p-4 border-2 bg-orange-50 border-orange-400">
+                          <div className="flex items-start gap-3">
+                            <span className="text-2xl">⚠️</span>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-lg mb-2 text-orange-800">Vérification nécessaire</h3>
+                              <p className="text-sm mb-3 text-orange-700">{calculs.message}</p>
+                              <p className="text-xs text-orange-600 mb-3">
+                                Veuillez indiquer si vous avez déposé un RAPO en remplissant le champ "Date de dépôt du RAPO" ci-dessus.
+                              </p>
+                              {calculs.dateConfirmationDepot && (
+                                <div className="text-xs text-orange-600 space-y-1">
+                                  <p><strong>Date de confirmation du dépôt :</strong> {formatDateCourte(calculs.dateConfirmationDepot)}</p>
+                                  <p><strong>Date limite (4 mois après dépôt) :</strong> {formatDateCourte(calculs.dateLimite4Mois)}</p>
+                                  {calculs.joursDepuis4Mois && (
+                                    <p><strong>Délai dépassé depuis :</strong> {calculs.joursDepuis4Mois} jour(s)</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message de demande de date de dépôt RAPO */}
+                      {calculs.demandeDateRapo && !calculs.erreur && (
+                        <div className="rounded-lg p-4 border-2 bg-blue-50 border-blue-400">
+                          <div className="flex items-start gap-3">
+                            <span className="text-2xl">📅</span>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-lg mb-2 text-blue-800">Date de dépôt requise</h3>
+                              <p className="text-sm mb-3 text-blue-700">{calculs.message}</p>
+                              
+                              {/* Champ de date directement dans le message */}
+                              <div className="bg-white rounded-lg p-3 border border-blue-200 mb-3">
+                                <Label htmlFor="dateDepotRapoMessage" className="text-blue-800 mb-2">Date de dépôt du RAPO *</Label>
+                                <Input
+                                  id="dateDepotRapoMessage"
+                                  type="date"
+                                  value={formData.dateDepotRapo}
+                                  onChange={(e) => setFormData({ ...formData, dateDepotRapo: e.target.value })}
+                                  required
+                                  className="w-full"
+                                />
+                                <p className="text-xs text-blue-600 mt-2">
+                                  Indiquez la date à laquelle vous avez déposé votre RAPO pour calculer les délais qui suivent (réponse de la commission, recours tribunal, etc.).
+                                </p>
+                              </div>
+                              
+                              {calculs.dateConfirmationDepot && (
+                                <div className="text-xs text-blue-600 space-y-1">
+                                  <p><strong>Date de confirmation du dépôt :</strong> {formatDateCourte(calculs.dateConfirmationDepot)}</p>
+                                  <p><strong>Date limite (4 mois après dépôt) :</strong> {formatDateCourte(calculs.dateLimite4Mois)}</p>
+                                  {calculs.joursDepuis4Mois && (
+                                    <p><strong>Délai dépassé depuis :</strong> {calculs.joursDepuis4Mois} jour(s)</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message principal (si pas d'erreur) */}
+                      {!calculs.erreur && !calculs.demandeRapo && calculs.messagePersonnalise && (
+                      <div className={`rounded-lg p-4 border-2 ${
+                        calculs.joursRestantsRapo && calculs.joursRestantsRapo <= 7
+                          ? 'bg-red-50 border-red-300' 
+                          : calculs.rapoDansDelais
+                          ? 'bg-orange-50 border-orange-300' 
+                          : 'bg-green-50 border-green-300'
+                      }`}>
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl">
+                            {calculs.joursRestantsRapo && calculs.joursRestantsRapo <= 7 ? '⚠️' : calculs.rapoDansDelais ? '⏰' : '✅'}
+                          </span>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-lg mb-2">
+                              {calculs.joursRestantsRapo && calculs.joursRestantsRapo <= 7 ? 'URGENT - RAPO' : 'Recours contre refus de visa'}
+                            </h3>
+                            <p className="text-sm mb-3">{calculs.messagePersonnalise}</p>
+                            
+                            {calculs.natureVisa && (
+                              <p className="text-xs text-muted-foreground mb-1">
+                                <strong>Nature du visa :</strong> {typesVisas.find(v => v.value === calculs.natureVisa)?.label || calculs.natureVisa}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      )}
+
+                      {/* Timeline */}
+                      {calculs.timeline && calculs.timeline.length > 0 && (
+                        <div className="bg-white rounded-lg p-4 border-2 border-primary/20">
+                          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                            <span>📅</span>
+                            <span>Timeline des délais</span>
+                          </h3>
+                          <div className="space-y-3">
+                            {calculs.timeline.map((item: any, index: number) => {
+                              const isPast = item.date < new Date();
+                              const isUrgent = item.urgent || false;
+                              
+                              return (
+                                <div key={index} className={`flex items-start gap-3 p-3 rounded-lg border ${
+                                  isUrgent && !isPast
+                                    ? 'bg-red-50 border-red-300'
+                                    : isPast
+                                    ? 'bg-gray-50 border-gray-200'
+                                    : 'bg-blue-50 border-blue-200'
+                                }`}>
+                                  <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                                    isUrgent && !isPast
+                                      ? 'bg-red-500'
+                                      : isPast
+                                      ? 'bg-gray-400'
+                                      : 'bg-blue-500'
+                                  }`}></div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className={`text-sm font-semibold ${
+                                        isUrgent && !isPast ? 'text-red-800' : isPast ? 'text-gray-600' : 'text-blue-800'
+                                      }`}>
+                                        {item.label}
+                                      </p>
+                                      <span className={`text-xs px-2 py-1 rounded ${
+                                        isUrgent && !isPast
+                                          ? 'bg-red-200 text-red-800'
+                                          : isPast
+                                          ? 'bg-gray-200 text-gray-600'
+                                          : 'bg-blue-200 text-blue-800'
+                                      }`}>
+                                        {formatDateCourte(item.date)}
+                                      </span>
+                                    </div>
+                                    {isUrgent && !isPast && (
+                                      <p className="text-xs text-red-600 font-medium">⚠️ Date limite urgente</p>
+                                    )}
+                                    {isPast && (
+                                      <p className="text-xs text-gray-500">✓ Date passée</p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Détails RAPO - seulement si aucun RAPO n'a été déposé */}
+                      {!calculs.erreur && !calculs.demandeRapo && calculs.dateDebutRapo && calculs.dateLimiteRapo && !formData.dateDepotRapo && (
+                        <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                          <h4 className="font-semibold text-sm text-orange-800 mb-2">Détails RAPO</h4>
+                          <div className="text-xs space-y-1">
+                            <p><strong>Début possible :</strong> {formatDateCourte(calculs.dateDebutRapo)}</p>
+                            <p><strong>Date limite :</strong> {formatDateCourte(calculs.dateLimiteRapo)}</p>
+                            {calculs.joursRestantsRapo !== null && (
+                              <p>
+                                <strong>Jours restants :</strong> 
+                                <span className={`ml-2 px-2 py-0.5 rounded ${
+                                  calculs.joursRestantsRapo <= 7
+                                    ? 'bg-red-200 text-red-800 font-bold'
+                                    : calculs.rapoDansDelais
+                                    ? 'bg-orange-200 text-orange-800'
+                                    : 'bg-green-200 text-green-800'
+                                }`}>
+                                  {calculs.joursRestantsRapo} jour(s)
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Détails Commission (si RAPO déposé) */}
+                      {!calculs.erreur && !calculs.demandeRapo && !calculs.demandeDateRapo && formData.dateDepotRapo && calculs.dateLimiteReponseCommission && (
+                        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                          <h4 className="font-semibold text-sm text-blue-800 mb-2">Détails Commission</h4>
+                          <div className="text-xs space-y-1">
+                            <p><strong>Date de dépôt du RAPO :</strong> {formatDateCourte(new Date(formData.dateDepotRapo))}</p>
+                            <p><strong>Date limite de réponse :</strong> {formatDateCourte(calculs.dateLimiteReponseCommission)}</p>
+                            {calculs.joursRestantsCommission !== undefined && (
+                              <p>
+                                <strong>Jours restants :</strong> 
+                                <span className={`ml-2 px-2 py-0.5 rounded ${
+                                  calculs.joursRestantsCommission <= 7
+                                    ? 'bg-red-200 text-red-800 font-bold'
+                                    : calculs.joursRestantsCommission <= 30
+                                    ? 'bg-orange-200 text-orange-800'
+                                    : 'bg-green-200 text-green-800'
+                                }`}>
+                                  {calculs.joursRestantsCommission} jour(s)
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Détails Tribunal */}
+                      {!calculs.erreur && !calculs.demandeRapo && !calculs.demandeDateRapo && calculs.dateDebutTribunal && calculs.dateFinTribunal && (
+                        <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                          <h4 className="font-semibold text-sm text-purple-800 mb-2">Détails Recours Tribunal</h4>
+                          <div className="text-xs space-y-1">
+                            <p><strong>Début possible :</strong> {formatDateCourte(calculs.dateDebutTribunal)}</p>
+                            <p><strong>Date limite :</strong> {formatDateCourte(calculs.dateFinTribunal)}</p>
+                            {calculs.joursRestantsTribunal !== null && (
+                              <p>
+                                <strong>Jours restants :</strong> 
+                                <span className={`ml-2 px-2 py-0.5 rounded ${
+                                  calculs.joursRestantsTribunal <= 7
+                                    ? 'bg-red-200 text-red-800 font-bold'
+                                    : calculs.joursRestantsTribunal <= 30
+                                    ? 'bg-orange-200 text-orange-800'
+                                    : 'bg-green-200 text-green-800'
+                                }`}>
+                                  {calculs.joursRestantsTribunal} jour(s)
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Rappel légal motifs */}
+                      {!calculs.erreur && !calculs.demandeRapo && !calculs.demandeDateRapo && (
+                        <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                          <h4 className="font-semibold text-sm text-yellow-800 mb-2">📋 Rappel légal</h4>
+                          <ul className="text-xs text-yellow-700 space-y-1">
+                            <li>• <strong>Refus explicite :</strong> Délai de 30 jours après la notification pour demander communication des motifs</li>
+                            <li>• <strong>Refus implicite :</strong> Délai de 30 jours après la naissance du rejet implicite (4 mois après dépôt)</li>
+                            <li>• <strong>RAPO :</strong> Délai de 30 jours à compter du refus (explicite ou implicite)</li>
+                            <li>• <strong>Recours tribunal :</strong> Délai de 2 mois après réception de la réponse RAPO ou après demande de motifs</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {calculs.type === 'contentieux' && calculs.messagePersonnalise && (
+                    <div className={`rounded-lg p-4 border-2 ${
+                      calculs.urgence 
+                        ? 'bg-red-50 border-red-300' 
+                        : calculs.recoursDansDelais 
+                        ? 'bg-orange-50 border-orange-300' 
+                        : 'bg-green-50 border-green-300'
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">{calculs.urgence ? '⚠️' : calculs.recoursDansDelais ? '⏰' : '✅'}</span>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg mb-2">
+                            {calculs.urgence ? 'URGENT' : 'Délai de recours'}
+                          </h3>
+                          <p className="text-sm mb-2">{calculs.messagePersonnalise}</p>
+                          {calculs.natureDocumentActuel && (
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Document actuel : {typesDocuments.find(d => d.value === calculs.natureDocumentActuel)?.label}
+                            </p>
+                          )}
+                          <div className="text-xs space-y-1">
+                            <p><strong>Date de décision :</strong> {formatDateCourte(calculs.dateDecision)}</p>
+                            <p><strong>Date limite de recours :</strong> {formatDateCourte(calculs.dateLimite)}</p>
+                            <p><strong>Jours restants :</strong> <span className={getAlertColor(calculs.joursRestants).split(' ')[0]}>{calculs.joursRestants} jour(s)</span></p>
+                            <p><strong>Type de recours :</strong> {calculs.typeRecours}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {calculs.type === 'demande' && calculs.renouvellement && calculs.renouvellement.messagePersonnalise && (
+                    <div className={`rounded-lg p-4 border-2 ${
+                      calculs.renouvellement.enRetard 
+                        ? 'bg-red-50 border-red-300' 
+                        : calculs.renouvellement.risqueRupture 
+                        ? 'bg-orange-50 border-orange-300' 
+                        : 'bg-green-50 border-green-300'
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">{calculs.renouvellement.enRetard ? '⚠️' : calculs.renouvellement.risqueRupture ? '⏰' : '✅'}</span>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg mb-2">
+                            {calculs.renouvellement.enRetard ? 'RENOUVELLEMENT URGENT' : calculs.renouvellement.risqueRupture ? 'RENOUVELLEMENT RECOMMANDÉ' : 'RENOUVELLEMENT'}
+                          </h3>
+                          <p className="text-sm mb-2">{calculs.renouvellement.messagePersonnalise}</p>
+                          {calculs.renouvellement.natureDocumentActuel && (
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Document actuel : {typesDocuments.find(d => d.value === calculs.renouvellement.natureDocumentActuel)?.label}
+                            </p>
+                          )}
+                          <div className="text-xs space-y-1">
+                            <p><strong>Date d'expiration :</strong> {formatDateCourte(calculs.renouvellement.dateExpiration)}</p>
+                            <p><strong>Jours avant expiration :</strong> <span className={getAlertColor(calculs.renouvellement.joursAvantExpiration).split(' ')[0]}>{calculs.renouvellement.joursAvantExpiration} jour(s)</span></p>
+                            <p><strong>Période recommandée :</strong> {calculs.renouvellement.periodeRecommandee}</p>
+                            <p><strong>Date recommandée min :</strong> {formatDateCourte(calculs.renouvellement.dateRecommandeeMin)}</p>
+                            <p><strong>Date recommandée max :</strong> {formatDateCourte(calculs.renouvellement.dateRecommandeeMax)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {calculs.type === 'demande' && calculs.premiereDemande && (
+                    <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-300">
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">✅</span>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg mb-2">Première demande</h3>
+                          <p className="text-sm">{calculs.premiereDemande.message}</p>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Délai recommandé : {calculs.premiereDemande.delaiRecommandé} mois avant le début
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Colonne 3 : Explications */}
-          <div className="lg:col-span-4">
-            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20">
+          {/* Colonne 3 : Explications (à l'extrémité droite) */}
+          <div className="w-full lg:w-auto lg:flex-shrink-0 lg:self-start">
+            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-primary/20 lg:sticky lg:top-24 lg:w-80">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                   <span className="text-xl">ℹ️</span>

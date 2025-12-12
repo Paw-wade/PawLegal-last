@@ -323,6 +323,10 @@ export const appointmentsAPI = {
   getMyAppointments: () =>
     api.get('/appointments'),
   
+  // Récupérer un rendez-vous par ID
+  getAppointmentById: (id: string) =>
+    api.get(`/appointments/${id}`),
+  
   // Client - Annuler un rendez-vous
   cancelAppointment: (id: string) =>
     api.patch(`/appointments/${id}/cancel`),
@@ -340,8 +344,13 @@ export const appointmentsAPI = {
     motif?: string;
     description?: string;
     notes?: string;
+    effectue?: boolean;
   }) =>
     api.patch(`/appointments/${id}`, data),
+  
+  // Admin - Supprimer un rendez-vous
+  deleteAppointment: (id: string) =>
+    api.delete(`/appointments/${id}`),
 };
 
 export const tasksAPI = {
@@ -387,6 +396,8 @@ export const tasksAPI = {
     dateFin?: string;
     dossier?: string;
     notes?: string;
+    effectue?: boolean;
+    commentaireEffectue?: string;
   }) => {
     return api.put(`/tasks/${id}`, data);
   },
@@ -498,6 +509,10 @@ export const messagesAPI = {
     api.get(`/messages/${messageId}/download/${fileIndex}`, {
       responseType: 'blob',
     }),
+  
+  // Supprimer un message (seul l'expéditeur peut supprimer)
+  deleteMessage: (id: string) =>
+    api.delete(`/messages/${id}`),
 };
 
 export const documentsAPI = {

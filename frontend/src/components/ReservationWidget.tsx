@@ -44,7 +44,6 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   
   // Utiliser l'état contrôlé si fourni, sinon utiliser l'état interne
   const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
-  const setIsOpen = controlledIsOpen !== undefined ? (onClose || (() => {})) : setInternalIsOpen;
 
   // Charger l'état depuis localStorage au montage
   useEffect(() => {
@@ -110,6 +109,13 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Réinitialiser userProfileLoaded quand le widget s'ouvre
+  useEffect(() => {
+    if (isOpen) {
+      setUserProfileLoaded(false);
+    }
+  }, [isOpen]);
+
   // Heures disponibles par défaut
   const heuresDisponiblesParDefaut = [
     '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
@@ -134,46 +140,51 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   // Pré-remplir les informations de l'utilisateur connecté
   useEffect(() => {
     const loadUserProfile = async () => {
-      if (isOpen && !userProfileLoaded && (session?.user || typeof window !== 'undefined')) {
-        try {
-          // Si on a une session, utiliser les données de la session
-          if (session?.user) {
-            const nameParts = (session.user.name || '').split(' ');
-            const firstName = nameParts[0] || '';
-            const lastName = nameParts.slice(1).join(' ') || '';
-            
-            setFormData(prev => ({
-              ...prev,
-              prenom: prev.prenom || firstName,
-              nom: prev.nom || lastName,
-              email: prev.email || session.user.email || '',
-            }));
-            setUserProfileLoaded(true);
-          } else {
-            // Sinon, essayer de charger depuis l'API
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-            if (token) {
-              try {
-                const response = await userAPI.getProfile();
-                if (response.data.success) {
-                  const user = response.data.user || response.data.data;
-                  setFormData(prev => ({
-                    ...prev,
-                    prenom: prev.prenom || user.firstName || '',
-                    nom: prev.nom || user.lastName || '',
-                    email: prev.email || user.email || '',
-                    telephone: prev.telephone || user.phone || '',
-                  }));
-                  setUserProfileLoaded(true);
-                }
-              } catch (error) {
-                console.error('Erreur lors du chargement du profil:', error);
-              }
+      // Ne charger que si le widget est ouvert, que l'utilisateur est connecté et que le profil n'a pas encore été chargé
+      if (!isOpen || userProfileLoaded) {
+        return;
+      }
+
+      try {
+        // D'abord, essayer de charger depuis l'API pour avoir toutes les informations (y compris le téléphone)
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (token || session?.user) {
+          try {
+            const response = await userAPI.getProfile();
+            if (response.data.success) {
+              const user = response.data.user || response.data.data;
+              setFormData(prev => ({
+                ...prev,
+                prenom: user.firstName || prev.prenom || '',
+                nom: user.lastName || prev.nom || '',
+                email: user.email || prev.email || '',
+                telephone: user.phone || user.telephone || prev.telephone || '',
+              }));
+              setUserProfileLoaded(true);
+              return;
             }
+          } catch (apiError) {
+            console.log('Impossible de charger depuis l\'API, utilisation de la session:', apiError);
           }
-        } catch (error) {
-          console.error('Erreur lors du chargement du profil utilisateur:', error);
         }
+
+        // Si l'API échoue, utiliser les données de la session NextAuth
+        if (session?.user) {
+          const nameParts = (session.user.name || '').split(' ');
+          const firstName = nameParts[0] || '';
+          const lastName = nameParts.slice(1).join(' ') || '';
+          
+          setFormData(prev => ({
+            ...prev,
+            prenom: prev.prenom || firstName,
+            nom: prev.nom || lastName,
+            email: prev.email || session.user.email || '',
+          }));
+          setUserProfileLoaded(true);
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement du profil utilisateur:', error);
+        setUserProfileLoaded(true); // Marquer comme chargé pour éviter les boucles infinies
       }
     };
 
@@ -241,7 +252,26 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
     } catch (err: any) {
       console.error('Erreur lors de la réservation:', err);
       console.error('Détails de l\'erreur:', err.response?.data);
-      setError(err.response?.data?.message || err.message || 'Une erreur est survenue lors de la réservation');
+      
+      // Afficher un message d'erreur plus détaillé
+      let errorMessage = 'Une erreur est survenue lors de la réservation';
+      
+      if (err.response?.data) {
+        // Si le serveur a renvoyé un message d'erreur spécifique
+        errorMessage = err.response.data.message || errorMessage;
+        
+        // Si le serveur a renvoyé des erreurs de validation
+        if (err.response.data.errors && Array.isArray(err.response.data.errors)) {
+          const validationErrors = err.response.data.errors.map((e: any) => e.msg || e.message).join(', ');
+          if (validationErrors) {
+            errorMessage = `Erreurs de validation: ${validationErrors}`;
+          }
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -254,8 +284,13 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   return (
     <div className="bg-white rounded-lg shadow-xl p-3 border border-border max-w-sm relative">
       <button
-        onClick={handleClose}
-        className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors z-10 bg-white/80 rounded-full w-6 h-6 flex items-center justify-center hover:bg-white hover:shadow-md"
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleClose();
+        }}
+        className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors z-10 bg-white/80 rounded-full w-6 h-6 flex items-center justify-center hover:bg-white hover:shadow-md cursor-pointer"
         aria-label="Fermer"
       >
         <span className="text-lg leading-none">×</span>
@@ -396,7 +431,7 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
         </Button>
 
         <p className="text-[9px] text-center text-muted-foreground mt-1">
-          * Obligatoire. Confirmation par email.
+          Vous recevrez une confirmation sur votre espace personnel.
         </p>
       </form>
     </div>

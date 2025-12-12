@@ -190,11 +190,38 @@ export default function RendezVousPage() {
                 return time.substring(0, 5); // Format HH:MM
               };
 
+              // Calculer si le rendez-vous est passé en tenant compte de la date ET de l'heure
+              let isPast = false;
+              if (rdv.date && rdv.heure) {
+                const dateObj = new Date(rdv.date);
+                const [hours, minutes] = rdv.heure.split(':').map(Number);
+                const appointmentDateTime = new Date(dateObj);
+                appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+                const now = new Date();
+                isPast = appointmentDateTime < now;
+              } else if (rdv.date) {
+                const dateObj = new Date(rdv.date);
+                const appointmentDateEnd = new Date(dateObj);
+                appointmentDateEnd.setHours(23, 59, 59, 999);
+                isPast = appointmentDateEnd < new Date();
+              }
+
               const canCancel = rdv.statut !== 'annule' && rdv.statut !== 'termine';
               const appointmentId = rdv._id || rdv.id;
 
+              // Déterminer le style de la carte
+              const getCardStyle = () => {
+                if (isPast && rdv.statut !== 'termine' && rdv.statut !== 'annule' && !rdv.effectue) {
+                  return 'bg-red-50 border-l-4 border-red-500';
+                }
+                if (rdv.effectue) {
+                  return 'bg-green-50 border-l-4 border-green-500';
+                }
+                return 'bg-white border-l-4 border-primary';
+              };
+
               return (
-                <div key={appointmentId} className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-primary hover:shadow-xl transition-shadow">
+                <div key={appointmentId} className={`rounded-lg shadow-lg p-6 ${getCardStyle()} hover:shadow-xl transition-shadow`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <h3 className="text-xl font-semibold mb-2 text-foreground">{rdv.motif || 'Rendez-vous'}</h3>
@@ -210,6 +237,18 @@ export default function RendezVousPage() {
                           <span>🕐</span>
                           <span>{formatTime(rdv.heure)}</span>
                         </p>
+                        {isPast && rdv.statut !== 'termine' && rdv.statut !== 'annule' && !rdv.effectue && (
+                          <p className="flex items-center gap-2 text-red-600 font-bold mt-2">
+                            <span>⚠️</span>
+                            <span>Rendez-vous dépassé</span>
+                          </p>
+                        )}
+                        {rdv.effectue && (
+                          <p className="flex items-center gap-2 text-green-700 font-bold mt-2">
+                            <span>✅</span>
+                            <span>Rendez-vous effectué</span>
+                          </p>
+                        )}
                         {(rdv.nom || rdv.prenom) && (
                           <p className="flex items-center gap-2">
                             <span>👤</span>

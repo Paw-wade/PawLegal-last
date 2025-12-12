@@ -228,6 +228,7 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
       { href: '/client/rendez-vous', label: 'Rendez-vous', requiresAuth: true },
       { href: '/client/documents', label: 'Documents', requiresAuth: true },
       { href: '/client/messages', label: 'Messages', requiresAuth: true },
+      { href: '/client/taches', label: 'Mes tâches', requiresAuth: true },
       { href: '/client/notifications', label: 'Notifications', requiresAuth: true },
       { href: '/client/temoignages', label: 'Témoignage', requiresAuth: true },
       { href: '/calculateur', label: 'Calculateur', highlight: true },

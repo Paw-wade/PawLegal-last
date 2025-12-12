@@ -17,131 +17,8 @@ export function DossierDetailView({ dossier, variant = 'client' }: DossierDetail
   const handlePrint = () => {
     if (!componentRef.current) return;
 
-    // Créer une nouvelle fenêtre pour l'impression
-    const printContent = componentRef.current.innerHTML;
-    const printWindow = window.open('', '_blank');
-    
-    if (!printWindow) {
-      alert('Veuillez autoriser les fenêtres popup pour imprimer');
-      return;
-    }
-
-    // Styles pour l'impression
-    const styles = `
-      <style>
-        @page {
-          size: A4;
-          margin: 20mm;
-        }
-        body {
-          font-family: Arial, sans-serif;
-          font-size: 12px;
-          line-height: 1.6;
-          color: #333;
-          padding: 20px;
-        }
-        h1 {
-          font-size: 24px;
-          color: #f97316;
-          margin-bottom: 10px;
-          border-bottom: 2px solid #f97316;
-          padding-bottom: 10px;
-        }
-        h2 {
-          font-size: 18px;
-          color: #333;
-          margin-top: 20px;
-          margin-bottom: 10px;
-          border-bottom: 1px solid #ddd;
-          padding-bottom: 5px;
-        }
-        .info-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          margin: 15px 0;
-        }
-        .info-item {
-          margin-bottom: 10px;
-        }
-        .info-label {
-          font-weight: bold;
-          color: #666;
-          font-size: 11px;
-          text-transform: uppercase;
-          margin-bottom: 3px;
-        }
-        .info-value {
-          font-size: 12px;
-          color: #333;
-        }
-        .badge {
-          display: inline-block;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 11px;
-          font-weight: 600;
-          margin-right: 8px;
-          margin-bottom: 8px;
-        }
-        .description {
-          background: #f9fafb;
-          padding: 15px;
-          border-radius: 8px;
-          margin: 15px 0;
-          white-space: pre-wrap;
-        }
-        .section {
-          margin-bottom: 25px;
-          page-break-inside: avoid;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 15px 0;
-        }
-        table th, table td {
-          border: 1px solid #ddd;
-          padding: 8px;
-          text-align: left;
-        }
-        table th {
-          background: #f9fafb;
-          font-weight: bold;
-        }
-        .no-print {
-          display: none !important;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-        }
-      </style>
-    `;
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Dossier ${dossier.numero || dossier._id}</title>
-          ${styles}
-        </head>
-        <body>
-          ${printContent}
-        </body>
-      </html>
-    `);
-    
-    printWindow.document.close();
-    
-    // Attendre que le contenu soit chargé avant d'imprimer
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    };
+    // Utiliser directement la fonction d'impression du navigateur
+    window.print();
   };
 
   const handleDownloadPDF = () => {
@@ -258,36 +135,119 @@ export function DossierDetailView({ dossier, variant = 'client' }: DossierDetail
     printWindow.document.close();
 
     // Utiliser html2canvas pour convertir en image puis en PDF
-    setTimeout(() => {
-      import('html2canvas').then((html2canvas) => {
-        html2canvas.default(element, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-        }).then((canvas) => {
-          const imgData = canvas.toDataURL('image/png');
-          const imgWidth = 210; // A4 width in mm
-          const pageHeight = 297; // A4 height in mm
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          let heightLeft = imgHeight;
+    // Attendre que le contenu de la fenêtre soit chargé
+    printWindow.onload = () => {
+      setTimeout(() => {
+        import('html2canvas').then((html2canvas) => {
+          // Capturer le body de la fenêtre d'impression au lieu de l'élément original
+          const bodyElement = printWindow.document.body;
+          
+          html2canvas.default(bodyElement, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            allowTaint: false, // Ne pas permettre taint pour éviter les problèmes CORS
+            backgroundColor: '#ffffff',
+            removeContainer: false,
+            onclone: (clonedDoc: Document) => {
+              // S'assurer que toutes les images sont chargées dans le clone
+              const images = clonedDoc.querySelectorAll('img');
+              const imagePromises: Promise<void>[] = [];
+              
+              images.forEach((img: HTMLImageElement) => {
+                if (!img.complete || img.naturalHeight === 0) {
+                  const promise = new Promise<void>((resolve) => {
+                    img.onload = () => resolve();
+                    img.onerror = () => {
+                      img.style.display = 'none';
+                      resolve();
+                    };
+                    // Si l'image ne charge pas dans 2 secondes, la masquer
+                    setTimeout(() => {
+                      img.style.display = 'none';
+                      resolve();
+                    }, 2000);
+                  });
+                  imagePromises.push(promise);
+                }
+              });
+              
+              return Promise.all(imagePromises).then(() => {});
+            }
+          }).then((canvas) => {
+            try {
+              // Vérifier que le canvas est valide
+              if (!canvas || canvas.width === 0 || canvas.height === 0) {
+                throw new Error('Le canvas est vide ou invalide');
+              }
 
-          let position = 0;
+              // Convertir le canvas en blob puis en data URL pour éviter les problèmes de signature
+              canvas.toBlob((blob: Blob | null) => {
+                if (!blob) {
+                  throw new Error('Impossible de convertir le canvas en blob');
+                }
 
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  try {
+                    const imgData = reader.result as string;
+                    
+                    // Vérifier que imgData est valide
+                    if (!imgData || typeof imgData !== 'string' || !imgData.startsWith('data:image/')) {
+                      throw new Error('Les données de l\'image sont invalides');
+                    }
 
-          while (heightLeft >= 0) {
-            position = heightLeft - imgHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
-          }
+                    // Créer l'instance PDF
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const imgWidth = 210; // A4 width in mm
+                    const pageHeight = 297; // A4 height in mm
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    let heightLeft = imgHeight;
 
-          pdf.save(`Dossier_${dossier.numero || dossier._id}_${new Date().toISOString().split('T')[0]}.pdf`);
+                    let position = 0;
+
+                    // Ajouter la première page avec l'image
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+
+                    // Ajouter des pages supplémentaires si nécessaire
+                    while (heightLeft >= 0) {
+                      position = heightLeft - imgHeight;
+                      pdf.addPage();
+                      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                      heightLeft -= pageHeight;
+                    }
+
+                    pdf.save(`Dossier_${dossier.numero || dossier._id}_${new Date().toISOString().split('T')[0]}.pdf`);
+                    printWindow.close();
+                  } catch (error: any) {
+                    console.error('Erreur lors de la génération du PDF:', error);
+                    alert(`Erreur lors de la génération du PDF: ${error.message || 'Erreur inconnue'}`);
+                    printWindow.close();
+                  }
+                };
+                reader.onerror = () => {
+                  throw new Error('Erreur lors de la lecture du blob');
+                };
+                reader.readAsDataURL(blob);
+              }, 'image/png', 1.0);
+            } catch (error: any) {
+              console.error('Erreur lors de la génération du PDF:', error);
+              alert(`Erreur lors de la génération du PDF: ${error.message || 'Erreur inconnue'}`);
+              printWindow.close();
+            }
+          }).catch((error: any) => {
+            console.error('Erreur lors de la conversion HTML en canvas:', error);
+            alert(`Erreur lors de la conversion: ${error.message || 'Erreur inconnue'}`);
+            printWindow.close();
+          });
+        }).catch((error: any) => {
+          console.error('Erreur lors du chargement de html2canvas:', error);
+          alert('Erreur lors du chargement de la bibliothèque de conversion');
           printWindow.close();
         });
-      });
-    }, 500);
+      }, 1000); // Attendre que le contenu soit chargé
+    };
   };
 
   const formatDate = (date: string | Date | null | undefined) => {

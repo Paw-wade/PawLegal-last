@@ -109,9 +109,24 @@ router.post(
       });
     } catch (error) {
       console.error('Erreur lors de la création du rendez-vous:', error);
+      console.error('Détails de l\'erreur:', error.message);
+      console.error('Stack:', error.stack);
+      
+      // Retourner un message d'erreur plus détaillé
+      let errorMessage = 'Erreur serveur lors de la création du rendez-vous';
+      
+      if (error.name === 'ValidationError') {
+        // Erreur de validation Mongoose
+        const validationErrors = Object.values(error.errors).map((err: any) => err.message);
+        errorMessage = `Erreur de validation: ${validationErrors.join(', ')}`;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur lors de la création du rendez-vous'
+        message: errorMessage,
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
@@ -145,11 +160,15 @@ router.get('/', protect, async (req, res) => {
 // @access  Private (Admin)
 router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const { statut, date } = req.query;
+    const { statut, date, userId } = req.query;
     let query = {};
 
     if (statut) {
       query.statut = statut;
+    }
+
+    if (userId) {
+      query.user = userId;
     }
 
     if (date) {
@@ -166,13 +185,85 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
 
     res.json({
       success: true,
-      data: rendezVous
+      data: rendezVous,
+      appointments: rendezVous // Alias pour compatibilité
     });
   } catch (error) {
     console.error('Erreur lors de la récupération des rendez-vous:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur lors de la récupération des rendez-vous'
+    });
+  }
+});
+
+// @route   GET /api/appointments/:id
+// @desc    Récupérer un rendez-vous par ID
+// @access  Private
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const rendezVous = await RendezVous.findById(req.params.id)
+      .populate('user', 'firstName lastName email');
+
+    if (!rendezVous) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rendez-vous non trouvé'
+      });
+    }
+
+    // Vérifier les permissions : propriétaire ou admin
+    const isOwner = rendezVous.user && rendezVous.user.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+    
+    if (!isOwner && !isAdmin) {
+      // Vérifier aussi par email si pas d'utilisateur connecté mais rendez-vous créé avec email
+      if (!rendezVous.user && rendezVous.email !== req.user.email) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'avez pas l\'autorisation de voir ce rendez-vous'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: rendezVous
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération du rendez-vous:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération du rendez-vous'
+    });
+  }
+});
+
+// @route   DELETE /api/appointments/:id
+// @desc    Supprimer un rendez-vous (admin seulement)
+// @access  Private (Admin)
+router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const rendezVous = await RendezVous.findById(req.params.id);
+
+    if (!rendezVous) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rendez-vous non trouvé'
+      });
+    }
+
+    await RendezVous.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Rendez-vous supprimé avec succès'
+    });
+  } catch (error) {
+    console.error('Erreur lors de la suppression du rendez-vous:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la suppression du rendez-vous'
     });
   }
 });
@@ -289,9 +380,10 @@ router.patch(
     body('statut').optional().isIn(['en_attente', 'confirme', 'annule', 'termine']).withMessage('Statut invalide'),
     body('date').optional().isISO8601().withMessage('Date invalide'),
     body('heure').optional().trim().notEmpty().withMessage('Heure invalide'),
-    body('motif').optional().trim().isIn(['Consultation', 'Dossier administratif', 'Suivi de dossier', 'Autre']).withMessage('Motif invalide'),
+    body('motif').optional().trim(),
     body('description').optional().trim().isLength({ max: 500 }).withMessage('La description ne peut pas dépasser 500 caractères'),
-    body('notes').optional().trim()
+    body('notes').optional().trim(),
+    body('effectue').optional().isBoolean().withMessage('Le champ effectue doit être un booléen')
   ],
   async (req, res) => {
     try {
@@ -304,7 +396,7 @@ router.patch(
         });
       }
 
-      const { statut, date, heure, motif, description, notes } = req.body;
+      const { statut, date, heure, motif, description, notes, effectue } = req.body;
       const rendezVous = await RendezVous.findById(req.params.id);
 
       if (!rendezVous) {
@@ -325,6 +417,7 @@ router.patch(
       if (motif !== undefined) rendezVous.motif = motif;
       if (description !== undefined) rendezVous.description = description;
       if (notes !== undefined) rendezVous.notes = notes;
+      if (effectue !== undefined) rendezVous.effectue = effectue;
 
       await rendezVous.save();
       await rendezVous.populate('user', 'firstName lastName email');

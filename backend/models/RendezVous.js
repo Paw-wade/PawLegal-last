@@ -40,8 +40,8 @@ const rendezVousSchema = new mongoose.Schema({
   motif: {
     type: String,
     required: [true, 'Le motif est requis'],
-    trim: true,
-    enum: ['Consultation', 'Dossier administratif', 'Suivi de dossier', 'Autre']
+    trim: true
+    // Suppression de l'enum pour accepter tous les motifs du formulaire
   },
   description: {
     type: String,
@@ -56,6 +56,10 @@ const rendezVousSchema = new mongoose.Schema({
   notes: {
     type: String,
     trim: true
+  },
+  effectue: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,
