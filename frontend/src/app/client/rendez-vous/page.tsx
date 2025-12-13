@@ -1,34 +1,48 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { ReservationWidget } from '@/components/ReservationWidget';
-import { appointmentsAPI } from '@/lib/api';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { appointmentsAPI, userAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent',
     ghost: 'hover:bg-accent',
   };
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
 }
 
-export default function RendezVousPage() {
+function RendezVousPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [rendezVous, setRendezVous] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isReservationWidgetOpen, setIsReservationWidgetOpen] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<string | null>(null);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
 
   useEffect(() => {
+    // Vérifier le mode impersonation
+    const impersonateParam = searchParams?.get('impersonate');
+    const impersonateUserId = typeof window !== 'undefined' ? localStorage.getItem('impersonateUserId') : null;
+    
+    if (impersonateParam === 'true' && impersonateUserId) {
+      setIsImpersonating(true);
+      loadImpersonatedUser(impersonateUserId);
+      return;
+    }
+
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
       return;
@@ -45,13 +59,66 @@ export default function RendezVousPage() {
       }
       loadRendezVous();
     }
-  }, [session, status, router]);
+  }, [session, status, router, searchParams]);
+
+  const loadImpersonatedUser = async (userId: string) => {
+    try {
+      const response = await userAPI.getUserById(userId);
+      if (response.data.success) {
+        setImpersonatedUser(response.data.user);
+        // Charger les rendez-vous pour cet utilisateur
+        await loadRendezVousForUser(userId);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement de l\'utilisateur impersonné:', error);
+    }
+  };
+
+  const loadRendezVousForUser = async (userId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log('📅 Mode impersonation: chargement des rendez-vous pour l\'utilisateur:', userId);
+      
+      // Utiliser l'API admin avec l'ID de l'utilisateur impersonné
+      const response = await appointmentsAPI.getAllAppointments({ userId });
+      console.log('📅 Réponse API rendez-vous (impersonation):', response.data);
+      
+      if (response.data.success) {
+        const appointments = response.data.data || response.data.appointments || [];
+        setRendezVous(appointments);
+        console.log('✅ Rendez-vous chargés:', appointments.length);
+      } else {
+        setError('Erreur lors du chargement des rendez-vous');
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors du chargement des rendez-vous:', err);
+      console.error('❌ Détails de l\'erreur:', {
+        status: err.response?.status,
+        message: err.response?.data?.message,
+        data: err.response?.data
+      });
+      setError(err.response?.data?.message || 'Erreur lors du chargement des rendez-vous');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const loadRendezVous = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      console.log('📅 Chargement des rendez-vous pour l\'utilisateur:', session?.user?.email);
+      // Vérifier si on est en mode impersonation
+      const impersonateUserId = typeof window !== 'undefined' ? localStorage.getItem('impersonateUserId') : null;
+      
+      if (isImpersonating && impersonateUserId) {
+        // En mode impersonation, utiliser loadRendezVousForUser
+        await loadRendezVousForUser(impersonateUserId);
+        return;
+      }
+
+      const userEmail = session?.user?.email || impersonatedUser?.email || 'utilisateur';
+      console.log('📅 Chargement des rendez-vous pour l\'utilisateur:', userEmail);
       
       // Vérifier que le token est disponible
       if (typeof window !== 'undefined') {
@@ -86,6 +153,31 @@ export default function RendezVousPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const stopImpersonating = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('impersonateUserId');
+      localStorage.removeItem('impersonateAdminId');
+    }
+    setIsImpersonating(false);
+    setImpersonatedUser(null);
+    router.push('/admin');
+  };
+
+  const getUserName = () => {
+    if (isImpersonating && impersonatedUser) {
+      const name = `${impersonatedUser?.firstName || ''} ${impersonatedUser?.lastName || ''}`.trim();
+      return name || 'Utilisateur';
+    }
+    return session?.user?.name || 'Utilisateur';
+  };
+
+  const getUserEmail = () => {
+    if (isImpersonating && impersonatedUser) {
+      return impersonatedUser?.email || '';
+    }
+    return session?.user?.email || '';
   };
 
   const handleCancelAppointment = async (appointmentId: string) => {
@@ -127,6 +219,14 @@ export default function RendezVousPage() {
       <Header variant="client" />
 
       <main className="container mx-auto px-4 py-16">
+        {/* Banner d'impersonation */}
+        {isImpersonating && impersonatedUser && (
+          <ImpersonationBanner
+            userName={getUserName()}
+            userEmail={getUserEmail()}
+            onStopImpersonating={stopImpersonating}
+          />
+        )}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Rendez-vous</h1>
@@ -343,6 +443,21 @@ export default function RendezVousPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function RendezVousPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Chargement...</p>
+        </div>
+      </div>
+    }>
+      <RendezVousPageContent />
+    </Suspense>
   );
 }
 

@@ -10,7 +10,7 @@ export function Footer() {
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-orange-500">Paw Legal</span>
             <span className="text-gray-400">|</span>
-            <span className="text-gray-400">Accompagnement Juridique</span>
+            <span className="text-gray-400">Service d'accompagnement juridique</span>
           </div>
           
           <div className="flex items-center gap-4 flex-wrap">

@@ -7,7 +7,7 @@ const { body, validationResult } = require('express-validator');
 const MessageInterne = require('../models/MessageInterne');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const protect = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 // Configuration de multer pour les pièces jointes
 const storage = multer.diskStorage({
@@ -97,6 +97,13 @@ router.get('/users', async (req, res) => {
 // @access  Private
 router.get('/', async (req, res) => {
   try {
+    console.log('📨 GET /api/messages - Requête reçue:', {
+      user: req.user?.email,
+      userId: req.user?.id,
+      type: req.query.type,
+      path: req.path
+    });
+    
     const userId = req.user.id;
     const { type = 'all' } = req.query; // 'all', 'received', 'sent', 'unread'
 
@@ -130,16 +137,19 @@ router.get('/', async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
 
+    console.log('✅ Messages trouvés:', messages.length);
+
     res.json({
       success: true,
       messages: messages
     });
   } catch (error) {
-    console.error('Erreur lors de la récupération des messages:', error);
+    console.error('❌ Erreur lors de la récupération des messages:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -442,7 +452,7 @@ router.delete('/:id', async (req, res) => {
 
     // Supprimer les fichiers associés
     if (message.piecesJointes && message.piecesJointes.length > 0) {
-      message.piecesJointes.forEach((pieceJointe: any) => {
+      message.piecesJointes.forEach((pieceJointe) => {
         if (fs.existsSync(pieceJointe.path)) {
           try {
             fs.unlinkSync(pieceJointe.path);

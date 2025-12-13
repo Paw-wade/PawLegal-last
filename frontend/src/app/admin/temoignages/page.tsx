@@ -2,19 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
-import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import { Header } from '@/components/layout/Header';
 import { temoignagesAPI } from '@/lib/api';
 
-function Button({ children, variant = 'default', className = '', disabled = false, ...props }: any) {
-  const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none';
+function Button({ children, variant = 'default', size = 'default', className = '', disabled = false, ...props }: any) {
+  const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
-    danger: 'bg-red-500 text-white hover:bg-red-600',
+    destructive: 'bg-red-500 text-white hover:bg-red-600',
   };
-  return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
+  const sizeClasses = {
+    default: 'h-10 py-2 px-4',
+    sm: 'h-9 px-3',
+    lg: 'h-11 px-8',
+  };
+  return <button className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`} disabled={disabled} {...props}>{children}</button>;
 }
 
 export default function AdminTemoignagesPage() {

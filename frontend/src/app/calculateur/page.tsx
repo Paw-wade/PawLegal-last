@@ -10,7 +10,7 @@ import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
@@ -216,6 +216,14 @@ export default function CalculateurPage() {
   const { data: session, status } = useSession();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [joursRestants, setJoursRestants] = useState<number | null>(null);
+  const [heuresRestantes, setHeuresRestantes] = useState<number>(0);
+  const [minutesRestantes, setMinutesRestantes] = useState<number>(0);
+  const [secondesRestantes, setSecondesRestantes] = useState<number>(0);
+  
+  // États pour gérer l'ouverture/fermeture des sections (accordéon)
+  const [isPersonalInfoOpen, setIsPersonalInfoOpen] = useState<boolean>(true);
+  const [isAdminInfoOpen, setIsAdminInfoOpen] = useState<boolean>(true);
   
   // Vérifier si l'utilisateur est un administrateur
   const isAdmin = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin' || userProfile?.role === 'admin' || userProfile?.role === 'superadmin';
@@ -332,6 +340,46 @@ export default function CalculateurPage() {
       window.removeEventListener('focus', handleFocus);
     };
   }, [session, status]);
+
+  // Minuteur dynamique pour le temps restant avant expiration
+  useEffect(() => {
+    if (!userProfile?.dateExpiration) {
+      setJoursRestants(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const expiration = new Date(userProfile.dateExpiration);
+      const maintenant = new Date();
+      const difference = expiration.getTime() - maintenant.getTime();
+
+      if (difference <= 0) {
+        setJoursRestants(0);
+        setHeuresRestantes(0);
+        setMinutesRestantes(0);
+        setSecondesRestantes(0);
+        return;
+      }
+
+      const jours = Math.floor(difference / (1000 * 60 * 60 * 24));
+      const heures = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+      const secondes = Math.floor((difference % (1000 * 60)) / 1000);
+
+      setJoursRestants(jours);
+      setHeuresRestantes(heures);
+      setMinutesRestantes(minutes);
+      setSecondesRestantes(secondes);
+    };
+
+    // Mettre à jour immédiatement
+    updateTimer();
+
+    // Mettre à jour toutes les secondes
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [userProfile?.dateExpiration]);
 
   // Préremplir les champs lorsque la situation change, si les champs sont vides
   useEffect(() => {
@@ -889,8 +937,8 @@ export default function CalculateurPage() {
                 </div>
               ) : (
                 <>
-                  <Link href="/auth/signin"><Button variant="ghost">Connexion</Button></Link>
-                  <Link href="/auth/signup"><Button>Créer un compte</Button></Link>
+              <Link href="/auth/signin"><Button variant="ghost">Connexion</Button></Link>
+              <Link href="/auth/signup"><Button>Créer un compte</Button></Link>
                 </>
               )}
             </div>
@@ -911,7 +959,7 @@ export default function CalculateurPage() {
                       {userProfile?.firstName?.[0]?.toUpperCase() || session?.user?.name?.[0]?.toUpperCase() || 'U'}
                       {userProfile?.lastName?.[0]?.toUpperCase() || ''}
                     </span>
-                  </div>
+                </div>
                   <div className="flex-1">
                     <h2 className="text-lg font-bold text-foreground">Mon Profil</h2>
                     {session && (session.user || userProfile) && (
@@ -962,132 +1010,124 @@ export default function CalculateurPage() {
                 <div className="space-y-5">
                   {/* 🟦 1. Informations personnelles */}
                   <div className="space-y-2.5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
-                      <h3 className="text-sm font-bold text-foreground">Informations personnelles</h3>
-                    </div>
+                    <button
+                      onClick={() => setIsPersonalInfoOpen(!isPersonalInfoOpen)}
+                      className="flex items-center justify-between w-full gap-2 mb-3 hover:opacity-80 transition-opacity cursor-pointer group"
+                      type="button"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-foreground group-hover:text-blue-600 transition-colors">Informations personnelles</h3>
+                      </div>
+                      <span className={`text-blue-600 transition-transform duration-300 text-xs ${isPersonalInfoOpen ? 'rotate-180' : 'rotate-0'}`}>
+                        ▼
+                      </span>
+                    </button>
                     
+                    {isPersonalInfoOpen && (
+                      <div className="space-y-2.5">
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-3 border border-blue-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">👤</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Nom complet</p>
-                          <p className="text-xs font-medium text-blue-900 break-words">
-                            {userProfile.firstName && userProfile.lastName
-                              ? `${userProfile.firstName} ${userProfile.lastName}`
-                              : <span className="text-blue-600/70 italic">Information non fournie</span>}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Nom complet</p>
+                        <p className="text-xs font-medium text-blue-900 break-words">
+                          {userProfile.firstName && userProfile.lastName
+                            ? `${userProfile.firstName} ${userProfile.lastName}`
+                            : <span className="text-blue-600/70 italic">Information non fournie</span>}
+                        </p>
                       </div>
                     </div>
 
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-3 border border-blue-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">📧</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Email</p>
-                          <p className="text-xs font-medium text-blue-900 break-all">
-                            {userProfile.email || <span className="text-blue-600/70 italic">Information non fournie</span>}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-blue-800 mb-1 uppercase tracking-wide">Email</p>
+                        <p className="text-xs font-medium text-blue-900 break-all">
+                          {userProfile.email || <span className="text-blue-600/70 italic">Information non fournie</span>}
+                        </p>
                       </div>
                     </div>
 
                     <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg p-3 border border-green-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">📞</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-green-800 mb-1 uppercase tracking-wide">Téléphone</p>
-                          <p className="text-xs font-medium text-green-900">
-                            {userProfile.phone || <span className="text-green-600/70 italic">Information non fournie</span>}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-green-800 mb-1 uppercase tracking-wide">Téléphone</p>
+                        <p className="text-xs font-medium text-green-900">
+                          {userProfile.phone || <span className="text-green-600/70 italic">Information non fournie</span>}
+                        </p>
                       </div>
                     </div>
 
                     <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg p-3 border border-gray-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-gray-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">📍</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-gray-800 mb-1 uppercase tracking-wide">Adresse</p>
-                          <p className="text-xs font-medium text-gray-900 break-words">
-                            {(userProfile.adressePostale || userProfile.ville || userProfile.codePostal) ? (
-                              <>
-                                {userProfile.adressePostale || ''}
-                                {userProfile.adressePostale && (userProfile.ville || userProfile.codePostal) ? ', ' : ''}
-                                {userProfile.codePostal || ''}
-                                {userProfile.codePostal && userProfile.ville ? ' ' : ''}
-                                {userProfile.ville || ''}
-                                {userProfile.pays && (userProfile.ville || userProfile.codePostal || userProfile.adressePostale) ? `, ${userProfile.pays}` : ''}
-                              </>
-                            ) : (
-                              <span className="text-gray-600/70 italic">Information non fournie</span>
-                            )}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-gray-800 mb-1 uppercase tracking-wide">Adresse</p>
+                        <p className="text-xs font-medium text-gray-900 break-words">
+                          {(userProfile.adressePostale || userProfile.ville || userProfile.codePostal) ? (
+                            <>
+                              {userProfile.adressePostale || ''}
+                              {userProfile.adressePostale && (userProfile.ville || userProfile.codePostal) ? ', ' : ''}
+                              {userProfile.codePostal || ''}
+                              {userProfile.codePostal && userProfile.ville ? ' ' : ''}
+                              {userProfile.ville || ''}
+                              {userProfile.pays && (userProfile.ville || userProfile.codePostal || userProfile.adressePostale) ? `, ${userProfile.pays}` : ''}
+                            </>
+                          ) : (
+                            <span className="text-gray-600/70 italic">Information non fournie</span>
+                          )}
+                        </p>
                       </div>
                     </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 🟩 2. Informations administratives liées au séjour */}
                   <div className="space-y-2.5 pt-4 border-t border-primary/20">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-green-500 rounded-full"></div>
-                      <h3 className="text-sm font-bold text-foreground">Informations administratives</h3>
-                    </div>
+                    <button
+                      onClick={() => setIsAdminInfoOpen(!isAdminInfoOpen)}
+                      className="flex items-center justify-between w-full gap-2 mb-3 hover:opacity-80 transition-opacity cursor-pointer group"
+                      type="button"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-5 bg-green-500 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-foreground group-hover:text-green-600 transition-colors">Informations administratives</h3>
+                      </div>
+                      <span className={`text-green-600 transition-transform duration-300 text-xs ${isAdminInfoOpen ? 'rotate-180' : 'rotate-0'}`}>
+                        ▼
+                      </span>
+                    </button>
                     
+                    {isAdminInfoOpen && (
+                      <div className="space-y-2.5">
                     {/* Catégorie du titre de séjour */}
                     <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-lg p-3 border border-indigo-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">📋</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-indigo-800 mb-1 uppercase tracking-wide">Catégorie du titre</p>
-                          <p className="text-xs font-medium text-indigo-900 break-words">
-                            {userProfile.typeTitre 
-                              ? (typesTitres.find(t => t.value === userProfile.typeTitre)?.label || userProfile.typeTitre)
-                              : <span className="text-indigo-600/70 italic">Information non fournie</span>}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-indigo-800 mb-1 uppercase tracking-wide">Catégorie du titre</p>
+                        <p className="text-xs font-medium text-indigo-900 break-words">
+                          {userProfile.typeTitre 
+                            ? (typesTitres.find(t => t.value === userProfile.typeTitre)?.label || userProfile.typeTitre)
+                            : <span className="text-indigo-600/70 italic">Information non fournie</span>}
+                        </p>
                       </div>
                     </div>
 
                     {/* Nature du document */}
                     <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg p-3 border border-purple-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">🆔</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Nature du document</p>
-                          <p className="text-xs font-medium text-purple-900 break-words">
-                            {userProfile.typeTitre 
-                              ? (userProfile.typeTitre.includes('visa') || userProfile.typeTitre.includes('VLS') 
-                                  ? 'Visa long séjour (VLS-TS ou visa autre nature)' 
-                                  : 'Titre de séjour')
-                              : <span className="text-purple-600/70 italic">Information non fournie</span>}
-                          </p>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Nature du document</p>
+                        <p className="text-xs font-medium text-purple-900 break-words">
+                          {userProfile.typeTitre 
+                            ? (userProfile.typeTitre.includes('visa') || userProfile.typeTitre.includes('VLS') 
+                                ? 'Visa long séjour (VLS-TS ou visa autre nature)' 
+                                : 'Titre de séjour')
+                            : <span className="text-purple-600/70 italic">Information non fournie</span>}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Date de début de validité */}
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg p-3 border border-purple-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">📅</span>
-                        </div>
+                    {/* Dates de délivrance et d'expiration côte à côte */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Date de délivrance */}
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg p-3 border border-purple-200/50 shadow-sm">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Date de début</p>
+                          <p className="text-[10px] font-semibold text-purple-800 mb-1 uppercase tracking-wide">Date de délivrance</p>
                           <p className="text-xs font-medium text-purple-900">
                             {userProfile.dateDelivrance 
                               ? formatDateCourte(new Date(userProfile.dateDelivrance))
@@ -1095,106 +1135,120 @@ export default function CalculateurPage() {
                           </p>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Date d'expiration avec alertes */}
-                    <div className={`rounded-lg p-3 border shadow-sm ${
-                      userProfile.dateExpiration ? (() => {
-                        const expiration = new Date(userProfile.dateExpiration);
-                        const aujourdhui = new Date();
-                        const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
-                        if (joursRestants < 0) {
-                          return 'bg-gradient-to-br from-red-50 to-red-100/50 border-red-300/50';
-                        } else if (Math.floor(joursRestants / 30) < 5) {
-                          return 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-300/50';
-                        }
-                        return 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50';
-                      })() : 'bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50'
-                    }`}>
-                      <div className="flex items-start gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          userProfile.dateExpiration ? (() => {
-                            const expiration = new Date(userProfile.dateExpiration);
-                            const aujourdhui = new Date();
-                            const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
-                            if (joursRestants < 0) {
-                              return 'bg-red-500/20';
-                            } else if (Math.floor(joursRestants / 30) < 5) {
-                              return 'bg-orange-500/20';
-                            }
-                            return 'bg-orange-500/20';
-                          })() : 'bg-orange-500/20'
-                        }`}>
-                          <span className="text-sm">⏰</span>
-                        </div>
+                      {/* Date d'expiration */}
+                      <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-lg p-3 border border-orange-200/50 shadow-sm">
                         <div className="flex-1 min-w-0">
                           <p className="text-[10px] font-semibold text-orange-800 mb-1 uppercase tracking-wide">Date d'expiration</p>
-                          {userProfile.dateExpiration ? (
-                            <>
-                              <p className="text-xs font-bold text-orange-900 mb-2">
-                                {formatDateCourte(new Date(userProfile.dateExpiration))}
-                              </p>
-                              {(() => {
-                                const expiration = new Date(userProfile.dateExpiration);
-                                const aujourdhui = new Date();
-                                const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
-                                const moisRestants = Math.floor(joursRestants / 30);
-                                
-                                if (joursRestants < 0) {
-                                  return (
-                                    <div className="mt-2 p-2.5 bg-red-100/80 border-2 border-red-400 rounded-lg shadow-sm">
-                                      <p className="text-[11px] text-red-900 font-bold mb-1">
-                                        ❌ Titre expiré
-                                      </p>
-                                      <p className="text-[10px] text-red-800">
-                                        Votre titre de séjour est expiré. Certaines démarches peuvent être affectées.
-                                      </p>
-                                      <p className="text-[10px] text-red-700 mt-1.5 font-semibold">
-                                        Expiré depuis {Math.abs(joursRestants)} jour{Math.abs(joursRestants) > 1 ? 's' : ''}
-                                      </p>
-                                    </div>
-                                  );
-                                } else if (moisRestants < 5) {
-                                  return (
-                                    <div className="mt-2 p-2.5 bg-orange-100/80 border-2 border-orange-400 rounded-lg shadow-sm">
-                                      <p className="text-[11px] text-orange-900 font-bold mb-1">
-                                        ⚠️ Expiration proche
-                                      </p>
-                                      <p className="text-[10px] text-orange-800">
-                                        Votre titre de séjour arrive bientôt à expiration. Pensez au renouvellement.
-                                      </p>
-                                      <p className="text-[10px] text-orange-700 mt-1.5 font-semibold">
-                                        {moisRestants} mois et {joursRestants % 30} jour{joursRestants % 30 > 1 ? 's' : ''} restant{joursRestants % 30 > 1 ? 's' : ''}
-                                      </p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </>
-                          ) : (
-                            <p className="text-xs text-orange-900">
-                              <span className="text-orange-600/70 italic">Information non fournie</span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Numéro du titre de séjour */}
-                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg p-3 border border-yellow-200/50 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm">🔢</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-yellow-800 mb-1 uppercase tracking-wide">Numéro de titre</p>
-                          <p className="text-xs font-medium text-yellow-900 break-all">
-                            {userProfile.numeroTitre || <span className="text-yellow-600/70 italic">Information non fournie</span>}
+                          <p className="text-xs font-medium text-orange-900">
+                            {userProfile.dateExpiration 
+                              ? formatDateCourte(new Date(userProfile.dateExpiration))
+                              : <span className="text-orange-600/70 italic">Information non fournie</span>}
                           </p>
                         </div>
                       </div>
                     </div>
+
+                    {/* Statut du titre de séjour avec minuteur dynamique */}
+                    {userProfile.dateExpiration && (
+                      <div className={`rounded-lg p-4 border-2 shadow-lg ${
+                        joursRestants !== null && joursRestants <= 0
+                          ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-400'
+                          : joursRestants !== null && joursRestants < 30
+                          ? 'bg-gradient-to-br from-orange-50 to-orange-100 border-orange-400'
+                          : 'bg-gradient-to-br from-green-50 to-green-100 border-green-400'
+                      }`}>
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <p className={`text-xs font-bold mb-2 uppercase tracking-wide ${
+                              joursRestants !== null && joursRestants <= 0
+                                ? 'text-red-900'
+                                : joursRestants !== null && joursRestants < 30
+                                ? 'text-orange-900'
+                                : 'text-green-900'
+                            }`}>
+                              {joursRestants !== null && joursRestants <= 0
+                                ? 'Titre de séjour expiré'
+                                : 'Titre de séjour en cours de validité'}
+                            </p>
+                            
+                            {joursRestants !== null && joursRestants <= 0 ? (
+                              <div className="space-y-1">
+                                <p className="text-[11px] font-semibold text-red-800">
+                                  Votre titre de séjour a expiré
+                                </p>
+                                <p className="text-[10px] text-red-700">
+                                  Il est recommandé de déposer immédiatement une demande de renouvellement.
+                                </p>
+                              </div>
+                            ) : joursRestants !== null ? (
+                              <div className="space-y-2">
+                                <p className={`text-[11px] font-semibold ${
+                                  joursRestants < 30 ? 'text-orange-800' : 'text-green-800'
+                                }`}>
+                                  Temps restant avant expiration :
+                                </p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {joursRestants > 0 && (
+                                    <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
+                                      joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
+                                    }`}>
+                                      <p className={`text-[9px] font-semibold uppercase tracking-wider opacity-70 ${
+                                        joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
+                                      }`}>Jours</p>
+                                      <p className="text-lg font-bold">{joursRestants}</p>
+                                    </div>
+                                  )}
+                                  <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
+                                    joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
+                                  }`}>
+                                    <p className={`text-[9px] font-semibold uppercase tracking-wider opacity-70 ${
+                                      joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
+                                    }`}>Heures</p>
+                                    <p className="text-lg font-bold">{String(heuresRestantes).padStart(2, '0')}</p>
+                                  </div>
+                                  <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
+                                    joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
+                                  }`}>
+                                    <p className={`text-[9px] font-semibold uppercase tracking-wider opacity-70 ${
+                                      joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
+                                    }`}>Minutes</p>
+                                    <p className="text-lg font-bold">{String(minutesRestantes).padStart(2, '0')}</p>
+                                  </div>
+                                  <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
+                                    joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
+                                  }`}>
+                                    <p className={`text-[9px] font-semibold uppercase tracking-wider opacity-70 ${
+                                      joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
+                                    }`}>Secondes</p>
+                                    <p className={`text-lg font-bold animate-pulse ${
+                                      joursRestants < 30 ? 'text-orange-900' : 'text-green-900'
+                                    }`}>{String(secondesRestantes).padStart(2, '0')}</p>
+                                  </div>
+                                </div>
+                                {joursRestants < 30 && (
+                                  <p className="text-[10px] text-orange-700 mt-2">
+                                    ⚠️ Votre titre expire bientôt. Pensez à déposer votre demande de renouvellement.
+                                  </p>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Numéro du titre de séjour */}
+                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-lg p-3 border border-yellow-200/50 shadow-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-yellow-800 mb-1 uppercase tracking-wide">Numéro de titre</p>
+                        <p className="text-xs font-medium text-yellow-900 break-all">
+                          {userProfile.numeroTitre || <span className="text-yellow-600/70 italic">Information non fournie</span>}
+                        </p>
+                      </div>
+                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 🟥 3. Avertissements automatiques globaux */}
@@ -1204,35 +1258,17 @@ export default function CalculateurPage() {
                     const joursRestants = Math.ceil((expiration.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
                     const moisRestants = Math.floor(joursRestants / 30);
                     
+                    // Section "Titre de séjour expiré" supprimée (redondance)
                     if (joursRestants < 0) {
-                      return (
-                        <div className="mt-4 p-3.5 bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-400 rounded-xl shadow-lg">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <span className="text-xl">❌</span>
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-red-900 mb-1.5">Titre de séjour expiré</p>
-                              <p className="text-[11px] text-red-800 leading-relaxed">
-                                Votre titre de séjour est expiré. Certaines démarches peuvent être affectées.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
+                      return null;
                     } else if (moisRestants < 5) {
                       return (
                         <div className="mt-4 p-3.5 bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-400 rounded-xl shadow-lg">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <span className="text-xl">⚠️</span>
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-orange-900 mb-1.5">Expiration proche</p>
-                              <p className="text-[11px] text-orange-800 leading-relaxed">
-                                Votre titre de séjour arrive bientôt à expiration. Pensez au renouvellement.
-                              </p>
-                            </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-orange-900 mb-1.5">Expiration proche</p>
+                            <p className="text-[11px] text-orange-800 leading-relaxed">
+                              Votre titre de séjour arrive bientôt à expiration. Pensez au renouvellement.
+                            </p>
                           </div>
                         </div>
                       );
@@ -1416,8 +1452,8 @@ export default function CalculateurPage() {
                           ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
                         </p>
                       )}
-                      
-                      <div className="space-y-2">
+
+                    <div className="space-y-2">
                         <Label htmlFor="dateAttributionTitre">Date d'attribution du titre ou du visa *</Label>
                         <Input
                           id="dateAttributionTitre"
@@ -1789,8 +1825,8 @@ export default function CalculateurPage() {
                           ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
                         </p>
                       )}
-                      
-                      <div className="space-y-2">
+
+                    <div className="space-y-2">
                         <Label htmlFor="dateAttributionTitre_titre">Date d'attribution du titre ou du visa *</Label>
                         <Input
                           id="dateAttributionTitre_titre"

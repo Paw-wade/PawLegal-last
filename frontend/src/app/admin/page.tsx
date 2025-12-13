@@ -11,7 +11,7 @@ import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI } from '@
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
@@ -150,15 +150,41 @@ export default function AdminDashboardPage() {
       }
 
       // Charger les documents
-      const documentsResponse = await documentsAPI.getAllDocuments();
-      if (documentsResponse.data.success) {
-        const documents = documentsResponse.data.documents || [];
+      try {
+        console.log('📄 Chargement des documents pour le dashboard admin...');
+        const documentsResponse = await documentsAPI.getAllDocuments();
+        console.log('📄 Réponse getAllDocuments:', documentsResponse.data);
+        
+        if (documentsResponse.data.success) {
+          const documents = documentsResponse.data.documents || documentsResponse.data.data || [];
+          console.log('📄 Documents trouvés:', documents.length);
+          
+          setStats(prev => ({
+            ...prev,
+            documents: documents.length,
+          }));
+          // Garder les 5 documents les plus récents
+          setRecentDocuments(documents.slice(0, 5));
+        } else {
+          console.error('❌ Erreur dans la réponse getAllDocuments:', documentsResponse.data.message);
+          // Mettre à jour avec 0 si erreur
+          setStats(prev => ({
+            ...prev,
+            documents: 0,
+          }));
+        }
+      } catch (docError: any) {
+        console.error('❌ Erreur lors du chargement des documents:', docError);
+        console.error('Détails:', {
+          message: docError.message,
+          response: docError.response?.data,
+          status: docError.response?.status
+        });
+        // Mettre à jour avec 0 si erreur
         setStats(prev => ({
           ...prev,
-          documents: documents.length,
+          documents: 0,
         }));
-        // Garder les 5 documents les plus récents
-        setRecentDocuments(documents.slice(0, 5));
       }
     } catch (error) {
       console.error('Erreur lors du chargement des statistiques:', error);
@@ -342,6 +368,34 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleUpdateTaskStatus = async (effectue: boolean) => {
+    if (!selectedTaskForStatus) return;
+
+    setIsUpdatingTaskStatus(true);
+    try {
+      const response = await tasksAPI.updateTask(selectedTaskForStatus._id, {
+        effectue: effectue,
+        commentaireEffectue: taskStatusComment,
+        statut: effectue ? 'termine' : 'a_faire',
+      });
+
+      if (response.data.success) {
+        setShowTaskStatusModal(false);
+        setSelectedTaskForStatus(null);
+        setTaskStatusComment('');
+        await loadTasks();
+        await loadNotifications();
+      } else {
+        alert(response.data.message || 'Erreur lors de la mise à jour de la tâche');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour de la tâche:', error);
+      alert(error.response?.data?.message || 'Erreur lors de la mise à jour de la tâche');
+    } finally {
+      setIsUpdatingTaskStatus(false);
+    }
+  };
+
   const getStatutColor = (statut: string) => {
     switch (statut) {
       case 'termine':
@@ -457,14 +511,14 @@ export default function AdminDashboardPage() {
                         {isPast && !apt.effectue && (
                           <p className="text-xs text-red-600 font-bold mt-1">⚠️ Dépassé</p>
                         )}
-                      </div>
+              </div>
                     );
                   })}
                 </div>
                 <Link href="/admin/rendez-vous?filter=today" className="mt-4 inline-block text-sm text-blue-700 hover:text-blue-900 font-semibold">
                   Voir tous →
-                </Link>
-              </div>
+            </Link>
+          </div>
             )}
 
             {/* Rendez-vous du lendemain */}
@@ -473,7 +527,7 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
                     <span className="text-2xl">📆</span>
-                  </div>
+        </div>
                   <div>
                     <h3 className="font-bold text-lg text-orange-900">Rendez-vous demain</h3>
                     <p className="text-sm text-orange-700">{tomorrowAppointments.length} rendez-vous</p>
@@ -560,24 +614,24 @@ export default function AdminDashboardPage() {
 
           {/* Badge Documents avec lien direct */}
           <div id="documents-section" className="scroll-mt-20">
-            <Link href="/admin/documents" className="group">
-              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500 hover:shadow-lg hover:border-purple-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                    <span className="text-2xl">📄</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-purple-600 transition-colors">{stats.documents}</p>
-                  </div>
+          <Link href="/admin/documents" className="group">
+            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500 hover:shadow-lg hover:border-purple-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+                  <span className="text-2xl">📄</span>
                 </div>
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
-                <p className="text-xs text-muted-foreground mb-3">Total des documents</p>
-                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                  <span className="text-xs text-muted-foreground">Téléversés par les clients</span>
-                  <span className="text-purple-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-purple-600 transition-colors">{stats.documents}</p>
                 </div>
               </div>
-            </Link>
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
+              <p className="text-xs text-muted-foreground mb-3">Total des documents</p>
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <span className="text-xs text-muted-foreground">Téléversés par les clients</span>
+                <span className="text-purple-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
+              </div>
+            </div>
+          </Link>
           </div>
 
           {/* Badge Tâches - scroll vers la section */}
@@ -630,14 +684,14 @@ export default function AdminDashboardPage() {
           </Link>
 
           <div id="rendez-vous-section" className="scroll-mt-20">
-            <Link href="/admin/rendez-vous" className="group">
-              <div className="bg-gradient-to-br from-white to-green-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-green-200 hover:border-green-400 hover:scale-105">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                    <span className="text-3xl">📅</span>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-foreground group-hover:text-green-600 transition-colors mb-1">Rendez-vous</h3>
+          <Link href="/admin/rendez-vous" className="group">
+            <div className="bg-gradient-to-br from-white to-green-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-green-200 hover:border-green-400 hover:scale-105">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                  <span className="text-3xl">📅</span>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-green-600 transition-colors mb-1">Rendez-vous</h3>
                   <p className="text-sm text-muted-foreground">Gérez le calendrier</p>
                 </div>
               </div>
@@ -652,8 +706,8 @@ export default function AdminDashboardPage() {
           </div>
 
           <div id="temoignages-section" className="scroll-mt-20">
-            <Link href="/admin/temoignages" className="group">
-              <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
+          <Link href="/admin/temoignages" className="group">
+            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                   <span className="text-3xl">⭐</span>
@@ -879,7 +933,7 @@ export default function AdminDashboardPage() {
         {recentDocuments.length > 0 && (
           <div className="mt-8 bg-gradient-to-br from-white to-primary/5 rounded-2xl shadow-lg p-8 border border-primary/10">
             {/* En-tête amélioré */}
-            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-md">
                   <span className="text-white text-xl">📄</span>
@@ -897,8 +951,8 @@ export default function AdminDashboardPage() {
               >
                 Voir tous les documents
                 <span className="text-lg">→</span>
-              </Link>
-            </div>
+                </Link>
+              </div>
 
             {/* Liste de documents */}
             <div className="space-y-3">
@@ -908,19 +962,19 @@ export default function AdminDashboardPage() {
                   : 'Utilisateur inconnu';
                 const userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
-                return (
+                  return (
                   <div
                     key={doc._id || doc.id || index}
                     className="group bg-white rounded-xl border-2 border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300 p-5"
-                  >
+                            >
                     <div className="flex items-center gap-4">
                       {/* Icône du fichier */}
                       <div className="w-12 h-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <span className="text-2xl">{getFileIcon(doc.typeMime)}</span>
-                      </div>
+                          </div>
 
                       {/* Informations du document */}
-                      <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
                         <h3 className="font-bold text-base text-foreground mb-2 group-hover:text-primary transition-colors">
                           {doc.nom}
                         </h3>
@@ -931,11 +985,11 @@ export default function AdminDashboardPage() {
                               <span className="text-white text-xs font-bold">
                                 {userInitials}
                               </span>
-                            </div>
+                        </div>
                             <span className="text-sm font-medium text-muted-foreground">
                               {userName}
                             </span>
-                          </div>
+                      </div>
 
                           {/* Taille */}
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -959,24 +1013,24 @@ export default function AdminDashboardPage() {
 
                       {/* Bouton de téléchargement */}
                       <div className="flex-shrink-0">
-                        <Button
+                      <Button
                           variant="default"
-                          size="sm"
+                        size="sm"
                           className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200 px-4"
                           onClick={() => handleDownloadDocument(doc._id || doc.id, doc.nom)}
-                        >
+                      >
                           <span className="flex items-center gap-2">
                             <span className="text-base">📥</span>
                             <span>Télécharger</span>
                           </span>
-                        </Button>
+                      </Button>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
         )}
 
         {/* Modal de création de tâche */}

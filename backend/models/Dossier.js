@@ -26,7 +26,6 @@ const dossierSchema = new mongoose.Schema({
   },
   numero: {
     type: String,
-    unique: true,
     sparse: true, // Permet plusieurs valeurs null
     trim: true
   },

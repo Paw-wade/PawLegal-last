@@ -11,7 +11,7 @@ import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
@@ -85,7 +85,10 @@ export default function AdminRendezVousPage() {
     setIsLoading(true);
     setError(null);
     try {
+      console.log('🔄 Chargement des rendez-vous admin...');
       const response = await appointmentsAPI.getAllAppointments();
+      console.log('✅ Réponse getAllAppointments:', response.data);
+      
       if (response.data.success) {
         const appointments = response.data.data || response.data.appointments || [];
         
@@ -114,11 +117,43 @@ export default function AdminRendezVousPage() {
         
         setRendezVous(filtered);
       } else {
-        setError('Erreur lors du chargement des rendez-vous');
+        const errorMessage = response.data.message || 'Erreur lors du chargement des rendez-vous';
+        console.error('❌ Réponse non réussie:', errorMessage);
+        setError(errorMessage);
       }
     } catch (err: any) {
-      console.error('Erreur lors du chargement des rendez-vous:', err);
-      setError(err.response?.data?.message || 'Erreur lors du chargement des rendez-vous');
+      console.error('❌ Erreur lors du chargement des rendez-vous:', err);
+      console.error('Détails complets:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        config: err.config
+      });
+      
+      // Gérer différents types d'erreurs
+      let errorMessage = 'Erreur lors du chargement des rendez-vous';
+      
+      if (err.response) {
+        // Erreur de réponse du serveur
+        if (err.response.status === 404) {
+          errorMessage = 'Route non trouvée. Vérifiez que le serveur backend est démarré et que la route /api/appointments/admin existe.';
+        } else if (err.response.status === 403) {
+          errorMessage = 'Accès refusé. Vous devez être administrateur pour accéder à cette page.';
+        } else if (err.response.status === 401) {
+          errorMessage = 'Non autorisé. Veuillez vous reconnecter.';
+        } else {
+          errorMessage = err.response.data?.message || `Erreur ${err.response.status}: ${err.response.statusText}`;
+        }
+      } else if (err.request) {
+        // Erreur de connexion
+        errorMessage = 'Impossible de contacter le serveur. Vérifiez que le serveur backend est démarré sur le port 3005.';
+      } else {
+        // Autre erreur
+        errorMessage = err.message || errorMessage;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +356,7 @@ export default function AdminRendezVousPage() {
                   }
                   return 'bg-white border-gray-200';
                 };
-
+                
                 return (
                   <div
                     key={rdv._id || rdv.id}

@@ -68,7 +68,7 @@ const getToken = async (): Promise<string | null> => {
   return null;
 };
 
-// Intercepteur pour ajouter le token d'authentification
+// Intercepteur pour ajouter le token d'authentification et le header d'impersonation
 api.interceptors.request.use(
   async (config) => {
     if (typeof window !== 'undefined') {
@@ -78,6 +78,16 @@ api.interceptors.request.use(
         console.log('🔑 Token ajouté à la requête:', config.url);
       } else {
         console.warn('⚠️ Aucun token trouvé pour la requête:', config.url);
+      }
+      
+      // Ajouter le header d'impersonation si on est en mode impersonation
+      const impersonateUserId = localStorage.getItem('impersonateUserId');
+      const impersonateAdminId = localStorage.getItem('impersonateAdminId');
+      
+      if (impersonateUserId && impersonateAdminId) {
+        config.headers['X-Impersonate-User-Id'] = impersonateUserId;
+        config.headers['X-Impersonate-Admin-Id'] = impersonateAdminId;
+        console.log('👤 Mode impersonation actif pour la requête:', config.url, 'User:', impersonateUserId);
       }
     }
     return config;
@@ -91,7 +101,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     // Log des réponses réussies pour le débogage
-    if (response.config?.url?.includes('/dossiers')) {
+    if (response.config?.url?.includes('/dossiers') || response.config?.url?.includes('/appointments')) {
       console.log('✅ Réponse API reçue pour:', response.config.url);
       console.log('✅ Status:', response.status);
       console.log('✅ Data:', response.data);
@@ -99,6 +109,22 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    // Log détaillé des erreurs pour appointments
+    if (error.config?.url?.includes('/appointments')) {
+      console.error('❌ Erreur API appointments:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      
+      if (error.response?.status === 404) {
+        console.error('❌ Route non trouvée:', error.config?.url);
+      }
+    }
+    
     // Gérer les erreurs de connexion (backend non disponible)
     if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED') || !error.response) {
       console.warn('⚠️ Le serveur backend n\'est pas disponible. Vérifiez que le serveur est démarré sur le port 3005.');
@@ -200,7 +226,7 @@ export const userAPI = {
 
 export const logsAPI = {
   // SuperAdmin - Récupérer tous les logs
-  getAllLogs: (params?: { action?: string; userId?: string; startDate?: string; endDate?: string; limit?: number; page?: number }) => {
+  getAllLogs: (params?: { action?: string; userId?: string; targetUserId?: string; startDate?: string; endDate?: string; limit?: number; page?: number }) => {
     return api.get('/logs', { params });
   },
   
@@ -212,22 +238,78 @@ export const logsAPI = {
   // SuperAdmin - Télécharger le DLOG en PDF pour une date donnée
   downloadDlogPDF: async (date: string): Promise<void> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') || sessionStorage.getItem('token') : null;
-    let baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
+    
+    // Utiliser la même logique que pour API_BASE_URL
+    let baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005/api';
+    
+    // Si baseURL se termine déjà par /api, ne pas l'ajouter à nouveau
+    // Sinon, construire l'URL complète
     const url = baseURL.endsWith('/api')
       ? `${baseURL}/logs/dlog/pdf?date=${date}`
       : `${baseURL}/api/logs/dlog/pdf?date=${date}`;
     
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token || ''}`
-      }
-    });
+    console.log('📥 Tentative de téléchargement DLOG:', { url, date, hasToken: !!token });
     
-    if (!response.ok) {
-      throw new Error('Erreur lors du téléchargement du DLOG');
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token || ''}`
+        }
+      });
+      
+      console.log('📥 Réponse DLOG:', { 
+        status: response.status, 
+        statusText: response.statusText, 
+        ok: response.ok,
+        contentType: response.headers.get('content-type')
+      });
+    
+      if (!response.ok) {
+        // Essayer de récupérer le message d'erreur du serveur
+        let errorMessage = 'Erreur lors du téléchargement du DLOG';
+        let errorDetails = '';
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.error || errorMessage;
+            errorDetails = errorData.details || '';
+            console.error('📥 Détails de l\'erreur serveur:', errorData);
+          } else {
+            // Si la réponse n'est pas du JSON, utiliser le statut
+            errorMessage = `Erreur ${response.status}: ${response.statusText}`;
+          }
+        } catch (e) {
+          console.error('📥 Erreur lors de la lecture de la réponse d\'erreur:', e);
+          // Si la réponse n'est pas du JSON, utiliser le statut
+          errorMessage = `Erreur ${response.status}: ${response.statusText}`;
+        }
+        
+        const fullErrorMessage = errorDetails 
+          ? `${errorMessage}${errorDetails ? ` (${errorDetails})` : ''}`
+          : errorMessage;
+        throw new Error(fullErrorMessage);
+      }
+      
+      // Vérifier que la réponse est bien un PDF
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/pdf')) {
+        console.warn('⚠️ Content-Type inattendu:', contentType);
+        // Ne pas bloquer si le contenu est vide mais le type est correct
+        if (!contentType) {
+          console.warn('⚠️ Content-Type manquant, tentative de téléchargement quand même');
+        }
     }
     
     const blob = await response.blob();
+      console.log('📥 Blob reçu:', { size: blob.size, type: blob.type });
+      
+      // Vérifier que le blob n'est pas vide
+      if (blob.size === 0) {
+        throw new Error('Le fichier PDF téléchargé est vide. Aucun log trouvé pour cette date.');
+      }
+      
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
@@ -236,6 +318,21 @@ export const logsAPI = {
     link.click();
     link.remove();
     window.URL.revokeObjectURL(downloadUrl);
+      
+      console.log('✅ DLOG téléchargé avec succès');
+    } catch (error: any) {
+      console.error('❌ Erreur détaillée lors du téléchargement du DLOG:', error);
+      
+      // Gérer les erreurs de connexion
+      if (error.message?.includes('Failed to fetch') || 
+          error.message?.includes('NetworkError') || 
+          error.message?.includes('ERR_CONNECTION_REFUSED') ||
+          (error.name === 'TypeError' && error.message?.includes('fetch'))) {
+        throw new Error('Impossible de contacter le serveur. Vérifiez que le serveur backend est démarré sur le port 3005.');
+      }
+      
+      throw error;
+    }
   },
 };
 

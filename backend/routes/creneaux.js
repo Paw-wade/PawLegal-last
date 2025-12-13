@@ -86,31 +86,54 @@ router.use(authorize('admin', 'superadmin'));
 router.get('/', async (req, res) => {
   try {
     const { date, ferme } = req.query;
+    
+    console.log('📥 Requête GET /api/creneaux:', { date, ferme, user: req.user?.email });
+    
     let query = {};
 
     if (date) {
-      const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999);
-      query.date = { $gte: startDate, $lte: endDate };
+      try {
+        const startDate = new Date(date);
+        if (isNaN(startDate.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Format de date invalide'
+          });
+        }
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(date);
+        endDate.setHours(23, 59, 59, 999);
+        query.date = { $gte: startDate, $lte: endDate };
+      } catch (dateError) {
+        console.error('❌ Erreur lors du parsing de la date:', dateError);
+        return res.status(400).json({
+          success: false,
+          message: 'Format de date invalide',
+          error: dateError.message
+        });
+      }
     }
 
-    if (ferme !== undefined) {
-      // Convertir en booléen (gérer 'true', 'false', true, false)
-      query.ferme = ferme === 'true' || ferme === true;
+    if (ferme !== undefined && ferme !== null && ferme !== '') {
+      // Convertir en booléen (gérer 'true', 'false', true, false, '1', '0')
+      query.ferme = ferme === 'true' || ferme === true || ferme === '1' || ferme === 1;
     }
 
     console.log('🔍 Recherche de créneaux avec query:', JSON.stringify(query, null, 2));
 
     const creneaux = await Creneau.find(query)
-      .sort({ date: 1, heure: 1 });
+      .sort({ date: 1, heure: 1 })
+      .lean(); // Utiliser lean() pour améliorer les performances
 
-    console.log('✅ Créneaux trouvés:', creneaux.length, creneaux.map(c => ({
-      date: c.date,
-      heure: c.heure,
-      ferme: c.ferme
-    })));
+    console.log('✅ Créneaux trouvés:', creneaux.length);
+    if (creneaux.length > 0) {
+      console.log('📋 Exemples de créneaux:', creneaux.slice(0, 3).map(c => ({
+        id: c._id,
+        date: c.date,
+        heure: c.heure,
+        ferme: c.ferme
+      })));
+    }
 
     res.json({
       success: true,
@@ -118,11 +141,13 @@ router.get('/', async (req, res) => {
       creneaux
     });
   } catch (error) {
-    console.error('Erreur lors de la récupération des créneaux:', error);
+    console.error('❌ Erreur lors de la récupération des créneaux:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur',
-      error: error.message
+      message: 'Erreur serveur lors de la récupération des créneaux',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

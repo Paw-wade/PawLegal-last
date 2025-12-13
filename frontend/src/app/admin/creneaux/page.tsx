@@ -10,7 +10,7 @@ import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
     destructive: 'bg-red-500 text-white hover:bg-red-600',
@@ -86,18 +86,36 @@ export default function AdminCreneauxPage() {
     setError(null);
     try {
       console.log('🔄 Chargement des créneaux fermés pour:', selectedDate);
+      
+      // Valider la date avant de faire la requête
+      if (!selectedDate) {
+        setError('Veuillez sélectionner une date');
+        setIsLoading(false);
+        return;
+      }
+      
       // Charger UNIQUEMENT les créneaux fermés pour la date sélectionnée
       const response = await creneauxAPI.getAllCreneaux({ date: selectedDate, ferme: true });
-      console.log('✅ Réponse chargement créneaux:', response.data);
+      
+      console.log('✅ Réponse chargement créneaux:', {
+        success: response.data.success,
+        count: response.data.count,
+        creneauxLength: response.data.creneaux?.length || 0
+      });
+      
       if (response.data.success) {
         const creneauxRecus = response.data.creneaux || [];
-        console.log('📋 Créneaux fermés reçus:', creneauxRecus.length, creneauxRecus.map((c: any) => ({
-          id: c._id || c.id,
-          date: c.date ? new Date(c.date).toISOString().split('T')[0] : 'N/A',
-          heure: c.heure,
-          ferme: c.ferme,
-          motif: c.motifFermeture
-        })));
+        console.log('📋 Créneaux fermés reçus:', creneauxRecus.length);
+        
+        if (creneauxRecus.length > 0) {
+          console.log('📋 Exemples de créneaux:', creneauxRecus.slice(0, 3).map((c: any) => ({
+            id: c._id || c.id,
+            date: c.date ? new Date(c.date).toISOString().split('T')[0] : 'N/A',
+            heure: c.heure,
+            ferme: c.ferme,
+            motif: c.motifFermeture
+          })));
+        }
         
         // Filtrer pour s'assurer que la date correspond (double vérification)
         const creneauxFermes = creneauxRecus.filter((c: any) => {
@@ -130,24 +148,42 @@ export default function AdminCreneauxPage() {
           }
         });
         
-        console.log('📋 Créneaux fermés filtrés:', creneauxFermes.length, creneauxFermes.map((c: any) => ({
-          heure: c.heure,
-          ferme: c.ferme,
-          motif: c.motifFermeture
-        })));
+        console.log('📋 Créneaux fermés filtrés:', creneauxFermes.length);
         
         setCreneaux(creneauxFermes);
       } else {
-        setError('Erreur lors du chargement des créneaux');
+        const errorMessage = response.data.message || 'Erreur lors du chargement des créneaux';
+        console.error('❌ Réponse non réussie:', errorMessage);
+        setError(errorMessage);
       }
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des créneaux:', err);
-      console.error('Détails:', {
+      console.error('Détails complets:', {
         message: err.message,
+        name: err.name,
         response: err.response?.data,
-        status: err.response?.status
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        config: err.config
       });
-      setError(err.response?.data?.message || 'Erreur lors du chargement des créneaux');
+      
+      // Gérer différents types d'erreurs
+      let errorMessage = 'Erreur lors du chargement des créneaux';
+      
+      if (err.response) {
+        // Erreur de réponse du serveur
+        errorMessage = err.response.data?.message || 
+                      err.response.data?.error || 
+                      `Erreur ${err.response.status}: ${err.response.statusText}`;
+      } else if (err.request) {
+        // Erreur de connexion
+        errorMessage = 'Impossible de contacter le serveur. Vérifiez que le serveur backend est démarré sur le port 3005.';
+      } else {
+        // Autre erreur
+        errorMessage = err.message || errorMessage;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

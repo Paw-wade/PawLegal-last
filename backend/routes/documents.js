@@ -6,6 +6,7 @@ const Document = require('../models/Document');
 const User = require('../models/User');
 const Log = require('../models/Log');
 const { protect, authorize } = require('../middleware/auth');
+const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
 
 const router = express.Router();
 
@@ -59,18 +60,29 @@ const upload = multer({
 
 // Toutes les routes nécessitent une authentification
 router.use(protect);
+// Ajouter le middleware d'impersonation après protect
+router.use(handleImpersonation);
 
 // @route   GET /api/user/documents
 // @desc    Récupérer tous les documents de l'utilisateur connecté
 // @access  Private (tous les rôles authentifiés)
 router.get('/', async (req, res) => {
   try {
-    console.log('📄 Récupération des documents pour l\'utilisateur:', req.user.id, 'Rôle:', req.user.role);
+    // En mode impersonation, utiliser l'ID de l'utilisateur impersonné
+    const targetUserId = req.impersonateUserId || req.user.id;
+    const targetUserEmail = req.impersonateTargetUser?.email || req.user.email;
     
-    const documents = await Document.find({ user: req.user.id })
+    console.log('📄 Récupération des documents pour l\'utilisateur:', targetUserId, 'Rôle:', req.user.role, req.impersonateUserId ? '[IMPERSONATION]' : '');
+    
+    const documents = await Document.find({ user: targetUserId })
       .sort({ createdAt: -1 });
 
-    console.log('✅ Documents trouvés:', documents.length, 'pour l\'utilisateur:', req.user.email);
+    console.log('✅ Documents trouvés:', documents.length, 'pour l\'utilisateur:', targetUserEmail);
+
+    // Logger l'action si en impersonation
+    if (req.impersonateUserId) {
+      await logImpersonationAction(req, 'view_documents', `Consultation de ${documents.length} document(s)`, { count: documents.length });
+    }
 
     res.json({
       success: true,
@@ -92,9 +104,25 @@ router.get('/', async (req, res) => {
 // @access  Private/Admin
 router.get('/admin', authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const documents = await Document.find()
+    console.log('📄 Requête GET /api/user/documents/admin reçue:', {
+      user: req.user?.email,
+      role: req.user?.role,
+      userId: req.query?.userId
+    });
+    
+    let query = {};
+    
+    // Si un userId est fourni, filtrer par utilisateur
+    if (req.query.userId) {
+      query.user = req.query.userId;
+      console.log('🔍 Filtrage par userId:', req.query.userId);
+    }
+    
+    const documents = await Document.find(query)
       .populate('user', 'firstName lastName email')
       .sort({ createdAt: -1 });
+
+    console.log('✅ Documents trouvés:', documents.length);
 
     res.json({
       success: true,
@@ -102,11 +130,12 @@ router.get('/admin', authorize('admin', 'superadmin'), async (req, res) => {
       documents
     });
   } catch (error) {
-    console.error('Erreur lors de la récupération des documents (admin):', error);
+    console.error('❌ Erreur lors de la récupération des documents (admin):', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

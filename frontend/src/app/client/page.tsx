@@ -9,13 +9,14 @@ import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
 import { NotificationBadge } from '@/components/NotificationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel } from '@/lib/dossierUtils';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
@@ -97,8 +98,8 @@ function ClientDashboardContent() {
       if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
         // Ne pas rediriger si on est en mode impersonation
         if (!impersonateUserId) {
-          router.push('/admin');
-          return;
+        router.push('/admin');
+        return;
         }
       }
 
@@ -214,12 +215,18 @@ function ClientDashboardContent() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (session || localStorage.getItem('token')) {
-        loadStats();
+        // Vérifier si on est en mode impersonation
+        const impersonateUserId = typeof window !== 'undefined' ? localStorage.getItem('impersonateUserId') : null;
+        if (isImpersonating && impersonateUserId) {
+          loadStatsForUser(impersonateUserId);
+        } else {
+          loadStats();
+        }
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
 
     return () => clearInterval(interval);
-  }, [session]);
+  }, [session, isImpersonating]);
 
   const loadUserProfile = async () => {
     try {
@@ -253,6 +260,16 @@ function ClientDashboardContent() {
   const loadStats = async () => {
     setIsLoading(true);
     try {
+      // Vérifier si on est en mode impersonation
+      const impersonateUserId = typeof window !== 'undefined' ? localStorage.getItem('impersonateUserId') : null;
+      
+      if (isImpersonating && impersonateUserId) {
+        // En mode impersonation, utiliser loadStatsForUser
+        console.log('📊 Mode impersonation: chargement des stats pour l\'utilisateur:', impersonateUserId);
+        await loadStatsForUser(impersonateUserId);
+        return;
+      }
+
       console.log('📊 Chargement des statistiques pour l\'utilisateur:', session?.user?.email);
       
       // Vérifier que le token est disponible
@@ -394,28 +411,11 @@ function ClientDashboardContent() {
         {/* Banner d'impersonation */}
         <div id="dashboard-top" className="scroll-mt-20"></div>
         {isImpersonating && impersonatedUser && (
-          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-4 shadow-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">👤</span>
-                <div>
-                  <p className="font-semibold text-yellow-900">
-                    Mode impersonation actif
-                  </p>
-                  <p className="text-sm text-yellow-700">
-                    Vous visualisez le dashboard de <strong>{userName}</strong> ({userEmail})
-                  </p>
-                </div>
-              </div>
-              <Button 
-                onClick={stopImpersonating}
-                variant="outline"
-                className="border-yellow-500 text-yellow-700 hover:bg-yellow-100"
-              >
-                Quitter l'impersonation
-              </Button>
-            </div>
-          </div>
+          <ImpersonationBanner
+            userName={userName}
+            userEmail={userEmail}
+            onStopImpersonating={stopImpersonating}
+          />
         )}
 
         {/* En-tête de bienvenue */}
@@ -545,24 +545,24 @@ function ClientDashboardContent() {
 
           {/* Badge Documents avec lien direct */}
           <div id="documents-section" className="scroll-mt-20">
-            <Link href="/client/documents" className="group">
-              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 hover:shadow-lg hover:border-green-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
-                    <span className="text-2xl">📄</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-green-600 transition-colors">{stats.documents}</p>
-                  </div>
+          <Link href="/client/documents" className="group">
+            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 hover:shadow-lg hover:border-green-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
+                  <span className="text-2xl">📄</span>
                 </div>
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
-                <p className="text-xs text-muted-foreground mb-3">Documents disponibles</p>
-                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                  <span className="text-xs text-muted-foreground">Tous vos documents</span>
-                  <span className="text-green-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-green-600 transition-colors">{stats.documents}</p>
                 </div>
               </div>
-            </Link>
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Documents</h3>
+              <p className="text-xs text-muted-foreground mb-3">Documents disponibles</p>
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <span className="text-xs text-muted-foreground">Tous vos documents</span>
+                <span className="text-green-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
+              </div>
+            </div>
+          </Link>
           </div>
         </div>
 
@@ -597,25 +597,25 @@ function ClientDashboardContent() {
           </div>
 
           <div id="temoignages-section" className="scroll-mt-20">
-            <Link href="/client/temoignages" className="group">
-              <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                    <span className="text-3xl">⭐</span>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-foreground group-hover:text-purple-600 transition-colors mb-1">Témoignage</h3>
-                    <p className="text-sm text-muted-foreground">Partagez votre expérience</p>
-                  </div>
+          <Link href="/client/temoignages" className="group">
+            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border border-purple-200 hover:border-purple-400 hover:scale-105">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                  <span className="text-3xl">⭐</span>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-purple-200">
-                  <span className="text-xs font-medium text-purple-600">Accéder →</span>
-                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                    <span className="text-purple-600 text-sm">→</span>
-                  </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-purple-600 transition-colors mb-1">Témoignage</h3>
+                  <p className="text-sm text-muted-foreground">Partagez votre expérience</p>
                 </div>
               </div>
-            </Link>
+              <div className="flex items-center justify-between pt-4 border-t border-purple-200">
+                <span className="text-xs font-medium text-purple-600">Accéder →</span>
+                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                  <span className="text-purple-600 text-sm">→</span>
+                </div>
+              </div>
+            </div>
+          </Link>
           </div>
 
           <Link href="/client/compte" className="group">
@@ -726,24 +726,24 @@ function ClientDashboardContent() {
         </div>
       )}
       
-      {/* Badge flottant pour ouvrir le widget - toujours visible quand fermé, ou au scroll */}
-      <ReservationBadge 
-        onOpen={() => setIsWidgetOpen(true)}
-        alwaysVisible={!isWidgetOpen}
-      />
+             {/* Badge flottant pour ouvrir le widget - toujours visible quand fermé, ou au scroll */}
+             <ReservationBadge 
+               onOpen={() => setIsWidgetOpen(true)}
+               alwaysVisible={!isWidgetOpen}
+             />
 
-      {/* Modal de notification de message */}
-      <MessageNotificationModal
-        isOpen={showMessageModal}
-        onClose={() => {
-          setShowMessageModal(false);
-          setUnreadMessage(null);
-        }}
-        message={unreadMessage}
-      />
-    </div>
-  );
-}
+             {/* Modal de notification de message */}
+             <MessageNotificationModal
+               isOpen={showMessageModal}
+               onClose={() => {
+                 setShowMessageModal(false);
+                 setUnreadMessage(null);
+               }}
+               message={unreadMessage}
+             />
+           </div>
+         );
+       }
 
 export default function ClientDashboardPage() {
   return (

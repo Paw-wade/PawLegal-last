@@ -48,8 +48,7 @@ const userPermissionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   roles: [{
     type: String,
@@ -73,7 +72,7 @@ userPermissionSchema.pre('save', function(next) {
 });
 
 // Index pour améliorer les performances
-userPermissionSchema.index({ user: 1 });
+// Note: L'index sur 'user' est créé automatiquement par unique: true
 userPermissionSchema.index({ roles: 1 });
 
 module.exports = mongoose.model('Permission', userPermissionSchema);

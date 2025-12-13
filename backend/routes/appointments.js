@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const RendezVous = require('../models/RendezVous');
 const { protect, authorize } = require('../middleware/auth');
+const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
 
 // @route   POST /api/appointments
 // @desc    Créer un rendez-vous (public ou authentifié)
@@ -117,7 +118,7 @@ router.post(
       
       if (error.name === 'ValidationError') {
         // Erreur de validation Mongoose
-        const validationErrors = Object.values(error.errors).map((err: any) => err.message);
+        const validationErrors = Object.values(error.errors).map((err) => err.message);
         errorMessage = `Erreur de validation: ${validationErrors.join(', ')}`;
       } else if (error.message) {
         errorMessage = error.message;
@@ -134,32 +135,26 @@ router.post(
 
 // Note: La route POST / est publique, les autres routes nécessitent une authentification
 
-// @route   GET /api/appointments
-// @desc    Récupérer les rendez-vous de l'utilisateur connecté
-// @access  Private
-router.get('/', protect, async (req, res) => {
-  try {
-    const rendezVous = await RendezVous.find({ user: req.user.id })
-      .sort({ date: -1, heure: -1 });
-
-    res.json({
-      success: true,
-      data: rendezVous
-    });
-  } catch (error) {
-    console.error('Erreur lors de la récupération des rendez-vous:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de la récupération des rendez-vous'
-    });
-  }
-});
+// Middleware de debug pour toutes les routes GET (désactivé pour éviter les conflits)
+// router.use((req, res, next) => {
+//   if (req.method === 'GET') {
+//     console.log('🔍 Route GET interceptée:', req.path, 'Original URL:', req.originalUrl);
+//   }
+//   next();
+// });
 
 // @route   GET /api/appointments/admin
 // @desc    Récupérer tous les rendez-vous (admin)
 // @access  Private (Admin)
+// IMPORTANT: Cette route DOIT être définie AVANT router.get('/:id') pour éviter les conflits
 router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
+    console.log('📥 Requête GET /api/appointments/admin reçue:', {
+      user: req.user?.email,
+      role: req.user?.role,
+      query: req.query
+    });
+    
     const { statut, date, userId } = req.query;
     let query = {};
 
@@ -179,9 +174,13 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
       query.date = { $gte: startDate, $lte: endDate };
     }
 
+    console.log('🔍 Query MongoDB:', JSON.stringify(query, null, 2));
+
     const rendezVous = await RendezVous.find(query)
       .populate('user', 'firstName lastName email')
       .sort({ date: 1, heure: 1 });
+
+    console.log('✅ Rendez-vous trouvés:', rendezVous.length);
 
     res.json({
       success: true,
@@ -189,10 +188,57 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
       appointments: rendezVous // Alias pour compatibilité
     });
   } catch (error) {
-    console.error('Erreur lors de la récupération des rendez-vous:', error);
+    console.error('❌ Erreur lors de la récupération des rendez-vous:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération des rendez-vous'
+      message: 'Erreur serveur lors de la récupération des rendez-vous',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   GET /api/appointments
+// @desc    Récupérer les rendez-vous de l'utilisateur connecté
+// @access  Private
+router.get('/', protect, handleImpersonation, async (req, res) => {
+  try {
+    console.log('📅 GET /api/appointments - Requête reçue:', {
+      user: req.user?.email,
+      userId: req.user?.id,
+      impersonateUserId: req.impersonateUserId,
+      path: req.path
+    });
+    
+    // En mode impersonation, utiliser l'ID de l'utilisateur impersonné
+    const targetUserId = req.impersonateUserId || req.user.id;
+    const targetUserEmail = req.impersonateTargetUser?.email || req.user.email;
+    
+    console.log('📅 Récupération des rendez-vous pour l\'utilisateur:', targetUserId, req.impersonateUserId ? '[IMPERSONATION]' : '');
+    
+    const rendezVous = await RendezVous.find({ user: targetUserId })
+      .sort({ date: -1, heure: -1 });
+
+    console.log('✅ Rendez-vous trouvés:', rendezVous.length);
+
+    // Logger l'action si en impersonation
+    if (req.impersonateUserId) {
+      logImpersonationAction(req, 'view_appointments', `Consultation de ${rendezVous.length} rendez-vous`, { count: rendezVous.length }).catch(err => {
+        console.error('Erreur lors du log d\'impersonation:', err);
+      });
+    }
+
+    res.json({
+      success: true,
+      data: rendezVous
+    });
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des rendez-vous:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération des rendez-vous',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -200,7 +246,7 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
 // @route   GET /api/appointments/:id
 // @desc    Récupérer un rendez-vous par ID
 // @access  Private
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', protect, handleImpersonation, async (req, res) => {
   try {
     const rendezVous = await RendezVous.findById(req.params.id)
       .populate('user', 'firstName lastName email');

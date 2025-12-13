@@ -16,30 +16,45 @@
       "static/chunks/main-app.js",
       "static/chunks/app/auth/signin/page.js"
     ],
-    "/admin/page": [
+    "/client/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/admin/page.js"
+      "static/chunks/app/client/page.js"
+    ],
+    "/client/dossiers/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/client/dossiers/page.js"
     ],
     "/calculateur/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/calculateur/page.js"
     ],
-    "/client/page": [
+    "/faq/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/client/page.js"
+      "static/chunks/app/faq/page.js"
+    ],
+    "/services/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/services/page.js"
     ],
     "/contact/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/contact/page.js"
     ],
-    "/client/compte/page": [
+    "/admin/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/client/compte/page.js"
+      "static/chunks/app/admin/page.js"
+    ],
+    "/admin/rendez-vous/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/rendez-vous/page.js"
     ]
   }
 }

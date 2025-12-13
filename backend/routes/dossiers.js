@@ -4,6 +4,7 @@ const Dossier = require('../models/Dossier');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { protect, authorize } = require('../middleware/auth');
+const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
 
 const router = express.Router();
 
@@ -200,29 +201,35 @@ router.post(
 
 // Toutes les autres routes nécessitent une authentification
 router.use(protect);
+// Ajouter le middleware d'impersonation après protect
+router.use(handleImpersonation);
 
 // @route   GET /api/user/dossiers
 // @desc    Récupérer tous les dossiers de l'utilisateur connecté (tous les rôles)
 // @access  Private (tous les rôles authentifiés)
 router.get('/', async (req, res) => {
   try {
-    console.log('📁 Récupération des dossiers pour l\'utilisateur:', req.user.id, 'Email:', req.user.email, 'Rôle:', req.user.role);
+    // En mode impersonation, utiliser l'ID de l'utilisateur impersonné
+    const targetUserId = req.impersonateUserId || req.user.id;
+    const targetUserEmail = req.impersonateTargetUser?.email || req.user.email;
+    
+    console.log('📁 Récupération des dossiers pour l\'utilisateur:', targetUserId, 'Email:', targetUserEmail, 'Rôle:', req.user.role, req.impersonateUserId ? '[IMPERSONATION]' : '');
     
     // Construire le filtre pour récupérer les dossiers de l'utilisateur
     // 1. Dossiers où l'utilisateur est directement associé (user field)
     // 2. Dossiers où l'email correspond (clientEmail) - pour les dossiers créés par un admin
     // Normaliser l'email pour la comparaison (insensible à la casse)
-    const userEmailLower = req.user.email ? req.user.email.toLowerCase() : '';
+    const userEmailLower = targetUserEmail ? targetUserEmail.toLowerCase() : '';
     
     const filter = {
       $or: [
-        { user: req.user.id },
+        { user: targetUserId },
         { clientEmail: { $regex: new RegExp(`^${userEmailLower}$`, 'i') } } // Comparaison insensible à la casse
       ]
     };
     
-    // Si l'utilisateur est admin ou superadmin, il peut aussi voir les dossiers qui lui sont assignés
-    if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+    // Si l'utilisateur est admin ou superadmin (et pas en impersonation), il peut aussi voir les dossiers qui lui sont assignés
+    if ((req.user.role === 'admin' || req.user.role === 'superadmin') && !req.impersonateUserId) {
       filter.$or.push({ assignedTo: req.user.id });
     }
     
@@ -236,7 +243,12 @@ router.get('/', async (req, res) => {
       .populate('messages')
       .sort({ createdAt: -1 });
     
-    console.log('✅ Dossiers trouvés:', dossiers.length, 'pour l\'utilisateur:', req.user.email);
+    console.log('✅ Dossiers trouvés:', dossiers.length, 'pour l\'utilisateur:', targetUserEmail);
+    
+    // Logger l'action si en impersonation
+    if (req.impersonateUserId) {
+      await logImpersonationAction(req, 'view_dossiers', `Consultation de ${dossiers.length} dossier(s)`, { count: dossiers.length });
+    }
     
     res.json({
       success: true,

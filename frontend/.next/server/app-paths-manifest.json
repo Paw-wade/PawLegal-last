@@ -1,5 +1,5 @@
 {
-  "/calculateur/page": "app/calculateur/page.js",
-  "/client/page": "app/client/page.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/rendez-vous/page": "app/admin/rendez-vous/page.js"
 }

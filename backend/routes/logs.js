@@ -16,6 +16,8 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
   try {
     const { date } = req.query;
 
+    console.log('📥 Requête DLOG PDF reçue:', { date, user: req.user?.email });
+
     if (!date) {
       return res.status(400).json({
         success: false,
@@ -24,11 +26,19 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
     }
 
     // Valider le format de date
-    const selectedDate = new Date(date);
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(date)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format de date invalide. Utilisez le format YYYY-MM-DD (ex: 2024-12-25)'
+      });
+    }
+
+    const selectedDate = new Date(date + 'T00:00:00.000Z');
     if (isNaN(selectedDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: 'Format de date invalide. Utilisez le format YYYY-MM-DD'
+        message: 'Date invalide. Veuillez vérifier la date fournie'
       });
     }
 
@@ -50,19 +60,67 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
       .populate('targetUser', 'firstName lastName email role')
       .sort({ createdAt: 1 });
 
+    // Vérifier que les logs existent avant de créer le PDF
+    if (logs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Aucun log trouvé pour la date ${date}`
+      });
+    }
+
     // Créer le document PDF
     const doc = new PDFDocument({
       margin: 50,
       size: 'A4'
     });
 
-    // Configurer les headers de réponse
+    // Configurer les headers de réponse AVANT de pipe
     const filename = `DLOG_${date.replace(/-/g, '_')}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
+    // Gérer les erreurs du stream PDF
+    doc.on('error', (err) => {
+      console.error('Erreur dans le stream PDF:', err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la génération du PDF',
+          error: err.message
+        });
+      }
+    });
+
+    // Suivre le nombre de pages
+    let pageCount = 1;
+    
+    // Fonction pour ajouter le numéro de page en bas de chaque page
+    const addPageFooter = () => {
+      try {
+        const savedY = doc.y;
+        doc.fontSize(8)
+           .fillColor('#666666')
+           .text(
+             `Page ${pageCount} - DLOG ${date}`,
+             50,
+             doc.page.height - 30,
+             { align: 'center', width: 500 }
+           );
+        doc.y = savedY;
+      } catch (err) {
+        console.warn('⚠️ Erreur lors de l\'ajout du footer de page:', err.message);
+        // Continuer même si l'ajout du footer échoue
+      }
+    };
+
     // Pipe le PDF vers la réponse
     doc.pipe(res);
+    
+    // Ajouter le numéro de page à chaque nouvelle page créée
+    doc.on('pageAdded', () => {
+      pageCount++;
+      addPageFooter();
+    });
 
     // En-tête du document
     doc.fontSize(20)
@@ -206,29 +264,33 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
       });
     }
 
-    // Pied de page
-    const totalPages = doc.bufferedPageRange().count;
-    for (let i = 0; i < totalPages; i++) {
-      doc.switchToPage(i);
-      doc.fontSize(8)
-         .fillColor('#666666')
-         .text(
-           `Page ${i + 1} sur ${totalPages} - DLOG ${date}`,
-           50,
-           doc.page.height - 30,
-           { align: 'center', width: 500 }
-         );
-    }
-
+    // Ajouter le numéro de page sur la première page
+    addPageFooter();
+    
     // Finaliser le PDF
     doc.end();
-  } catch (error) {
-    console.error('Erreur lors de la génération du DLOG PDF:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de la génération du PDF',
-      error: error.message
+
+    // Gérer la fin du stream
+    doc.on('end', () => {
+      console.log('✅ DLOG PDF généré avec succès pour la date:', date);
     });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la génération du DLOG PDF:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Vérifier si les headers ont déjà été envoyés
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la génération du PDF',
+        error: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    } else {
+      // Si les headers sont déjà envoyés, on ne peut que logger l'erreur
+      console.error('⚠️ Impossible d\'envoyer une réponse d\'erreur: headers déjà envoyés');
+    }
   }
 });
 

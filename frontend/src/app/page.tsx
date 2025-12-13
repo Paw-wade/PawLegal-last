@@ -26,7 +26,7 @@ function Button({
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
   
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
     link: 'text-primary underline-offset-4 hover:underline',
@@ -115,8 +115,7 @@ export default function HomePage() {
                 <span className="text-xs font-medium text-primary">Expertise juridique reconnue</span>
               </div>
               <h1 className="text-4xl font-bold mb-3 text-foreground leading-tight text-left">
-                Votre partenaire juridique
-                <span className="block text-primary mt-1">de confiance</span>
+                Votre partenaire <span className="text-primary">juridique de confiance</span>
               </h1>
               <p className="text-base text-muted-foreground mb-4 text-left">
                 Spécialisés en droit des étrangers et droit du travail, nous vous accompagnons dans toutes vos démarches administratives avec expertise et professionnalisme.
@@ -141,10 +140,6 @@ export default function HomePage() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-base">✓</span>
                   <span>Suivi 24/7</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">✓</span>
-                  <span>Résultats garantis</span>
                 </div>
               </div>
             </div>

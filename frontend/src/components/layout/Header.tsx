@@ -21,7 +21,7 @@ function Button({
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
   
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
     link: 'text-primary underline-offset-4 hover:underline',
@@ -242,6 +242,7 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
       { href: '/admin/creneaux', label: 'Créneaux', requiresAuth: true, requiresRole: ['admin', 'superadmin'] },
       { href: '/admin/documents', label: 'Documents', requiresAuth: true, requiresRole: ['admin', 'superadmin'] },
       { href: '/admin/temoignages', label: 'Témoignages', requiresAuth: true, requiresRole: ['admin', 'superadmin'] },
+      { href: '/admin/logs', label: 'Logs', requiresAuth: true, requiresRole: ['superadmin'] },
       { href: '/calculateur', label: 'Calculateur', highlight: true },
     ],
   };
@@ -311,28 +312,27 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
   };
 
   return (
-    <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 shadow-sm">
-      <div className="container mx-auto px-4 py-4">
+    <header className="border-b border-gray-200/80 bg-white/98 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+      <div className="container mx-auto px-4 py-2.5">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div>
-              <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
-                variant === 'home' ? 'text-2xl' : 'text-xl'
-              }`}>
-                Paw Legal
-              </Link>
-              <p className={`text-xs text-black font-medium ${
-                variant === 'home' ? 'w-12' : ''
-              }`}>
-                {variant === 'admin' ? 'Panneau d\'Administration' : variant === 'client' ? 'Espace Client' : 'Accompagnement Juridique'}
-              </p>
-            </div>
+            <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
+              variant === 'home' ? 'text-xl' : 'text-lg'
+            }`}>
+              Paw Legal
+            </Link>
+            <div className="h-4 w-px bg-gray-300"></div>
+            <p className={`text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap ${
+              variant === 'home' ? '' : ''
+            }`}>
+              {variant === 'admin' ? 'Panneau d\'Administration' : variant === 'client' ? 'Espace Client' : 'Service d\'accompagnement juridique'}
+            </p>
           </div>
 
           {/* Navigation */}
           {showNav && (
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-0.5">
               {currentNavItems.map((item) => {
                 // Si c'est le Dashboard, utiliser un bouton au lieu d'un Link
                 if ((item as any).isDashboard) {
@@ -340,7 +340,7 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
                     <button
                       key="dashboard"
                       onClick={handleDashboardClick}
-                      className="px-4 py-2 rounded-md text-sm font-medium transition-colors hover:bg-accent"
+                      className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-gray-100 text-gray-700"
                     >
                       Dashboard
                     </button>
@@ -352,14 +352,14 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
                     key={item.href}
                     href={navHref}
                     onClick={(e) => handleNavClick(e, item)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
                       (item as any).active
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-orange-500 text-white shadow-sm'
                         : item.highlight && item.href === '/client'
-                        ? 'bg-blue-400 text-white hover:bg-blue-500 shadow-md font-semibold'
+                        ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm font-semibold'
                         : item.highlight
-                        ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold'
-                        : 'hover:bg-accent'
+                        ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-sm font-semibold'
+                        : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                     }`}
                   >
                     {item.label}
@@ -369,7 +369,7 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
               {variant === 'admin' && (session?.user as any)?.role === 'superadmin' && (
                 <Link
                   href="/admin/logs"
-                  className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                   Logs
                 </Link>
@@ -380,7 +380,7 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
                pathname !== '/client' && (
                 <Link
                   href="/client"
-                  className="px-4 py-2 rounded-md text-sm font-medium transition-colors hover:bg-accent"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                   Dashboard
                 </Link>
@@ -389,22 +389,22 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
           )}
 
             {/* Informations utilisateur et actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {isAuthenticated ? (
                 <>
                   {/* Affichage du nom et de la qualité - TOUJOURS VISIBLE */}
-                  <div className="text-right border-r pr-3 mr-2">
+                  <div className="text-right border-r border-gray-200 pr-2.5 mr-2">
                     <Link 
                       href={variant === 'admin' ? '/admin/compte' : '/client/compte'}
-                      className="text-xs sm:text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer block"
+                      className="text-xs font-semibold text-gray-900 hover:text-orange-500 transition-colors cursor-pointer block leading-tight"
                     >
                       {userName || 'Utilisateur'}
                     </Link>
-                    <p className="text-xs text-muted-foreground">{roleLabel}</p>
+                    <p className="text-[10px] text-gray-500 font-normal leading-tight">{roleLabel}</p>
                   </div>
                   <Button 
                     variant="ghost" 
-                    className="text-xs sm:text-sm"
+                    className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900 hover:bg-gray-100"
                     onClick={handleSignOut}
                   >
                     Déconnexion
@@ -413,10 +413,10 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
               ) : (
                 <>
                   <Link href="/auth/signin">
-                    <Button variant="ghost" className="text-xs sm:text-sm">Connexion</Button>
+                    <Button variant="ghost" className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900">Connexion</Button>
                   </Link>
                   <Link href="/auth/signup">
-                    <Button className="text-xs sm:text-sm">Créer un compte</Button>
+                    <Button className="text-xs px-3 py-1.5 h-auto">Créer un compte</Button>
                   </Link>
                 </>
               )}

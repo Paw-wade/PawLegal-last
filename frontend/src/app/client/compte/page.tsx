@@ -11,7 +11,7 @@ import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 function Button({ children, variant = 'default', className = '', disabled = false, ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none';
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
@@ -107,43 +107,76 @@ export default function ComptePage() {
   }, [session, status, router]);
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    // Charger le profil automatiquement lorsque l'utilisateur est authentifié
+    // Le formulaire sera pré-rempli avec toutes les données existantes
+    if (status === 'authenticated' && session) {
       loadProfile();
     }
-  }, [status]);
+  }, [status, session]);
 
   const loadProfile = async () => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log('🔄 Chargement du profil utilisateur...');
       const response = await userAPI.getProfile();
+      
       if (response.data.success) {
         const user = response.data.user || response.data.data;
-        // Pré-remplir TOUS les champs avec les données existantes ou des valeurs vides par défaut
-        setProfileData({
-          firstName: user.firstName || '',
-          lastName: user.lastName || '',
-          email: user.email || '',
-          phone: user.phone || '',
-          dateNaissance: user.dateNaissance ? new Date(user.dateNaissance).toISOString().split('T')[0] : '',
-          lieuNaissance: user.lieuNaissance || '',
-          nationalite: user.nationalite || '',
-          sexe: user.sexe || '',
-          numeroEtranger: user.numeroEtranger || '',
-          numeroTitre: user.numeroTitre || '',
-          typeTitre: user.typeTitre || '',
-          dateDelivrance: user.dateDelivrance ? new Date(user.dateDelivrance).toISOString().split('T')[0] : '',
-          dateExpiration: user.dateExpiration ? new Date(user.dateExpiration).toISOString().split('T')[0] : '',
-          adressePostale: user.adressePostale || '',
-          ville: user.ville || '',
-          codePostal: user.codePostal || '',
-          pays: user.pays || 'France',
+        console.log('✅ Profil chargé:', { 
+          firstName: user.firstName, 
+          lastName: user.lastName, 
+          email: user.email,
+          hasPhone: !!user.phone,
+          hasDateNaissance: !!user.dateNaissance,
+          hasDateDelivrance: !!user.dateDelivrance,
+          hasDateExpiration: !!user.dateExpiration
         });
+        
+        // Fonction helper pour formater les dates de manière sécurisée
+        const formatDate = (dateValue: any): string => {
+          if (!dateValue) return '';
+          try {
+            // Gérer les chaînes de caractères et les objets Date
+            const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+            if (isNaN(date.getTime())) return '';
+            return date.toISOString().split('T')[0];
+          } catch {
+            return '';
+          }
+        };
+
+        // Pré-remplir TOUS les champs avec les données existantes
+        // Si une valeur existe en base, elle est utilisée, sinon chaîne vide
+        // Les champs ne doivent JAMAIS être undefined ou null
+        const preFilledData = {
+          firstName: String(user.firstName || '').trim(),
+          lastName: String(user.lastName || '').trim(),
+          email: String(user.email || '').trim(),
+          phone: String(user.phone || '').trim(),
+          dateNaissance: formatDate(user.dateNaissance),
+          lieuNaissance: String(user.lieuNaissance || '').trim(),
+          nationalite: String(user.nationalite || '').trim(),
+          sexe: String(user.sexe || '').trim(),
+          numeroEtranger: String(user.numeroEtranger || '').trim(),
+          numeroTitre: String(user.numeroTitre || '').trim(),
+          typeTitre: String(user.typeTitre || '').trim(),
+          dateDelivrance: formatDate(user.dateDelivrance),
+          dateExpiration: formatDate(user.dateExpiration),
+          adressePostale: String(user.adressePostale || '').trim(),
+          ville: String(user.ville || '').trim(),
+          codePostal: String(user.codePostal || '').trim(),
+          pays: String(user.pays || 'France').trim(),
+        };
+        
+        console.log('📝 Données pré-remplies:', preFilledData);
+        setProfileData(preFilledData);
       } else {
+        console.error('❌ Erreur: réponse non réussie', response.data);
         setError('Impossible de charger le profil');
       }
     } catch (error: any) {
-      console.error('Erreur lors du chargement du profil:', error);
+      console.error('❌ Erreur lors du chargement du profil:', error);
       setError(error.response?.data?.message || 'Erreur lors du chargement du profil');
     } finally {
       setIsLoading(false);
