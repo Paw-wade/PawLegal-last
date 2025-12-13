@@ -37,15 +37,20 @@ export function NotificationBadge({ className = '', showCount = true, variant = 
   }, []);
 
   if (variant === 'header') {
+    // Déterminer le lien selon le rôle (à améliorer avec useSession si nécessaire)
+    const notificationsLink = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin') 
+      ? '/admin/notifications' 
+      : '/client/notifications';
+    
     return (
       <Link 
-        href="/client/notifications" 
-        className={`relative inline-flex items-center justify-center ${className}`}
+        href={notificationsLink} 
+        className={`relative inline-flex items-center justify-center p-2 rounded-md hover:bg-gray-100 transition-colors ${className}`}
       >
         <div className="relative">
           <span className="text-xl">🔔</span>
           {showCount && !isLoading && unreadCount > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center min-w-[20px]">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center min-w-[20px] shadow-md">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}

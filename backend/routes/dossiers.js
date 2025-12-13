@@ -44,7 +44,7 @@ const createNotification = async (userId, type, titre, message, lien = null, met
 router.post(
   '/',
   [
-    body('titre').trim().notEmpty().withMessage('Le titre est requis'),
+    body('titre').optional().trim(),
     body('categorie').optional().isIn(['sejour_titres', 'contentieux_administratif', 'asile', 'regroupement_familial', 'nationalite_francaise', 'eloignement_urgence', 'autre']),
     body('statut').optional().isIn(['recu', 'accepte', 'refuse', 'en_attente_onboarding', 'en_cours_instruction', 'pieces_manquantes', 'dossier_complet', 'depose', 'reception_confirmee', 'complement_demande', 'decision_defavorable', 'communication_motifs', 'recours_preparation', 'refere_mesures_utiles', 'refere_suspension_rep', 'gain_cause', 'rejet', 'decision_favorable']),
     body('priorite').optional().isIn(['basse', 'normale', 'haute', 'urgente'])
@@ -105,13 +105,7 @@ router.post(
         }
       }
 
-      // Si pas d'utilisateur connecté, vérifier que les informations client sont fournies
-      if (!finalUserId && (!clientNom || !clientPrenom || !clientEmail)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Les informations du client sont requises si vous n\'êtes pas connecté'
-        });
-      }
+      // Tous les champs sont optionnels - pas de validation obligatoire pour les visiteurs
 
       // Vérifier si un membre de l'équipe est assigné (seulement pour les admins)
       let assignedUser = null;
@@ -145,7 +139,7 @@ router.post(
         clientPrenom: finalUserId ? null : clientPrenom,
         clientEmail: finalUserId ? user.email : clientEmail,
         clientTelephone: finalUserId ? user.phone : clientTelephone,
-        titre,
+        titre: titre || '',
         description: description || '',
         categorie: categorie || 'autre',
         type: type || '',
@@ -327,7 +321,7 @@ router.get('/admin', authorize('admin', 'superadmin'), async (req, res) => {
 router.post(
   '/',
   [
-    body('titre').trim().notEmpty().withMessage('Le titre est requis'),
+    body('titre').optional().trim(),
     body('categorie').optional().isIn(['sejour_titres', 'contentieux_administratif', 'asile', 'regroupement_familial', 'nationalite_francaise', 'eloignement_urgence', 'autre']),
     body('statut').optional().isIn(['recu', 'accepte', 'refuse', 'en_attente_onboarding', 'en_cours_instruction', 'pieces_manquantes', 'dossier_complet', 'depose', 'reception_confirmee', 'complement_demande', 'decision_defavorable', 'communication_motifs', 'recours_preparation', 'refere_mesures_utiles', 'refere_suspension_rep', 'gain_cause', 'rejet', 'decision_favorable']),
     body('priorite').optional().isIn(['basse', 'normale', 'haute', 'urgente'])
@@ -377,13 +371,7 @@ router.post(
         }
       }
 
-      // Si pas d'utilisateur connecté, vérifier que les informations client sont fournies
-      if (!userId && (!clientNom || !clientPrenom || !clientEmail)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Les informations du client sont requises si vous n\'êtes pas connecté'
-        });
-      }
+      // Tous les champs sont optionnels - pas de validation obligatoire pour les visiteurs
 
       // Si l'utilisateur est connecté mais n'a pas fourni d'ID, utiliser l'ID de la session
       if (!userId && req.user && req.user.id) {
@@ -416,7 +404,7 @@ router.post(
         clientPrenom: userId ? null : clientPrenom,
         clientEmail: userId ? user.email : clientEmail,
         clientTelephone: userId ? user.phone : clientTelephone,
-        titre,
+        titre: titre || '',
         description: description || '',
         categorie: categorie || 'autre',
         type: type || '',
@@ -456,9 +444,38 @@ router.post(
         .populate('user', 'firstName lastName email phone')
         .populate('createdBy', 'firstName lastName email');
 
-      // Créer une notification pour l'utilisateur si le dossier a été créé par un admin
-      // Chercher l'utilisateur par userId ou par clientEmail
-      if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+      // Si le dossier a été créé par un client (pas un admin), notifier tous les admins
+      if (req.user && req.user.role === 'client') {
+        try {
+          // Trouver tous les admins et superadmins
+          const admins = await User.find({
+            role: { $in: ['admin', 'superadmin'] },
+            isActive: true
+          });
+
+          // Créer une notification pour chaque admin
+          for (const admin of admins) {
+            await createNotification(
+              admin._id.toString(),
+              'dossier_created',
+              'Nouveau dossier créé par un client',
+              `${req.user.firstName} ${req.user.lastName} (${req.user.email}) a créé un nouveau dossier : "${titre || 'Sans titre'}"`,
+              `/admin/dossiers/${dossier._id}`,
+              { 
+                dossierId: dossier._id.toString(), 
+                titre: titre || 'Sans titre',
+                clientId: req.user.id,
+                clientEmail: req.user.email
+              }
+            );
+          }
+          console.log(`✅ Notifications envoyées à ${admins.length} administrateur(s) pour le nouveau dossier`);
+        } catch (notifError) {
+          console.error('❌ Erreur lors de la notification des admins:', notifError);
+        }
+      }
+      // Si le dossier a été créé par un admin, notifier le client
+      else if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
         let targetUserId = userId;
         
         // Si pas de userId mais on a un clientEmail, chercher l'utilisateur par email
@@ -479,9 +496,9 @@ router.post(
             targetUserId,
             'dossier_created',
             'Nouveau dossier créé',
-            `Un nouveau dossier "${titre}" a été créé pour vous par l'administrateur.`,
+            `Un nouveau dossier "${titre || 'Sans titre'}" a été créé pour vous par l'administrateur.`,
             `/client/dossiers`,
-            { dossierId: dossier._id.toString(), titre }
+            { dossierId: dossier._id.toString(), titre: titre || 'Sans titre' }
           );
         }
       }
@@ -810,10 +827,114 @@ router.put(
   }
 );
 
+// @route   PATCH /api/user/dossiers/:id/cancel
+// @desc    Annuler un dossier (client seulement)
+// @access  Private
+router.patch('/:id/cancel', protect, async (req, res) => {
+  try {
+    const dossier = await Dossier.findById(req.params.id);
+
+    if (!dossier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dossier non trouvé'
+      });
+    }
+
+    // Vérifier que l'utilisateur est le propriétaire du dossier
+    const userId = req.user.id;
+    const dossierUserId = dossier.user ? (dossier.user._id ? dossier.user._id.toString() : dossier.user.toString()) : null;
+    
+    if (dossierUserId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Vous n\'avez pas la permission d\'annuler ce dossier'
+      });
+    }
+
+    // Vérifier que le dossier n'est pas déjà annulé ou dans un statut final
+    const statutsFinaux = ['annule', 'decision_favorable', 'decision_defavorable', 'rejet', 'gain_cause'];
+    if (statutsFinaux.includes(dossier.statut)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ce dossier ne peut pas être annulé car il est déjà dans un statut final'
+      });
+    }
+
+    // Mettre à jour le statut à "annule"
+    dossier.statut = 'annule';
+    dossier.notes = (dossier.notes || '') + `\n\n[Dossier annulé par le client le ${new Date().toLocaleDateString('fr-FR')}]`;
+    await dossier.save();
+
+    // Notifier les admins
+    try {
+      const admins = await User.find({
+        role: { $in: ['admin', 'superadmin'] },
+        isActive: true
+      });
+
+      for (const admin of admins) {
+        await createNotification(
+          admin._id.toString(),
+          'dossier_cancelled',
+          'Dossier annulé par le client',
+          `${req.user.firstName} ${req.user.lastName} (${req.user.email}) a annulé le dossier "${dossier.titre}".`,
+          `/admin/dossiers/${dossier._id}`,
+          { 
+            dossierId: dossier._id.toString(), 
+            titre: dossier.titre,
+            clientId: userId,
+            clientEmail: req.user.email
+          }
+        );
+      }
+      console.log(`✅ Notifications envoyées à ${admins.length} administrateur(s) pour l'annulation du dossier`);
+    } catch (notifError) {
+      console.error('❌ Erreur lors de la notification des admins:', notifError);
+    }
+
+    // Logger l'action
+    try {
+      const Log = require('../models/Log');
+      await Log.create({
+        action: 'dossier_cancelled',
+        user: userId,
+        userEmail: req.user.email,
+        description: `${req.user.email} a annulé le dossier "${dossier.titre}"`,
+        ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
+        userAgent: req.get('user-agent'),
+        metadata: {
+          dossierId: dossier._id.toString(),
+          titre: dossier.titre
+        }
+      });
+    } catch (logError) {
+      console.error('Erreur lors de l\'enregistrement du log:', logError);
+    }
+
+    const dossierPopulated = await Dossier.findById(dossier._id)
+      .populate('user', 'firstName lastName email phone')
+      .populate('createdBy', 'firstName lastName email');
+
+    res.json({
+      success: true,
+      message: 'Dossier annulé avec succès',
+      dossier: dossierPopulated
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'annulation du dossier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   DELETE /api/user/dossiers/:id
 // @desc    Supprimer un dossier
 // @access  Private/Admin
-router.delete('/:id', authorize('admin', 'superadmin'), async (req, res) => {
+router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
     const dossier = await Dossier.findById(req.params.id);
 

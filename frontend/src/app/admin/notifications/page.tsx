@@ -23,7 +23,7 @@ function Button({ children, variant = 'default', size = 'default', className = '
   return <button className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`} {...props}>{children}</button>;
 }
 
-export default function NotificationsPage() {
+export default function AdminNotificationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -35,6 +35,11 @@ export default function NotificationsPage() {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
     } else if (status === 'authenticated') {
+      const userRole = (session?.user as any)?.role;
+      if (userRole !== 'admin' && userRole !== 'superadmin') {
+        router.push('/client');
+        return;
+      }
       // Ensure token is stored in localStorage
       if (session && (session.user as any)?.accessToken && typeof window !== 'undefined') {
         const token = (session.user as any).accessToken;
@@ -148,19 +153,21 @@ export default function NotificationsPage() {
     );
   }
 
-  if (!session) return null;
+  if (!session || ((session.user as any)?.role !== 'admin' && (session.user as any)?.role !== 'superadmin')) {
+    return null;
+  }
 
   const unreadCount = notifications.filter(n => !n.lu).length;
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="client" />
+      <Header variant="admin" />
 
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold mb-2">Mes Notifications</h1>
-            <p className="text-muted-foreground">Restez informé de toutes les actions sur vos dossiers</p>
+            <h1 className="text-4xl font-bold mb-2">Notifications</h1>
+            <p className="text-muted-foreground">Restez informé de toutes les actions sur les dossiers et les utilisateurs</p>
           </div>
           <div className="flex gap-3">
             <div className="flex gap-2 border rounded-md p-1">
@@ -207,7 +214,7 @@ export default function NotificationsPage() {
               {filter === 'unread' ? 'Aucune notification non lue' : 'Aucune notification'}
             </p>
             <p className="text-sm text-muted-foreground">
-              Vous serez notifié lorsque des actions seront effectuées sur vos dossiers
+              Vous serez notifié lorsque des actions seront effectuées sur les dossiers ou les utilisateurs
             </p>
           </div>
         ) : (
@@ -289,5 +296,4 @@ export default function NotificationsPage() {
     </div>
   );
 }
-
 

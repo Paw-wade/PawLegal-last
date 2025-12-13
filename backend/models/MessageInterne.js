@@ -7,11 +7,23 @@ const messageInterneSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  // Destinataire principal (un seul pour les messages admin, tous les admins pour les messages utilisateur)
   destinataires: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   }],
+  // Copie (CC) - pour les messages admin uniquement
+  copie: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  // Type de message: 'user_to_admins' ou 'admin_to_user' ou 'admin_to_admin'
+  typeMessage: {
+    type: String,
+    enum: ['user_to_admins', 'admin_to_user', 'admin_to_admin'],
+    default: 'user_to_admins'
+  },
   sujet: {
     type: String,
     required: [true, 'Le sujet est requis'],

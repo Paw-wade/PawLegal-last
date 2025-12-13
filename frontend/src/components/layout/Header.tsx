@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { userAPI } from '@/lib/api';
+import { NotificationBadge } from '@/components/NotificationBadge';
 
 // Composant Button simplifié
 function Button({ 
@@ -392,6 +393,12 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
             <div className="flex items-center gap-2">
               {isAuthenticated ? (
                 <>
+                  {/* Badge de notification */}
+                  <NotificationBadge 
+                    variant="header" 
+                    className="mr-2"
+                  />
+                  
                   {/* Affichage du nom et de la qualité - TOUJOURS VISIBLE */}
                   <div className="text-right border-r border-gray-200 pr-2.5 mr-2">
                     <Link 

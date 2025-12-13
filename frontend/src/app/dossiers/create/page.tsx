@@ -222,91 +222,91 @@ export default function CreateDossierPage() {
   const getSpecificFields = (optionValue: string) => {
     const fields: { [key: string]: Array<{ name: string; label: string; type: string; placeholder?: string; required?: boolean; options?: string[] }> } = {
       'premiere_demande_titre': [
-        { name: 'etablissement', label: 'Établissement d\'enseignement', type: 'text', placeholder: 'Nom de l\'établissement', required: true },
-        { name: 'niveau_etudes', label: 'Niveau d\'études', type: 'select', options: ['Licence', 'Master', 'Doctorat', 'Autre'], required: true },
-        { name: 'date_debut_etudes', label: 'Date de début des études', type: 'date', required: true },
+        { name: 'etablissement', label: 'Établissement d\'enseignement', type: 'text', placeholder: 'Nom de l\'établissement', required: false },
+        { name: 'niveau_etudes', label: 'Niveau d\'études', type: 'select', options: ['Licence', 'Master', 'Doctorat', 'Autre'], required: false },
+        { name: 'date_debut_etudes', label: 'Date de début des études', type: 'date', required: false },
         { name: 'date_fin_etudes', label: 'Date de fin prévue des études', type: 'date', required: false },
-        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: true },
+        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: false },
       ],
       'renouvellement_titre': [
-        { name: 'numero_titre_actuel', label: 'Numéro du titre de séjour actuel', type: 'text', placeholder: 'Ex: 123456789', required: true },
-        { name: 'date_expiration', label: 'Date d\'expiration du titre actuel', type: 'date', required: true },
-        { name: 'motif_renouvellement', label: 'Motif du renouvellement', type: 'select', options: ['Poursuite d\'études', 'Changement de statut', 'Autre'], required: true },
+        { name: 'numero_titre_actuel', label: 'Numéro du titre de séjour actuel', type: 'text', placeholder: 'Ex: 123456789', required: false },
+        { name: 'date_expiration', label: 'Date d\'expiration du titre actuel', type: 'date', required: false },
+        { name: 'motif_renouvellement', label: 'Motif du renouvellement', type: 'select', options: ['Poursuite d\'études', 'Changement de statut', 'Autre'], required: false },
         { name: 'situation_actuelle', label: 'Situation actuelle', type: 'textarea', placeholder: 'Décrivez votre situation actuelle', required: false },
       ],
       'changement_statut': [
-        { name: 'statut_actuel', label: 'Statut actuel', type: 'select', options: ['Étudiant', 'Visiteur', 'Salarié', 'Autre'], required: true },
-        { name: 'nouveau_statut', label: 'Nouveau statut souhaité', type: 'select', options: ['Salarié', 'Entrepreneur', 'Visiteur', 'Autre'], required: true },
-        { name: 'motif_changement', label: 'Motif du changement', type: 'textarea', placeholder: 'Expliquez les raisons du changement', required: true },
+        { name: 'statut_actuel', label: 'Statut actuel', type: 'select', options: ['Étudiant', 'Visiteur', 'Salarié', 'Autre'], required: false },
+        { name: 'nouveau_statut', label: 'Nouveau statut souhaité', type: 'select', options: ['Salarié', 'Entrepreneur', 'Visiteur', 'Autre'], required: false },
+        { name: 'motif_changement', label: 'Motif du changement', type: 'textarea', placeholder: 'Expliquez les raisons du changement', required: false },
         { name: 'contrat_travail', label: 'Avez-vous un contrat de travail ?', type: 'select', options: ['Oui', 'Non', 'En cours'], required: false },
       ],
       'regroupement_familial': [
         { name: 'nombre_enfants', label: 'Nombre d\'enfants', type: 'number', placeholder: '0', required: false },
-        { name: 'situation_familiale', label: 'Situation familiale', type: 'select', options: ['Marié(e)', 'Pacsé(e)', 'Concubinage', 'Célibataire'], required: true },
-        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: true },
+        { name: 'situation_familiale', label: 'Situation familiale', type: 'select', options: ['Marié(e)', 'Pacsé(e)', 'Concubinage', 'Célibataire'], required: false },
+        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: false },
         { name: 'date_arrivee_france', label: 'Date d\'arrivée en France', type: 'date', required: false },
         { name: 'revenus', label: 'Revenus mensuels (€)', type: 'number', placeholder: 'Montant en euros', required: false },
       ],
       'nationalite_francaise': [
-        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: true },
-        { name: 'date_arrivee_france', label: 'Date d\'arrivée en France', type: 'date', required: true },
-        { name: 'duree_sejour', label: 'Durée de séjour en France (années)', type: 'number', placeholder: 'Nombre d\'années', required: true },
+        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: false },
+        { name: 'date_arrivee_france', label: 'Date d\'arrivée en France', type: 'date', required: false },
+        { name: 'duree_sejour', label: 'Durée de séjour en France (années)', type: 'number', placeholder: 'Nombre d\'années', required: false },
         { name: 'situation_professionnelle', label: 'Situation professionnelle', type: 'select', options: ['Salarié', 'Indépendant', 'Étudiant', 'Sans emploi', 'Retraité'], required: false },
         { name: 'niveau_francais', label: 'Niveau de français', type: 'select', options: ['Débutant', 'Intermédiaire', 'Avancé', 'Natif'], required: false },
       ],
       'demande_visa': [
-        { name: 'type_visa', label: 'Type de visa souhaité', type: 'select', options: ['Court séjour (Schengen)', 'Long séjour', 'Visiteur', 'Étudiant', 'Travailleur'], required: true },
-        { name: 'duree_sejour', label: 'Durée du séjour souhaitée', type: 'select', options: ['1-3 mois', '3-6 mois', '6-12 mois', 'Plus de 12 mois'], required: true },
-        { name: 'motif_voyage', label: 'Motif du voyage', type: 'textarea', placeholder: 'Décrivez le motif de votre voyage', required: true },
-        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: true },
+        { name: 'type_visa', label: 'Type de visa souhaité', type: 'select', options: ['Court séjour (Schengen)', 'Long séjour', 'Visiteur', 'Étudiant', 'Travailleur'], required: false },
+        { name: 'duree_sejour', label: 'Durée du séjour souhaitée', type: 'select', options: ['1-3 mois', '3-6 mois', '6-12 mois', 'Plus de 12 mois'], required: false },
+        { name: 'motif_voyage', label: 'Motif du voyage', type: 'textarea', placeholder: 'Décrivez le motif de votre voyage', required: false },
+        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: false },
       ],
       'demande_carte_resident': [
-        { name: 'duree_sejour_france', label: 'Durée de séjour en France (années)', type: 'number', placeholder: 'Nombre d\'années', required: true },
-        { name: 'situation_professionnelle', label: 'Situation professionnelle', type: 'select', options: ['Salarié', 'Indépendant', 'Étudiant', 'Sans emploi', 'Retraité'], required: true },
+        { name: 'duree_sejour_france', label: 'Durée de séjour en France (années)', type: 'number', placeholder: 'Nombre d\'années', required: false },
+        { name: 'situation_professionnelle', label: 'Situation professionnelle', type: 'select', options: ['Salarié', 'Indépendant', 'Étudiant', 'Sans emploi', 'Retraité'], required: false },
         { name: 'revenus', label: 'Revenus mensuels (€)', type: 'number', placeholder: 'Montant en euros', required: false },
         { name: 'niveau_francais', label: 'Niveau de français', type: 'select', options: ['Débutant', 'Intermédiaire', 'Avancé', 'Natif'], required: false },
       ],
       'pas_reponse_titre': [
-        { name: 'date_depot_demande', label: 'Date de dépôt de la demande', type: 'date', required: true },
+        { name: 'date_depot_demande', label: 'Date de dépôt de la demande', type: 'date', required: false },
         { name: 'numero_dossier', label: 'Numéro de dossier (si disponible)', type: 'text', placeholder: 'Numéro de dossier', required: false },
-        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: true },
+        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: false },
         { name: 'delai_attente', label: 'Délai d\'attente (mois)', type: 'number', placeholder: 'Nombre de mois', required: false },
       ],
       'pas_reponse_visa': [
-        { name: 'date_depot_demande', label: 'Date de dépôt de la demande', type: 'date', required: true },
-        { name: 'consulat', label: 'Consulat concerné', type: 'text', placeholder: 'Nom du consulat', required: true },
-        { name: 'type_visa', label: 'Type de visa demandé', type: 'select', options: ['Court séjour', 'Long séjour', 'Visiteur', 'Étudiant'], required: true },
+        { name: 'date_depot_demande', label: 'Date de dépôt de la demande', type: 'date', required: false },
+        { name: 'consulat', label: 'Consulat concerné', type: 'text', placeholder: 'Nom du consulat', required: false },
+        { name: 'type_visa', label: 'Type de visa demandé', type: 'select', options: ['Court séjour', 'Long séjour', 'Visiteur', 'Étudiant'], required: false },
         { name: 'delai_attente', label: 'Délai d\'attente (mois)', type: 'number', placeholder: 'Nombre de mois', required: false },
       ],
       'conteste_refus_titre': [
-        { name: 'date_refus', label: 'Date du refus', type: 'date', required: true },
-        { name: 'numero_dossier', label: 'Numéro de dossier', type: 'text', placeholder: 'Numéro de dossier', required: true },
-        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: true },
+        { name: 'date_refus', label: 'Date du refus', type: 'date', required: false },
+        { name: 'numero_dossier', label: 'Numéro de dossier', type: 'text', placeholder: 'Numéro de dossier', required: false },
+        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: false },
         { name: 'motif_refus', label: 'Motif du refus (si connu)', type: 'textarea', placeholder: 'Indiquez les motifs de refus mentionnés', required: false },
-        { name: 'date_echeance_recours', label: 'Date d\'échéance pour le recours', type: 'date', required: true },
+        { name: 'date_echeance_recours', label: 'Date d\'échéance pour le recours', type: 'date', required: false },
       ],
       'conteste_oqtf': [
-        { name: 'date_oqtf', label: 'Date de réception de l\'OQTF', type: 'date', required: true },
-        { name: 'date_echeance_depart', label: 'Date d\'échéance pour quitter le territoire', type: 'date', required: true },
-        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: true },
+        { name: 'date_oqtf', label: 'Date de réception de l\'OQTF', type: 'date', required: false },
+        { name: 'date_echeance_depart', label: 'Date d\'échéance pour quitter le territoire', type: 'date', required: false },
+        { name: 'prefecture', label: 'Préfecture concernée', type: 'text', placeholder: 'Nom de la préfecture', required: false },
         { name: 'motif_oqtf', label: 'Motif de l\'OQTF (si connu)', type: 'textarea', placeholder: 'Indiquez les motifs mentionnés', required: false },
         { name: 'situation_familiale', label: 'Situation familiale en France', type: 'select', options: ['Marié(e) avec Français(e)', 'Enfants français', 'Aucun lien familial', 'Autre'], required: false },
       ],
       'conteste_refus_asile_cnda': [
-        { name: 'date_refus', label: 'Date du refus d\'asile', type: 'date', required: true },
+        { name: 'date_refus', label: 'Date du refus d\'asile', type: 'date', required: false },
         { name: 'date_depot_cnda', label: 'Date de dépôt du recours CNDA', type: 'date', required: false },
-        { name: 'numero_dossier', label: 'Numéro de dossier OFPRA/CNDA', type: 'text', placeholder: 'Numéro de dossier', required: true },
-        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: true },
+        { name: 'numero_dossier', label: 'Numéro de dossier OFPRA/CNDA', type: 'text', placeholder: 'Numéro de dossier', required: false },
+        { name: 'pays_origine', label: 'Pays d\'origine', type: 'text', placeholder: 'Pays d\'origine', required: false },
         { name: 'motif_demande_asile', label: 'Motif de la demande d\'asile', type: 'textarea', placeholder: 'Décrivez les raisons de votre demande d\'asile', required: false },
       ],
       'conteste_refus_visa': [
-        { name: 'date_refus', label: 'Date du refus', type: 'date', required: true },
-        { name: 'consulat', label: 'Consulat concerné', type: 'text', placeholder: 'Nom du consulat', required: true },
-        { name: 'type_visa', label: 'Type de visa refusé', type: 'select', options: ['Court séjour', 'Long séjour', 'Visiteur', 'Étudiant'], required: true },
+        { name: 'date_refus', label: 'Date du refus', type: 'date', required: false },
+        { name: 'consulat', label: 'Consulat concerné', type: 'text', placeholder: 'Nom du consulat', required: false },
+        { name: 'type_visa', label: 'Type de visa refusé', type: 'select', options: ['Court séjour', 'Long séjour', 'Visiteur', 'Étudiant'], required: false },
         { name: 'motif_refus', label: 'Motif du refus (si connu)', type: 'textarea', placeholder: 'Indiquez les motifs de refus mentionnés', required: false },
       ],
       'autre_demande': [
-        { name: 'nature_demande', label: 'Nature de votre demande', type: 'textarea', placeholder: 'Décrivez en détail votre demande', required: true },
+        { name: 'nature_demande', label: 'Nature de votre demande', type: 'textarea', placeholder: 'Décrivez en détail votre demande', required: false },
         { name: 'urgence', label: 'Niveau d\'urgence', type: 'select', options: ['Normale', 'Haute', 'Urgente'], required: false },
         { name: 'date_echeance', label: 'Date d\'échéance (si applicable)', type: 'date', required: false },
       ],
@@ -332,10 +332,21 @@ export default function CreateDossierPage() {
 
   const handleOptionSelect = (optionValue: string) => {
     setSelectedOption(optionValue);
+    
+    // Générer automatiquement un titre basé sur l'option sélectionnée
+    const optionLabel = Object.values(clientCategories)
+      .flatMap(cat => cat.options)
+      .find(opt => opt.value === optionValue)?.label || '';
+    
+    // Si le titre n'est pas déjà rempli, générer un titre automatique
+    const autoTitre = formData.titre && formData.titre.trim() 
+      ? formData.titre 
+      : optionLabel || '';
+    
     // Réinitialiser les champs dynamiques spécifiques mais préserver les valeurs du profil
     const specificFields = getSpecificFields(optionValue);
     const resetData: any = {
-      titre: formData.titre,
+      titre: autoTitre,
       description: formData.description,
       nom: formData.nom,
       prenom: formData.prenom,
@@ -366,21 +377,8 @@ export default function CreateDossierPage() {
       return;
     }
 
-    if (!formData.titre.trim()) {
-      setError('Veuillez saisir un titre pour votre dossier');
-      return;
-    }
-
-    // Valider les champs spécifiques requis
-    const specificFields = getSpecificFields(selectedOption);
-    const missingFields = specificFields
-      .filter(field => field.required && (!formData[field.name] || formData[field.name].toString().trim() === ''))
-      .map(field => field.label);
-    
-    if (missingFields.length > 0) {
-      setError(`Veuillez remplir les champs obligatoires : ${missingFields.join(', ')}`);
-      return;
-    }
+    // Tous les champs sont optionnels - pas de validation obligatoire
+    const titreTrimmed = formData.titre ? formData.titre.trim() : '';
 
     setIsSubmitting(true);
     setError(null);
@@ -412,7 +410,7 @@ export default function CreateDossierPage() {
       }
 
       const dossierData: any = {
-        titre: formData.titre,
+        titre: titreTrimmed, // Utiliser le titre trimé pour éviter les espaces
         description: descriptionEnrichie,
         categorie: mapping.categorie,
         type: mapping.type,
@@ -426,16 +424,11 @@ export default function CreateDossierPage() {
       if (session && (session.user as any)?.id) {
         dossierData.userId = (session.user as any).id;
       } else {
-        // Sinon, utiliser les informations du visiteur
-        if (!formData.nom || !formData.prenom || !formData.email) {
-          setError('Veuillez remplir tous les champs obligatoires (nom, prénom, email)');
-          setIsSubmitting(false);
-          return;
-        }
-        dossierData.clientNom = formData.nom;
-        dossierData.clientPrenom = formData.prenom;
-        dossierData.clientEmail = formData.email;
-        dossierData.clientTelephone = formData.telephone;
+        // Sinon, utiliser les informations du visiteur (tous les champs sont optionnels)
+        dossierData.clientNom = formData.nom || '';
+        dossierData.clientPrenom = formData.prenom || '';
+        dossierData.clientEmail = formData.email || '';
+        dossierData.clientTelephone = formData.telephone || '';
       }
 
       const response = await dossiersAPI.createDossier(dossierData);
@@ -633,13 +626,12 @@ export default function CreateDossierPage() {
                     <div className="space-y-5">
                       <div>
                         <Label htmlFor="titre" className="text-base font-semibold mb-2 block">
-                          Titre de votre demande <span className="text-primary">*</span>
+                          Titre de votre demande
                         </Label>
                         <Input
                           id="titre"
                           value={formData.titre}
                           onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
-                          required
                           className="mt-1 h-12 text-base"
                           placeholder="Ex: Demande de titre de séjour étudiant"
                         />
@@ -662,14 +654,13 @@ export default function CreateDossierPage() {
                       {getSpecificFields(selectedOption).map((field) => (
                         <div key={field.name}>
                           <Label htmlFor={field.name} className="text-base font-semibold mb-2 block">
-                            {field.label} {field.required && <span className="text-primary">*</span>}
+                            {field.label}
                           </Label>
                           {field.type === 'textarea' ? (
                             <Textarea
                               id={field.name}
                               value={formData[field.name] || ''}
                               onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-                              required={field.required}
                               className="mt-1 min-h-[100px] text-base"
                               placeholder={field.placeholder}
                             />
@@ -678,7 +669,6 @@ export default function CreateDossierPage() {
                               id={field.name}
                               value={formData[field.name] || ''}
                               onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-                              required={field.required}
                               className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             >
                               <option value="">Sélectionnez...</option>
@@ -692,7 +682,6 @@ export default function CreateDossierPage() {
                               type="date"
                               value={formData[field.name] || ''}
                               onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-                              required={field.required}
                               className="mt-1 h-12 text-base"
                             />
                           ) : (
@@ -701,7 +690,6 @@ export default function CreateDossierPage() {
                               type={field.type}
                               value={formData[field.name] || ''}
                               onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-                              required={field.required}
                               className="mt-1 h-12 text-base"
                               placeholder={field.placeholder}
                             />
@@ -737,38 +725,35 @@ export default function CreateDossierPage() {
                       <div className="grid md:grid-cols-2 gap-5">
                         <div>
                           <Label htmlFor="nom" className="text-base font-semibold mb-2 block">
-                            Nom <span className="text-primary">*</span>
+                            Nom
                           </Label>
                           <Input
                             id="nom"
                             value={formData.nom}
                             onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-                            required
                             className="mt-1 h-12 text-base"
                           />
                         </div>
                         <div>
                           <Label htmlFor="prenom" className="text-base font-semibold mb-2 block">
-                            Prénom <span className="text-primary">*</span>
+                            Prénom
                           </Label>
                           <Input
                             id="prenom"
                             value={formData.prenom}
                             onChange={(e) => setFormData({ ...formData, prenom: e.target.value })}
-                            required
                             className="mt-1 h-12 text-base"
                           />
                         </div>
                         <div>
                           <Label htmlFor="email" className="text-base font-semibold mb-2 block">
-                            Email <span className="text-primary">*</span>
+                            Email
                           </Label>
                           <Input
                             id="email"
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            required
                             className="mt-1 h-12 text-base"
                           />
                         </div>

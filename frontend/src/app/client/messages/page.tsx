@@ -121,20 +121,11 @@ export default function MessagesPage() {
     setError(null);
 
     try {
-      if (formData.destinataires.length === 0) {
-        setError('Veuillez sélectionner au moins un destinataire');
-        setIsSubmitting(false);
-        return;
-      }
-
+      // Pour les clients, pas besoin de destinataires - le message va automatiquement à tous les admins
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
-      
-      // Tous les utilisateurs peuvent sélectionner des destinataires
-      formData.destinataires.forEach(dest => {
-        formDataToSend.append('destinataires', dest);
-      });
+      // Pas de destinataires pour les clients - le backend gère automatiquement
 
       // Ajouter les pièces jointes
       attachments.forEach((file) => {
@@ -143,7 +134,7 @@ export default function MessagesPage() {
 
       const response = await messagesAPI.sendMessage(formDataToSend);
       if (response.data.success) {
-        alert('Message envoyé avec succès !');
+        alert('Message envoyé avec succès à tous les administrateurs !');
         setShowComposeModal(false);
         setFormData({ sujet: '', contenu: '', destinataires: [] });
         setAttachments([]);

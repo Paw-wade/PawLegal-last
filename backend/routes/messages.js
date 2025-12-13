@@ -8,6 +8,7 @@ const MessageInterne = require('../models/MessageInterne');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { protect, authorize } = require('../middleware/auth');
+const { sendNotificationSMS, formatPhoneNumber } = require('../sendSMS');
 
 // Configuration de multer pour les pièces jointes
 const storage = multer.diskStorage({
@@ -110,19 +111,30 @@ router.get('/', async (req, res) => {
     let query = {};
     
     if (type === 'received') {
-      query = { destinataires: userId };
-    } else if (type === 'sent') {
-      query = { expediteur: userId };
-    } else if (type === 'unread') {
-      query = { 
-        destinataires: userId,
-        'lu.user': { $ne: userId }
-      };
-    } else {
-      // 'all' - messages reçus ou envoyés
+      // Messages reçus (destinataire principal ou en copie)
       query = {
         $or: [
           { destinataires: userId },
+          { copie: userId }
+        ]
+      };
+    } else if (type === 'sent') {
+      query = { expediteur: userId };
+    } else if (type === 'unread') {
+      // Messages non lus (destinataire principal ou en copie)
+      query = { 
+        $or: [
+          { destinataires: userId },
+          { copie: userId }
+        ],
+        'lu.user': { $ne: userId }
+      };
+    } else {
+      // 'all' - messages reçus (destinataire ou copie) ou envoyés
+      query = {
+        $or: [
+          { destinataires: userId },
+          { copie: userId },
           { expediteur: userId }
         ]
       };
@@ -134,6 +146,7 @@ router.get('/', async (req, res) => {
     const messages = await MessageInterne.find(query)
       .populate('expediteur', 'firstName lastName email role')
       .populate('destinataires', 'firstName lastName email role')
+      .populate('copie', 'firstName lastName email role')
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -167,8 +180,16 @@ router.post(
   ],
   async (req, res) => {
     try {
+      console.log('📨 POST /api/messages - Requête reçue:', {
+        user: req.user?.email,
+        userId: req.user?.id,
+        body: req.body,
+        files: req.files ? req.files.length : 0
+      });
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.error('❌ Erreurs de validation:', errors.array());
         return res.status(400).json({
           success: false,
           message: 'Erreur de validation',
@@ -176,40 +197,152 @@ router.post(
         });
       }
 
+      const mongoose = require('mongoose');
       const userId = req.user.id;
       const userRole = req.user.role;
-      const { sujet, contenu, destinataires } = req.body;
+      const { sujet, contenu, destinataire, copie } = req.body; // destinataire (singulier) et copie (tableau)
 
-      let destinatairesIds = [];
+      // Convertir userId en ObjectId si nécessaire
+      const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
 
-      // Tous les utilisateurs peuvent sélectionner des destinataires
-      if (!destinataires || !Array.isArray(destinataires) || destinataires.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Veuillez sélectionner au moins un destinataire'
-        });
-      }
-
-      // Vérifier que l'utilisateur ne s'envoie pas un message à lui-même
-      if (destinataires.includes(userId.toString())) {
-        return res.status(400).json({
-          success: false,
-          message: 'Vous ne pouvez pas vous envoyer un message à vous-même'
-        });
-      }
-
-      destinatairesIds = destinataires;
-
-      // Vérifier que tous les destinataires existent
-      const destinatairesValides = await User.find({
-        _id: { $in: destinatairesIds },
-        isActive: { $ne: false }
+      console.log('📨 Données reçues:', { 
+        sujet, 
+        contenu, 
+        destinataire, 
+        copie, 
+        userRole,
+        userId: userIdObj.toString() 
       });
 
-      if (destinatairesValides.length !== destinatairesIds.length) {
-        return res.status(400).json({
+      let destinatairesIds = [];
+      let copieIds = [];
+      let typeMessage = 'user_to_admins';
+
+      // CAS 1: Utilisateur (client) → Tous les administrateurs
+      if (userRole === 'client') {
+        console.log('👤 Message d\'un utilisateur → Tous les administrateurs');
+        
+        // Récupérer tous les administrateurs actifs
+        const admins = await User.find({
+          role: { $in: ['admin', 'superadmin'] },
+          isActive: { $ne: false }
+        });
+
+        if (admins.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Aucun administrateur disponible'
+          });
+        }
+
+        destinatairesIds = admins.map(admin => admin._id);
+        typeMessage = 'user_to_admins';
+        console.log(`✅ Message adressé à ${destinatairesIds.length} administrateur(s)`);
+      }
+      // CAS 2: Administrateur → Un destinataire (utilisateur ou admin) + copie optionnelle
+      else if (userRole === 'admin' || userRole === 'superadmin') {
+        console.log('👨‍💼 Message d\'un administrateur');
+        
+        // Vérifier qu'un destinataire est fourni
+        if (!destinataire) {
+          return res.status(400).json({
+            success: false,
+            message: 'Veuillez sélectionner un destinataire'
+          });
+        }
+
+        // Convertir le destinataire en ObjectId
+        let destinataireId;
+        try {
+          if (typeof destinataire === 'string') {
+            if (!mongoose.Types.ObjectId.isValid(destinataire)) {
+              throw new Error(`ID de destinataire invalide: ${destinataire}`);
+            }
+            destinataireId = new mongoose.Types.ObjectId(destinataire);
+          } else {
+            destinataireId = destinataire;
+          }
+        } catch (idError) {
+          console.error('❌ Erreur lors de la conversion de l\'ID destinataire:', idError);
+          return res.status(400).json({
+            success: false,
+            message: idError.message || 'Format d\'ID de destinataire invalide'
+          });
+        }
+
+        // Vérifier que l'admin ne s'envoie pas un message à lui-même
+        if (destinataireId.toString() === userIdObj.toString()) {
+          return res.status(400).json({
+            success: false,
+            message: 'Vous ne pouvez pas vous envoyer un message à vous-même'
+          });
+        }
+
+        // Vérifier que le destinataire existe
+        const destinataireUser = await User.findOne({
+          _id: destinataireId,
+          isActive: { $ne: false }
+        });
+
+        if (!destinataireUser) {
+          return res.status(400).json({
+            success: false,
+            message: 'Destinataire non trouvé ou inactif'
+          });
+        }
+
+        destinatairesIds = [destinataireId];
+
+        // Déterminer le type de message
+        if (destinataireUser.role === 'client') {
+          typeMessage = 'admin_to_user';
+        } else if (destinataireUser.role === 'admin' || destinataireUser.role === 'superadmin') {
+          typeMessage = 'admin_to_admin';
+        }
+
+        // Traiter la copie (CC) si fournie
+        if (copie && Array.isArray(copie) && copie.length > 0) {
+          try {
+            copieIds = copie
+              .filter(id => id && id.toString() !== userIdObj.toString() && id.toString() !== destinataireId.toString()) // Exclure l'expéditeur et le destinataire principal
+              .map(id => {
+                if (typeof id === 'string') {
+                  if (!mongoose.Types.ObjectId.isValid(id)) {
+                    throw new Error(`ID de copie invalide: ${id}`);
+                  }
+                  return new mongoose.Types.ObjectId(id);
+                }
+                return id;
+              });
+
+            // Vérifier que tous les destinataires en copie existent
+            if (copieIds.length > 0) {
+              const copieValides = await User.find({
+                _id: { $in: copieIds },
+                isActive: { $ne: false }
+              });
+
+              if (copieValides.length !== copieIds.length) {
+                return res.status(400).json({
+                  success: false,
+                  message: 'Un ou plusieurs destinataires en copie sont invalides'
+                });
+              }
+            }
+          } catch (copieError) {
+            console.error('❌ Erreur lors du traitement de la copie:', copieError);
+            return res.status(400).json({
+              success: false,
+              message: copieError.message || 'Format d\'ID de copie invalide'
+            });
+          }
+        }
+
+        console.log(`✅ Message adressé à ${destinatairesIds.length} destinataire(s) principal(aux) et ${copieIds.length} en copie`);
+      } else {
+        return res.status(403).json({
           success: false,
-          message: 'Un ou plusieurs destinataires sont invalides'
+          message: 'Vous n\'avez pas la permission d\'envoyer des messages'
         });
       }
 
@@ -222,40 +355,180 @@ router.post(
             originalName: file.originalname,
             path: file.path,
             size: file.size,
-            mimetype: file.mimetype
+            mimetype: file.mimetype,
+            uploadedAt: new Date()
           });
         });
       }
 
       // Créer le message
-      const nouveauMessage = await MessageInterne.create({
-        expediteur: userId,
+      console.log('📝 Création du message...');
+      const messageData = {
+        expediteur: userIdObj,
         destinataires: destinatairesIds,
         sujet: sujet.trim(),
         contenu: contenu.trim(),
-        piecesJointes: piecesJointes
+        typeMessage: typeMessage
+      };
+      
+      // Ajouter la copie si elle existe
+      if (copieIds.length > 0) {
+        messageData.copie = copieIds;
+      }
+      
+      // Ajouter les pièces jointes seulement si elles existent
+      if (piecesJointes.length > 0) {
+        messageData.piecesJointes = piecesJointes;
+      }
+      
+      console.log('📝 Données du message:', {
+        expediteur: messageData.expediteur,
+        destinataires: messageData.destinataires.map(d => d.toString()),
+        copie: messageData.copie ? messageData.copie.map(c => c.toString()) : [],
+        typeMessage: messageData.typeMessage,
+        sujet: messageData.sujet,
+        contenuLength: messageData.contenu.length,
+        piecesJointesCount: piecesJointes.length
       });
+      
+      const nouveauMessage = await MessageInterne.create(messageData);
+      console.log('✅ Message créé avec succès:', nouveauMessage._id);
 
       // Populate pour la réponse
       await nouveauMessage.populate('expediteur', 'firstName lastName email role');
       await nouveauMessage.populate('destinataires', 'firstName lastName email role');
 
-      // Créer des notifications pour tous les destinataires
-      for (const destinataireId of destinatairesIds) {
-        try {
-          await Notification.create({
-            user: destinataireId,
-            type: 'message_received',
-            titre: 'Nouveau message',
-            message: `${req.user.firstName} ${req.user.lastName} vous a envoyé un message : "${sujet}"`,
-            lien: `/client/messages/${nouveauMessage._id}`,
-            metadata: {
-              messageId: nouveauMessage._id.toString(),
-              expediteurId: userId.toString()
+      // Créer des notifications selon le type de message
+      console.log('📧 Création des notifications...');
+      const expediteurName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email;
+
+      if (typeMessage === 'user_to_admins') {
+        // Notification pour tous les administrateurs
+        for (const adminId of destinatairesIds) {
+          try {
+            await Notification.create({
+              user: adminId.toString(),
+              type: 'message_received',
+              titre: 'Nouveau message utilisateur',
+              message: `Un utilisateur vous a envoyé un message : "${sujet}"`,
+              lien: `/admin/messages/${nouveauMessage._id}`,
+              metadata: {
+                messageId: nouveauMessage._id.toString(),
+                expediteurId: userIdObj.toString(),
+                typeMessage: 'user_to_admins'
+              }
+            });
+            console.log(`✅ Notification créée pour admin: ${adminId.toString()}`);
+          } catch (notifError) {
+            console.error('❌ Erreur lors de la création de la notification:', notifError);
+          }
+        }
+      } else if (typeMessage === 'admin_to_user' || typeMessage === 'admin_to_admin') {
+        // Notification pour le destinataire principal
+        const destinatairePrincipal = await User.findById(destinatairesIds[0]);
+        
+        if (destinatairePrincipal) {
+          try {
+            await Notification.create({
+              user: destinatairesIds[0].toString(),
+              type: 'message_received',
+              titre: 'Nouveau message',
+              message: `${expediteurName} vous a envoyé un message : "${sujet}"`,
+              lien: destinatairePrincipal.role === 'client' 
+                ? `/client/messages/${nouveauMessage._id}` 
+                : `/admin/messages/${nouveauMessage._id}`,
+              metadata: {
+                messageId: nouveauMessage._id.toString(),
+                expediteurId: userIdObj.toString(),
+                typeMessage: typeMessage
+              }
+            });
+            console.log(`✅ Notification créée pour destinataire principal: ${destinatairesIds[0].toString()}`);
+
+            // Envoyer un SMS si le destinataire est un utilisateur (client)
+            if (typeMessage === 'admin_to_user' && destinatairePrincipal.phone) {
+              try {
+                const formattedPhone = formatPhoneNumber(destinatairePrincipal.phone);
+                if (formattedPhone) {
+                  await sendNotificationSMS(formattedPhone, 'message_received', {
+                    message: `Vous avez reçu un nouveau message de ${expediteurName}. Connectez-vous pour le consulter.`,
+                    messageId: nouveauMessage._id.toString()
+                  });
+                  console.log(`✅ SMS envoyé à ${formattedPhone}`);
+                }
+              } catch (smsError) {
+                console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);
+              }
             }
+          } catch (notifError) {
+            console.error('❌ Erreur lors de la création de la notification:', notifError);
+          }
+        }
+
+        // Notifications pour les destinataires en copie
+        for (const copieId of copieIds) {
+          try {
+            const copieUser = await User.findById(copieId);
+            if (copieUser) {
+              await Notification.create({
+                user: copieId.toString(),
+                type: 'message_received',
+                titre: 'Message en copie',
+                message: `${expediteurName} vous a mis en copie d'un message : "${sujet}"`,
+                lien: copieUser.role === 'client' 
+                  ? `/client/messages/${nouveauMessage._id}` 
+                  : `/admin/messages/${nouveauMessage._id}`,
+                metadata: {
+                  messageId: nouveauMessage._id.toString(),
+                  expediteurId: userIdObj.toString(),
+                  typeMessage: typeMessage,
+                  isCopie: true
+                }
+              });
+              console.log(`✅ Notification créée pour copie: ${copieId.toString()}`);
+            }
+          } catch (notifError) {
+            console.error('❌ Erreur lors de la création de la notification copie:', notifError);
+          }
+        }
+
+        // Notification pour tous les autres administrateurs (sauf l'expéditeur)
+        try {
+          const autresAdmins = await User.find({
+            role: { $in: ['admin', 'superadmin'] },
+            _id: { $ne: userIdObj },
+            isActive: { $ne: false }
           });
+
+          const destinataireInfo = await User.findById(destinatairesIds[0]);
+          const destinataireLabel = destinataireInfo 
+            ? `${destinataireInfo.firstName} ${destinataireInfo.lastName}`.trim() || destinataireInfo.email
+            : 'Destinataire inconnu';
+
+          for (const admin of autresAdmins) {
+            // Ne pas notifier si l'admin est déjà destinataire ou en copie
+            if (destinatairesIds.some(id => id.toString() === admin._id.toString()) ||
+                copieIds.some(id => id.toString() === admin._id.toString())) {
+              continue;
+            }
+
+            await Notification.create({
+              user: admin._id.toString(),
+              type: 'message_sent',
+              titre: 'Message envoyé par un administrateur',
+              message: `${expediteurName} a envoyé un message à ${destinataireLabel} : "${sujet}"`,
+              lien: `/admin/messages/${nouveauMessage._id}`,
+              metadata: {
+                messageId: nouveauMessage._id.toString(),
+                expediteurId: userIdObj.toString(),
+                destinataireId: destinatairesIds[0].toString(),
+                typeMessage: typeMessage
+              }
+            });
+            console.log(`✅ Notification créée pour admin observateur: ${admin._id.toString()}`);
+          }
         } catch (notifError) {
-          console.error('Erreur lors de la création de la notification:', notifError);
+          console.error('❌ Erreur lors de la création des notifications pour les autres admins:', notifError);
         }
       }
 
@@ -265,7 +538,15 @@ router.post(
         data: nouveauMessage
       });
     } catch (error) {
-      console.error('Erreur lors de l\'envoi du message:', error);
+      console.error('❌ Erreur lors de l\'envoi du message:', error);
+      console.error('❌ Stack trace:', error.stack);
+      console.error('❌ Détails de l\'erreur:', {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        keyPattern: error.keyPattern,
+        keyValue: error.keyValue
+      });
       
       // Supprimer les fichiers uploadés en cas d'erreur
       if (req.files && req.files.length > 0) {
@@ -283,7 +564,13 @@ router.post(
       res.status(500).json({
         success: false,
         message: 'Erreur serveur lors de l\'envoi du message',
-        error: error.message
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        details: process.env.NODE_ENV === 'development' ? {
+          name: error.name,
+          code: error.code,
+          keyPattern: error.keyPattern,
+          keyValue: error.keyValue
+        } : undefined
       });
     }
   }
@@ -346,13 +633,23 @@ router.get('/:id', async (req, res) => {
 // @access  Private
 router.put('/:id/read', async (req, res) => {
   try {
+    const mongoose = require('mongoose');
     const userId = req.user.id;
+    const userRole = req.user.role;
     const messageId = req.params.id;
 
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+
+    // Récupérer le message (peut être destinataire principal ou en copie)
     const message = await MessageInterne.findOne({
       _id: messageId,
-      destinataires: userId
-    });
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    })
+      .populate('expediteur', 'firstName lastName email role')
+      .populate('destinataires', 'firstName lastName email role');
 
     if (!message) {
       return res.status(404).json({
@@ -361,13 +658,60 @@ router.put('/:id/read', async (req, res) => {
       });
     }
 
-    const dejaLu = message.lu.some(l => l.user.toString() === userId.toString());
+    const dejaLu = message.lu.some(l => l.user && l.user.toString() === userIdObj.toString());
+    
     if (!dejaLu) {
       message.lu.push({
-        user: userId,
+        user: userIdObj,
         luAt: new Date()
       });
       await message.save();
+
+      // Si c'est un message d'utilisateur vers admins et qu'un admin le lit
+      // Notifier tous les autres admins
+      if (message.typeMessage === 'user_to_admins' && (userRole === 'admin' || userRole === 'superadmin')) {
+        try {
+          const adminQuiALu = req.user;
+          const adminName = `${adminQuiALu.firstName || ''} ${adminQuiALu.lastName || ''}`.trim() || adminQuiALu.email;
+          
+          const expediteurUser = message.expediteur;
+          const expediteurName = expediteurUser 
+            ? `${expediteurUser.firstName || ''} ${expediteurUser.lastName || ''}`.trim() || expediteurUser.email
+            : 'Utilisateur inconnu';
+
+          // Récupérer tous les autres administrateurs
+          const autresAdmins = await User.find({
+            role: { $in: ['admin', 'superadmin'] },
+            _id: { $ne: userIdObj },
+            isActive: { $ne: false }
+          });
+
+          // Notifier tous les autres admins
+          for (const admin of autresAdmins) {
+            // Vérifier que l'admin n'a pas déjà lu le message
+            const adminALu = message.lu.some(l => l.user && l.user.toString() === admin._id.toString());
+            if (!adminALu) {
+              await Notification.create({
+                user: admin._id.toString(),
+                type: 'message_read',
+                titre: 'Message lu par un administrateur',
+                message: `Le message de ${expediteurName} a été lu par ${adminName}`,
+                lien: `/admin/messages/${messageId}`,
+                metadata: {
+                  messageId: messageId,
+                  expediteurId: message.expediteur._id ? message.expediteur._id.toString() : message.expediteur.toString(),
+                  luParId: userIdObj.toString(),
+                  luParName: adminName
+                }
+              });
+              console.log(`✅ Notification de lecture envoyée à admin: ${admin._id.toString()}`);
+            }
+          }
+        } catch (notifError) {
+          console.error('❌ Erreur lors de la création des notifications de lecture:', notifError);
+          // Ne pas bloquer le marquage comme lu si la notification échoue
+        }
+      }
     }
 
     res.json({

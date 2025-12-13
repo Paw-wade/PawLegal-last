@@ -29,6 +29,7 @@ export default function DossierDetailPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -115,6 +116,37 @@ export default function DossierDetailPage() {
     }
   };
 
+  const handleCancelDossier = async () => {
+    if (!dossier) return;
+    
+    const confirmed = window.confirm(
+      `Êtes-vous sûr de vouloir annuler le dossier "${dossier.titre}" ?\n\nCette action est irréversible et les administrateurs seront notifiés.`
+    );
+    
+    if (!confirmed) return;
+
+    setIsCancelling(true);
+    try {
+      const response = await dossiersAPI.cancelDossier(dossierId);
+      if (response.data.success) {
+        alert('Dossier annulé avec succès. Les administrateurs ont été notifiés.');
+        // Recharger le dossier pour afficher le nouveau statut
+        await loadDossier();
+        // Rediriger vers la liste des dossiers après 2 secondes
+        setTimeout(() => {
+          router.push('/client/dossiers');
+        }, 2000);
+      } else {
+        alert(response.data.message || 'Erreur lors de l\'annulation du dossier');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de l\'annulation du dossier:', error);
+      alert(error.response?.data?.message || 'Erreur lors de l\'annulation du dossier');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -180,6 +212,16 @@ export default function DossierDetailPage() {
             }}>
               Actualiser
             </Button>
+            {/* Bouton d'annulation - seulement si le dossier n'est pas déjà annulé ou dans un statut final */}
+            {dossier && !['annule', 'decision_favorable', 'decision_defavorable', 'rejet', 'gain_cause'].includes(dossier.statut) && (
+              <Button 
+                variant="outline" 
+                className="border-red-500 text-red-600 hover:bg-red-50"
+                onClick={handleCancelDossier}
+              >
+                Annuler le dossier
+              </Button>
+            )}
           </div>
         </div>
 

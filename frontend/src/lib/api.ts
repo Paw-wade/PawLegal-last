@@ -537,6 +537,10 @@ export const dossiersAPI = {
   getDossierById: (id: string) =>
     api.get(`/user/dossiers/${id}`),
   
+  // Client - Annuler un dossier
+  cancelDossier: (id: string) =>
+    api.patch(`/user/dossiers/${id}/cancel`),
+  
   // Mettre à jour un dossier
   updateDossier: (id: string, data: any) =>
     api.put(`/user/dossiers/${id}`, data),

@@ -32,7 +32,6 @@ const dossierSchema = new mongoose.Schema({
   },
   titre: {
     type: String,
-    required: [true, 'Le titre du dossier est requis'],
     trim: true
   },
   description: {
@@ -62,6 +61,7 @@ const dossierSchema = new mongoose.Schema({
       'recu',
       'accepte',
       'refuse',
+      'annule',
       'en_attente_onboarding',
       'en_cours_instruction',
       'pieces_manquantes',
