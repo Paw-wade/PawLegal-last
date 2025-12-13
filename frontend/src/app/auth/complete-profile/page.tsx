@@ -145,11 +145,7 @@ export default function CompleteProfilePage() {
     setError(null);
 
     // Validation minimale
-    if (!formData.numeroEtranger.trim()) {
-      setError('Le numéro d\'étranger est requis');
-      setIsLoading(false);
-      return;
-    }
+    // Le numéro d'étranger n'est plus obligatoire
 
     try {
       // Si une photo est sélectionnée, utiliser FormData
@@ -305,13 +301,12 @@ export default function CompleteProfilePage() {
                 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="numeroEtranger">Numéro d'étranger *</Label>
+                    <Label htmlFor="numeroEtranger">Numéro d'étranger</Label>
                     <Input
                       id="numeroEtranger"
                       name="numeroEtranger"
                       value={formData.numeroEtranger}
                       onChange={handleChange}
-                      required
                       placeholder="Ex: 12AB34567"
                     />
                   </div>

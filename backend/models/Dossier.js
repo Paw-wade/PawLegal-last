@@ -26,6 +26,7 @@ const dossierSchema = new mongoose.Schema({
   },
   numero: {
     type: String,
+    unique: true,
     sparse: true, // Permet plusieurs valeurs null
     trim: true
   },
@@ -186,8 +187,7 @@ dossierSchema.index({ categorie: 1 });
 dossierSchema.index({ type: 1 });
 dossierSchema.index({ createdBy: 1 });
 dossierSchema.index({ assignedTo: 1 });
-// Index unique sparse pour numero (permet plusieurs null)
-dossierSchema.index({ numero: 1 }, { unique: true, sparse: true });
+// Note: L'index sur 'numero' est créé automatiquement par unique: true dans la définition du champ
 
 module.exports = mongoose.model('Dossier', dossierSchema);
 

@@ -187,6 +187,13 @@ try {
   console.log('⚠️ Route /api/creneaux non trouvée');
 }
 
+try {
+  app.use('/api/sms', require('./routes/sms'));
+  console.log('✅ Route /api/sms enregistrée');
+} catch (e) {
+  console.log('⚠️ Route /api/sms non trouvée:', e.message);
+}
+
 // Middleware de gestion d'erreurs (doit être après les routes)
 const errorHandler = require('./middleware/errorHandler');
 app.use(errorHandler);

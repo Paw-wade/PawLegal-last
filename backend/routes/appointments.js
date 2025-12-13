@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const RendezVous = require('../models/RendezVous');
 const { protect, authorize } = require('../middleware/auth');
 const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
+const { sendNotificationSMS } = require('../sendSMS');
 
 // @route   POST /api/appointments
 // @desc    Créer un rendez-vous (public ou authentifié)
@@ -395,6 +396,26 @@ router.patch(
               newStatut: 'annule'
             }
           });
+
+          // Envoyer un SMS si le téléphone est disponible
+          if (rendezVous.telephone) {
+            try {
+              const dateFormatted = new Date(rendezVous.date).toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              });
+              await sendNotificationSMS(rendezVous.telephone, 'appointment_cancelled', {
+                name: `${rendezVous.prenom} ${rendezVous.nom}`,
+                date: dateFormatted,
+                time: rendezVous.heure
+              });
+              console.log(`✅ SMS d'annulation envoyé à ${rendezVous.telephone}`);
+            } catch (smsError) {
+              console.error('⚠️ Erreur lors de l\'envoi du SMS (non bloquant):', smsError.message);
+            }
+          }
         } catch (notifError) {
           console.error('Erreur lors de la création de la notification:', notifError);
         }
@@ -524,6 +545,28 @@ router.patch(
                 newHeure: heure || oldHeure
               }
             });
+
+            // Envoyer un SMS si le téléphone est disponible et si c'est une confirmation ou annulation
+            if (rendezVous.telephone && (statut === 'confirme' || statut === 'annule')) {
+              try {
+                const dateFormatted = new Date(rendezVous.date).toLocaleDateString('fr-FR', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+                const smsData = {
+                  name: `${rendezVous.prenom} ${rendezVous.nom}`,
+                  date: dateFormatted,
+                  time: rendezVous.heure
+                };
+                await sendNotificationSMS(rendezVous.telephone, statut === 'confirme' ? 'appointment_confirmed' : 'appointment_cancelled', smsData);
+                console.log(`✅ SMS envoyé à ${rendezVous.telephone} pour le rendez-vous ${rendezVous._id}`);
+              } catch (smsError) {
+                console.error('⚠️ Erreur lors de l\'envoi du SMS (non bloquant):', smsError.message);
+                // Ne pas bloquer la réponse si l'envoi de SMS échoue
+              }
+            }
           }
         } catch (notifError) {
           console.error('Erreur lors de la création de la notification:', notifError);
