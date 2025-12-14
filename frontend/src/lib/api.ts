@@ -428,6 +428,16 @@ export const appointmentsAPI = {
   cancelAppointment: (id: string) =>
     api.patch(`/appointments/${id}/cancel`),
   
+  // Client - Mettre à jour un rendez-vous
+  updateMyAppointment: (id: string, data: {
+    date?: string;
+    heure?: string;
+    motif?: string;
+    description?: string;
+    effectue?: boolean;
+  }) =>
+    api.put(`/appointments/${id}`, data),
+  
   // Admin - Récupérer tous les rendez-vous
   getAllAppointments: (params?: { statut?: string; date?: string; userId?: string }) => {
     return api.get('/appointments/admin', { params });

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { userAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
@@ -263,19 +262,6 @@ export default function ComptePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      {/* Header */}
-      <Header 
-        variant="client" 
-        navItems={[
-          { href: '/client', label: 'Dashboard' },
-          { href: '/client/dossiers', label: 'Mes dossiers' },
-          { href: '/client/rendez-vous', label: 'Rendez-vous' },
-          { href: '/client/documents', label: 'Documents' },
-          { href: '/client/temoignages', label: 'Témoignage' },
-          { href: '/calculateur', label: 'Calculateur', highlight: true },
-        ]}
-      />
-
       <main className="container mx-auto px-4 py-8 max-w-5xl">
         {/* En-tête amélioré */}
         <div className="mb-8">

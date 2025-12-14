@@ -381,19 +381,16 @@ export default function AdminComptePage() {
                     <div>
                       <Label htmlFor="email" className="flex items-center gap-2 mb-2">
                         <span>📧</span>
-                        <span>Email</span>
+                        <span>Email *</span>
                       </Label>
                       <Input
                         id="email"
                         type="email"
                         value={profileData.email}
-                        disabled
-                        className="h-11 bg-gray-100 border-2 border-gray-200 cursor-not-allowed"
+                        onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                        required
+                        className="h-11 border-2 focus:border-primary transition-colors"
                       />
-                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                        <span>ℹ️</span>
-                        <span>L'email ne peut pas être modifié</span>
-                      </p>
                     </div>
 
                     <div>

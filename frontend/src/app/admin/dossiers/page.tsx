@@ -798,7 +798,9 @@ export default function AdminDossiersPage() {
                   <div className="grid grid-cols-2 gap-4">
 
                     <div>
-                      <Label htmlFor="statut">Statut</Label>
+                      <Label htmlFor="statut">
+                        Statut du dossier <span className="text-primary">*</span>
+                      </Label>
                       <select
                         id="statut"
                         value={formData.statut}
@@ -823,7 +825,12 @@ export default function AdminDossiersPage() {
                         <option value="gain_cause">Gain de cause</option>
                         <option value="rejet">Rejet</option>
                         <option value="decision_favorable">Décision favorable</option>
+                        <option value="autre">Autre (statut non prévu)</option>
                       </select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        📋 <strong>Fonction :</strong> Indique l'état d'avancement du dossier dans le processus administratif. 
+                        Seul le <strong>chef d'équipe</strong> ou un <strong>super administrateur</strong> peut modifier ce statut.
+                      </p>
                     </div>
 
                     <div>
@@ -866,7 +873,7 @@ export default function AdminDossiersPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="assignedTo">Assigner à un membre de l'équipe</Label>
+                    <Label htmlFor="assignedTo">Attribué à (assignation rapide)</Label>
                     <select
                       id="assignedTo"
                       value={formData.assignedTo}
@@ -881,7 +888,8 @@ export default function AdminDossiersPage() {
                       ))}
                     </select>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Optionnel : assignez ce dossier à un membre de l'équipe pour le suivi
+                      👨‍💼 <strong>Fonction :</strong> Assignation rapide d'un membre de l'équipe pour le suivi initial du dossier. 
+                      Pour une gestion complète de l'équipe (plusieurs membres, chef d'équipe), utilisez la section "Gestion d'équipe" dans les détails du dossier.
                     </p>
                   </div>
                 </div>
@@ -1131,44 +1139,57 @@ export default function AdminDossiersPage() {
                         </Button>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <select
-                          value={dossier.statut}
-                          onChange={(e) => handleChangeStatut(dossier._id || dossier.id, e.target.value)}
-                          className="text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                          disabled={isLoading}
-                        >
-                          <option value="recu">Reçu</option>
-                          <option value="accepte">Accepté</option>
-                          <option value="refuse">Refusé</option>
-                          <option value="en_attente_onboarding">En attente d'onboarding</option>
-                          <option value="en_cours_instruction">En cours d'instruction</option>
-                          <option value="pieces_manquantes">Pièces manquantes</option>
-                          <option value="dossier_complet">Dossier Complet</option>
-                          <option value="depose">Déposé</option>
-                          <option value="reception_confirmee">Réception confirmée</option>
-                          <option value="complement_demande">Complément demandé</option>
-                          <option value="decision_defavorable">Décision défavorable</option>
-                          <option value="communication_motifs">Communication des Motifs</option>
-                          <option value="recours_preparation">Recours en préparation</option>
-                          <option value="refere_mesures_utiles">Référé Mesures Utiles</option>
-                          <option value="refere_suspension_rep">Référé suspension et REP</option>
-                          <option value="gain_cause">Gain de cause</option>
-                          <option value="rejet">Rejet</option>
-                          <option value="decision_favorable">Décision favorable</option>
-                        </select>
-                        <select
-                          value={dossier.assignedTo?._id || dossier.assignedTo || ''}
-                          onChange={(e) => handleAssignDossier(dossier._id || dossier.id, e.target.value)}
-                          className="text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                          disabled={isLoading}
-                        >
-                          <option value="">Non assigné</option>
-                          {teamMembers.map((member) => (
-                            <option key={member._id || member.id} value={member._id || member.id}>
-                              {member.firstName} {member.lastName}
-                            </option>
-                          ))}
-                        </select>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            📋 Statut du dossier
+                          </label>
+                          <select
+                            value={dossier.statut}
+                            onChange={(e) => handleChangeStatut(dossier._id || dossier.id, e.target.value)}
+                            className="text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors w-full"
+                            disabled={isLoading}
+                            title="État d'avancement du dossier dans le processus. Modifiable par le chef d'équipe ou superadmin uniquement."
+                          >
+                            <option value="recu">Reçu</option>
+                            <option value="accepte">Accepté</option>
+                            <option value="refuse">Refusé</option>
+                            <option value="en_attente_onboarding">En attente d'onboarding</option>
+                            <option value="en_cours_instruction">En cours d'instruction</option>
+                            <option value="pieces_manquantes">Pièces manquantes</option>
+                            <option value="dossier_complet">Dossier Complet</option>
+                            <option value="depose">Déposé</option>
+                            <option value="reception_confirmee">Réception confirmée</option>
+                            <option value="complement_demande">Complément demandé</option>
+                            <option value="decision_defavorable">Décision défavorable</option>
+                            <option value="communication_motifs">Communication des Motifs</option>
+                            <option value="recours_preparation">Recours en préparation</option>
+                            <option value="refere_mesures_utiles">Référé Mesures Utiles</option>
+                            <option value="refere_suspension_rep">Référé suspension et REP</option>
+                            <option value="gain_cause">Gain de cause</option>
+                            <option value="rejet">Rejet</option>
+                            <option value="decision_favorable">Décision favorable</option>
+                            <option value="autre">Autre (statut non prévu)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            👨‍💼 Attribué à
+                          </label>
+                          <select
+                            value={dossier.assignedTo?._id || dossier.assignedTo || ''}
+                            onChange={(e) => handleAssignDossier(dossier._id || dossier.id, e.target.value)}
+                            className="text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors w-full"
+                            disabled={isLoading}
+                            title="Assignation rapide d'un membre pour le suivi. Pour une équipe complète, utilisez la gestion d'équipe dans les détails."
+                          >
+                            <option value="">Non assigné</option>
+                            {teamMembers.map((member) => (
+                              <option key={member._id || member.id} value={member._id || member.id}>
+                                {member.firstName} {member.lastName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1264,7 +1285,7 @@ export default function AdminDossiersPage() {
             </div>
             <div className="mb-4">
               <Label htmlFor="notificationMessage" className="mb-2 block">
-                Message de notification pour l'utilisateur *
+                Message de notification (optionnel)
               </Label>
               <Textarea
                 id="notificationMessage"
@@ -1273,10 +1294,9 @@ export default function AdminDossiersPage() {
                 placeholder={`Ex: Votre dossier "${showStatutModal.dossierTitre}" a été mis à jour. Le statut est maintenant "${getStatutLabel(showStatutModal.newStatut)}".`}
                 rows={5}
                 className="w-full"
-                required
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Ce message sera envoyé à l'utilisateur dans sa notification sur le dashboard.
+                Message optionnel qui sera envoyé à l'utilisateur et à tous les administrateurs dans leurs notifications. Si vide, un message par défaut sera utilisé.
               </p>
             </div>
             <div className="flex gap-3 justify-end">
@@ -1286,7 +1306,7 @@ export default function AdminDossiersPage() {
               }} disabled={isLoading}>
                 Annuler
               </Button>
-              <Button onClick={confirmChangeStatut} disabled={isLoading || !notificationMessage.trim()}>
+              <Button onClick={confirmChangeStatut} disabled={isLoading}>
                 {isLoading ? 'Mise à jour...' : 'Confirmer le changement'}
               </Button>
             </div>

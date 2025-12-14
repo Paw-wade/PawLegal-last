@@ -436,6 +436,172 @@ router.patch(
   }
 );
 
+// @route   PUT /api/appointments/:id
+// @desc    Mettre à jour un rendez-vous (client propriétaire) - peut modifier date, heure, motif, description
+// @access  Private
+router.put(
+  '/:id',
+  protect,
+  [
+    body('date').optional().isISO8601().withMessage('Date invalide'),
+    body('heure').optional().trim().notEmpty().withMessage('Heure invalide'),
+    body('motif').optional().trim(),
+    body('description').optional().trim().isLength({ max: 500 }).withMessage('La description ne peut pas dépasser 500 caractères'),
+    body('effectue').optional().isBoolean().withMessage('Le champ effectue doit être un booléen'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation',
+          errors: errors.array()
+        });
+      }
+
+      const { date, heure, motif, description, effectue } = req.body;
+      const rendezVous = await RendezVous.findById(req.params.id);
+
+      if (!rendezVous) {
+        return res.status(404).json({
+          success: false,
+          message: 'Rendez-vous non trouvé'
+        });
+      }
+
+      // Vérifier que l'utilisateur est le propriétaire du rendez-vous
+      if (rendezVous.user && rendezVous.user.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'avez pas l\'autorisation de modifier ce rendez-vous'
+        });
+      }
+
+      // Vérifier aussi par email si pas d'utilisateur connecté mais rendez-vous créé avec email
+      if (!rendezVous.user && rendezVous.email !== req.user.email) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'avez pas l\'autorisation de modifier ce rendez-vous'
+        });
+      }
+
+      // Ne pas permettre la modification si déjà annulé ou terminé
+      if (rendezVous.statut === 'annule') {
+        return res.status(400).json({
+          success: false,
+          message: 'Ce rendez-vous est annulé et ne peut pas être modifié'
+        });
+      }
+
+      if (rendezVous.statut === 'termine') {
+        return res.status(400).json({
+          success: false,
+          message: 'Ce rendez-vous est terminé et ne peut pas être modifié'
+        });
+      }
+
+      const oldDate = rendezVous.date;
+      const oldHeure = rendezVous.heure;
+      
+      // Mettre à jour les champs fournis
+      if (date !== undefined) rendezVous.date = new Date(date);
+      if (heure !== undefined) rendezVous.heure = heure;
+      if (motif !== undefined) rendezVous.motif = motif;
+      if (description !== undefined) rendezVous.description = description;
+      if (effectue !== undefined) {
+        rendezVous.effectue = effectue;
+        if (effectue) {
+          rendezVous.dateEffectue = new Date();
+        } else {
+          rendezVous.dateEffectue = null;
+        }
+      }
+
+      await rendezVous.save();
+      await rendezVous.populate('user', 'firstName lastName email');
+
+      // Créer une notification pour l'utilisateur si des modifications ont été apportées
+      if (rendezVous.user) {
+        try {
+          const Notification = require('../models/Notification');
+          let notificationMessage = '';
+          let hasChanges = false;
+
+          // Vérifier les changements
+          if (date && new Date(date).getTime() !== new Date(oldDate).getTime()) {
+            hasChanges = true;
+            notificationMessage = `Votre rendez-vous a été reprogrammé. Nouvelle date : ${new Date(rendezVous.date).toLocaleDateString('fr-FR')} à ${rendezVous.heure || oldHeure}.`;
+          } else if (heure && heure !== oldHeure) {
+            hasChanges = true;
+            notificationMessage = `L'heure de votre rendez-vous a été modifiée. Nouvelle heure : ${rendezVous.heure} (date : ${new Date(rendezVous.date).toLocaleDateString('fr-FR')}).`;
+          } else if (date && heure && (new Date(date).getTime() !== new Date(oldDate).getTime() || heure !== oldHeure)) {
+            hasChanges = true;
+            notificationMessage = `Votre rendez-vous a été reprogrammé. Nouvelle date et heure : ${new Date(rendezVous.date).toLocaleDateString('fr-FR')} à ${rendezVous.heure}.`;
+          } else if (motif || description) {
+            hasChanges = true;
+            notificationMessage = `Votre rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')} à ${rendezVous.heure} a été modifié.`;
+          }
+
+          if (hasChanges) {
+            await Notification.create({
+              user: rendezVous.user._id || rendezVous.user,
+              type: 'appointment_updated',
+              titre: 'Rendez-vous modifié',
+              message: notificationMessage,
+              lien: '/client/rendez-vous',
+              metadata: {
+                appointmentId: rendezVous._id.toString(),
+                date: rendezVous.date,
+                heure: rendezVous.heure,
+                oldDate,
+                newDate: date || oldDate,
+                oldHeure,
+                newHeure: heure || oldHeure
+              }
+            });
+
+            // Envoyer un SMS si le téléphone est disponible
+            if (rendezVous.telephone) {
+              try {
+                const dateFormatted = new Date(rendezVous.date).toLocaleDateString('fr-FR', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+                await sendNotificationSMS(rendezVous.telephone, 'appointment_updated', {
+                  name: `${rendezVous.prenom} ${rendezVous.nom}`,
+                  date: dateFormatted,
+                  time: rendezVous.heure
+                });
+                console.log(`✅ SMS de modification envoyé à ${rendezVous.telephone}`);
+              } catch (smsError) {
+                console.error('⚠️ Erreur lors de l\'envoi du SMS (non bloquant):', smsError.message);
+              }
+            }
+          }
+        } catch (notifError) {
+          console.error('Erreur lors de la création de la notification:', notifError);
+          // Ne pas bloquer la mise à jour si la notification échoue
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Rendez-vous mis à jour avec succès',
+        data: rendezVous
+      });
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du rendez-vous:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la mise à jour du rendez-vous'
+      });
+    }
+  }
+);
+
 // @route   PATCH /api/appointments/:id
 // @desc    Mettre à jour un rendez-vous (admin) - peut modifier statut, date, heure, motif, description, notes
 // @access  Private (Admin)

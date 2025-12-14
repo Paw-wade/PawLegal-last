@@ -61,6 +61,15 @@ export default function AdminMessagesPage() {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [messageNotifications, setMessageNotifications] = useState<any[]>([]);
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyToMessage, setReplyToMessage] = useState<any>(null);
+  const [replyData, setReplyData] = useState({
+    sujet: '',
+    contenu: '',
+    destinataire: '',
+    copie: [] as string[],
+  });
+  const [replyAttachments, setReplyAttachments] = useState<File[]>([]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -322,13 +331,15 @@ export default function AdminMessagesPage() {
               return (
                 <div
                   key={message._id || message.id}
-                  onClick={() => setSelectedMessage(message)}
-                  className={`bg-white rounded-xl shadow-md p-6 border-l-4 cursor-pointer hover:shadow-lg transition-all ${
+                  className={`bg-white rounded-xl shadow-md p-6 border-l-4 hover:shadow-lg transition-all ${
                     isRead ? 'border-gray-300' : 'border-primary'
                   } ${!isRead ? 'bg-primary/5' : ''}`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => setSelectedMessage(message)}
+                    >
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="font-semibold text-lg">{message.sujet}</h3>
                         {!isRead && (
@@ -365,6 +376,52 @@ export default function AdminMessagesPage() {
                           </>
                         )}
                       </div>
+                    </div>
+                    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+                      {isReceived && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setReplyToMessage(message);
+                            const expediteur = message.expediteur;
+                            const expediteurId = expediteur?._id || expediteur?.id;
+                            setReplyData({
+                              sujet: `Re: ${message.sujet}`,
+                              contenu: '',
+                              destinataire: expediteurId?.toString() || '',
+                              copie: [],
+                            });
+                            setShowReplyModal(true);
+                          }}
+                        >
+                          Répondre
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            if (isRead) {
+                              // Marquer comme non lu - on doit supprimer l'entrée dans le tableau lu
+                              // Pour l'instant, on recharge juste le message
+                              await loadMessages();
+                            } else {
+                              await messagesAPI.markAsRead(message._id || message.id);
+                              await loadMessages();
+                            }
+                          } catch (err) {
+                            console.error('Erreur lors du changement de statut:', err);
+                          }
+                        }}
+                      >
+                        {isRead ? 'Marquer non lu' : 'Marquer lu'}
+                      </Button>
+                      <Link href={`/admin/messages/${message._id || message.id}`}>
+                        <Button variant="outline" size="sm">
+                          Voir détails
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -638,39 +695,50 @@ export default function AdminMessagesPage() {
               </div>
               <div className="p-6 space-y-4">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={isMessageRead(selectedMessage)}
-                      onChange={async () => {
-                        if (!isMessageRead(selectedMessage)) {
-                          try {
-                            await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
-                            await loadMessages();
-                            setSelectedMessage(null);
-                            setSelectedMessage(await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message));
-                          } catch (err) {
-                            console.error('Erreur lors du marquage comme lu:', err);
-                          }
-                        }
-                      }}
-                      className="w-5 h-5 text-primary rounded border-gray-300 focus:ring-primary"
-                    />
-                    <Label className="text-sm font-medium cursor-pointer" onClick={async () => {
-                      if (!isMessageRead(selectedMessage)) {
-                        try {
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        if (isMessageRead(selectedMessage)) {
+                          // Marquer comme non lu - recharger le message
+                          await loadMessages();
+                          const updatedMessage = await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message);
+                          setSelectedMessage(updatedMessage);
+                        } else {
                           await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
                           await loadMessages();
-                          setSelectedMessage(null);
-                          setSelectedMessage(await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message));
-                        } catch (err) {
-                          console.error('Erreur lors du marquage comme lu:', err);
+                          const updatedMessage = await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message);
+                          setSelectedMessage(updatedMessage);
                         }
+                      } catch (err) {
+                        console.error('Erreur lors du changement de statut:', err);
                       }
-                    }}>
-                      Marquer comme lu
-                    </Label>
-                  </div>
+                    }}
+                  >
+                    {isMessageRead(selectedMessage) ? 'Marquer comme non lu' : 'Marquer comme lu'}
+                  </Button>
+                  {selectedMessage.destinataires?.some((d: any) => 
+                    d._id?.toString() === (session?.user as any)?.id?.toString() || 
+                    d.toString() === (session?.user as any)?.id?.toString()
+                  ) && (
+                    <Button
+                      onClick={() => {
+                        setReplyToMessage(selectedMessage);
+                        const expediteur = selectedMessage.expediteur;
+                        const expediteurId = expediteur?._id || expediteur?.id;
+                        setReplyData({
+                          sujet: `Re: ${selectedMessage.sujet}`,
+                          contenu: '',
+                          destinataire: expediteurId?.toString() || '',
+                          copie: [],
+                        });
+                        setShowReplyModal(true);
+                      }}
+                    >
+                      Répondre
+                    </Button>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -776,6 +844,155 @@ export default function AdminMessagesPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de réponse */}
+        {showReplyModal && replyToMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Répondre</h2>
+                <button onClick={() => {
+                  setShowReplyModal(false);
+                  setReplyToMessage(null);
+                  setReplyData({ sujet: '', contenu: '', destinataire: '', copie: [] });
+                  setReplyAttachments([]);
+                }} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSubmitting(true);
+                setError(null);
+
+                if (!replyData.destinataire) {
+                  setError('Veuillez sélectionner un destinataire');
+                  setIsSubmitting(false);
+                  return;
+                }
+
+                try {
+                  const formDataToSend = new FormData();
+                  formDataToSend.append('sujet', replyData.sujet);
+                  formDataToSend.append('contenu', replyData.contenu);
+                  formDataToSend.append('destinataire', replyData.destinataire);
+                  replyData.copie.forEach(cc => {
+                    formDataToSend.append('copie', cc);
+                  });
+
+                  replyAttachments.forEach((file) => {
+                    formDataToSend.append('piecesJointes', file);
+                  });
+
+                  const response = await messagesAPI.sendMessage(formDataToSend);
+                  if (response.data.success) {
+                    alert('Réponse envoyée avec succès !');
+                    setShowReplyModal(false);
+                    setReplyToMessage(null);
+                    setReplyData({ sujet: '', contenu: '', destinataire: '', copie: [] });
+                    setReplyAttachments([]);
+                    await loadMessages();
+                  }
+                } catch (err: any) {
+                  console.error('Erreur lors de l\'envoi de la réponse:', err);
+                  setError(err.response?.data?.message || 'Erreur lors de l\'envoi de la réponse');
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }} className="p-6 space-y-4">
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="reply-destinataire">Destinataire *</Label>
+                  <select
+                    id="reply-destinataire"
+                    value={replyData.destinataire}
+                    onChange={(e) => setReplyData({ ...replyData, destinataire: e.target.value })}
+                    required
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Sélectionner un destinataire</option>
+                    {replyToMessage?.expediteur && (
+                      <option value={replyToMessage.expediteur._id || replyToMessage.expediteur.id}>
+                        {replyToMessage.expediteur.firstName} {replyToMessage.expediteur.lastName} ({replyToMessage.expediteur.email})
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="reply-sujet">Sujet *</Label>
+                  <Input
+                    id="reply-sujet"
+                    value={replyData.sujet}
+                    onChange={(e) => setReplyData({ ...replyData, sujet: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="reply-contenu">Message *</Label>
+                  <Textarea
+                    id="reply-contenu"
+                    value={replyData.contenu}
+                    onChange={(e) => setReplyData({ ...replyData, contenu: e.target.value })}
+                    required
+                    placeholder="Votre réponse..."
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="reply-attachments">Pièces jointes (max 5 fichiers, 10MB chacun)</Label>
+                  <Input
+                    id="reply-attachments"
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      if (files.length > 5) {
+                        alert('Maximum 5 fichiers autorisés');
+                        return;
+                      }
+                      setReplyAttachments(files);
+                    }}
+                  />
+                  {replyAttachments.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {replyAttachments.map((file, index) => (
+                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between">
+                          <span>📎 {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                          <button
+                            type="button"
+                            onClick={() => setReplyAttachments(replyAttachments.filter((_, i) => i !== index))}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button type="button" variant="outline" onClick={() => {
+                    setShowReplyModal(false);
+                    setReplyToMessage(null);
+                    setReplyData({ sujet: '', contenu: '', destinataire: '', copie: [] });
+                    setReplyAttachments([]);
+                  }} disabled={isSubmitting}>
+                    Annuler
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting || !replyData.destinataire}>
+                    {isSubmitting ? 'Envoi...' : 'Envoyer la réponse'}
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         )}

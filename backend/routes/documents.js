@@ -332,13 +332,30 @@ router.get('/:id/preview', async (req, res) => {
 
     console.log('✅ Fichier trouvé, envoi en cours...');
 
+    // Déterminer le Content-Type correct
+    let contentType = document.typeMime || 'application/octet-stream';
+    if (contentType === 'application/octet-stream' && document.nom.toLowerCase().endsWith('.pdf')) {
+      contentType = 'application/pdf';
+    }
+
     // Définir les headers pour la prévisualisation (pas le téléchargement)
-    res.setHeader('Content-Type', document.typeMime || 'application/octet-stream');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.nom)}"`);
     res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache pour 1 heure
+    res.setHeader('X-Content-Type-Options', 'nosniff'); // Empêcher le sniffing de type
+    
+    // Pour les PDF, ajouter des headers supplémentaires pour une meilleure compatibilité
+    if (contentType === 'application/pdf') {
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
     
     // Envoyer le fichier
-    res.sendFile(filePath, (err) => {
+    res.sendFile(filePath, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `inline; filename="${encodeURIComponent(document.nom)}"`,
+      }
+    }, (err) => {
       if (err) {
         console.error('❌ Erreur lors de l\'envoi du fichier:', err);
         if (!res.headersSent) {
@@ -391,15 +408,32 @@ router.get('/:id/download', async (req, res) => {
     }
 
     // Vérifier que le fichier existe
-    if (!fs.existsSync(document.cheminFichier)) {
+    const filePath = path.resolve(document.cheminFichier);
+    if (!fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
         message: 'Fichier non trouvé sur le serveur'
       });
     }
 
-    // Envoyer le fichier
-    res.download(document.cheminFichier, document.nom, (err) => {
+    // Déterminer le Content-Type correct
+    let contentType = document.typeMime || 'application/octet-stream';
+    if (contentType === 'application/octet-stream' && document.nom.toLowerCase().endsWith('.pdf')) {
+      contentType = 'application/pdf';
+    }
+
+    // Définir les headers pour le téléchargement
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.nom)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    
+    // Envoyer le fichier tel quel (binaire intact)
+    res.sendFile(filePath, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(document.nom)}"`,
+      }
+    }, (err) => {
       if (err) {
         console.error('Erreur lors du téléchargement:', err);
         if (!res.headersSent) {

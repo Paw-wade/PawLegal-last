@@ -6,16 +6,21 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
-import { appointmentsAPI, userAPI } from '@/lib/api';
+import { appointmentsAPI, userAPI, dossiersAPI } from '@/lib/api';
 
-function Button({ children, variant = 'default', className = '', ...props }: any) {
-  const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
+function Button({ children, variant = 'default', size = 'default', className = '', ...props }: any) {
+  const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
   const variantClasses = {
     default: 'bg-orange-500 text-white hover:bg-orange-600 shadow-md font-semibold',
-    outline: 'border border-input bg-background hover:bg-accent',
-    ghost: 'hover:bg-accent',
+    outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+    ghost: 'hover:bg-accent hover:text-accent-foreground',
   };
-  return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
+  const sizeClasses = {
+    default: 'h-10 py-2 px-4',
+    sm: 'h-9 px-3',
+    lg: 'h-11 px-8',
+  };
+  return <button className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`} {...props}>{children}</button>;
 }
 
 function RendezVousPageContent() {
@@ -30,6 +35,27 @@ function RendezVousPageContent() {
   const [showCancelConfirm, setShowCancelConfirm] = useState<string | null>(null);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
+  const [editingAppointment, setEditingAppointment] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    date: '',
+    heure: '',
+    motif: '',
+    description: '',
+    notes: ''
+  });
+  const [markingAsDone, setMarkingAsDone] = useState<string | null>(null);
+  const [showCreateDossierModal, setShowCreateDossierModal] = useState(false);
+  const [appointmentForDossier, setAppointmentForDossier] = useState<any>(null);
+  const [isCreatingDossier, setIsCreatingDossier] = useState(false);
+  const [dossierFormData, setDossierFormData] = useState({
+    titre: '',
+    description: '',
+    categorie: 'autre',
+    type: '',
+    priorite: 'normale'
+  });
 
   useEffect(() => {
     // Vérifier le mode impersonation
@@ -200,6 +226,144 @@ function RendezVousPageContent() {
     }
   };
 
+  const handleEditAppointment = (rdv: any) => {
+    setEditingAppointment(rdv);
+    setEditFormData({
+      date: rdv.date ? new Date(rdv.date).toISOString().split('T')[0] : '',
+      heure: rdv.heure || '',
+      motif: rdv.motif || '',
+      description: rdv.description || '',
+      notes: rdv.notes || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateAppointment = async () => {
+    if (!editingAppointment) return;
+
+    setIsUpdating(true);
+    setError(null);
+    try {
+      const response = await appointmentsAPI.updateMyAppointment(editingAppointment._id || editingAppointment.id, {
+        date: editFormData.date,
+        heure: editFormData.heure,
+        motif: editFormData.motif,
+        description: editFormData.description
+      });
+      
+      if (response.data.success) {
+        // Recharger la liste des rendez-vous
+        await loadRendezVous();
+        setShowEditModal(false);
+        setEditingAppointment(null);
+        setEditFormData({
+          date: '',
+          heure: '',
+          motif: '',
+          description: '',
+          notes: ''
+        });
+        alert('Rendez-vous modifié avec succès ! Vous recevrez une notification.');
+      } else {
+        setError(response.data.message || 'Erreur lors de la modification du rendez-vous');
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors de la modification du rendez-vous:', err);
+      setError(err.response?.data?.message || 'Erreur lors de la modification du rendez-vous');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleMarkAsDone = async (appointmentId: string, isDone: boolean) => {
+    setMarkingAsDone(appointmentId);
+    setError(null);
+    try {
+      const response = await appointmentsAPI.updateMyAppointment(appointmentId, {
+        effectue: isDone
+      } as any);
+      
+      if (response.data.success) {
+        await loadRendezVous();
+        if (isDone) {
+          // Si marqué comme effectué, proposer de créer un dossier
+          const appointment = rendezVous.find((rdv: any) => (rdv._id || rdv.id) === appointmentId);
+          if (appointment) {
+            setAppointmentForDossier(appointment);
+            setDossierFormData({
+              titre: `Dossier suite au rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}`,
+              description: `Dossier créé suite au rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')} à ${appointment.heure}.\n\nMotif: ${appointment.motif || 'N/A'}\n${appointment.description ? `Description: ${appointment.description}` : ''}`,
+              categorie: 'autre',
+              type: '',
+              priorite: 'normale'
+            });
+            setShowCreateDossierModal(true);
+          }
+        }
+      } else {
+        setError(response.data.message || 'Erreur lors de la mise à jour du rendez-vous');
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors de la mise à jour du rendez-vous:', err);
+      setError(err.response?.data?.message || 'Erreur lors de la mise à jour du rendez-vous');
+    } finally {
+      setMarkingAsDone(null);
+    }
+  };
+
+  const handleCreateDossierFromAppointment = async () => {
+    if (!appointmentForDossier) return;
+
+    setIsCreatingDossier(true);
+    setError(null);
+    try {
+      const dossierData: any = {
+        titre: dossierFormData.titre || `Dossier suite au rendez-vous du ${new Date(appointmentForDossier.date).toLocaleDateString('fr-FR')}`,
+        description: dossierFormData.description,
+        categorie: dossierFormData.categorie,
+        type: dossierFormData.type || '',
+        statut: 'recu',
+        priorite: dossierFormData.priorite,
+        rendezVousId: appointmentForDossier._id || appointmentForDossier.id
+      };
+
+      // Si l'utilisateur est connecté, utiliser son ID
+      if (session && (session.user as any)?.id) {
+        dossierData.userId = (session.user as any).id;
+      } else {
+        // Sinon, utiliser les informations du rendez-vous
+        dossierData.clientNom = appointmentForDossier.nom || '';
+        dossierData.clientPrenom = appointmentForDossier.prenom || '';
+        dossierData.clientEmail = appointmentForDossier.email || '';
+        dossierData.clientTelephone = appointmentForDossier.telephone || '';
+      }
+
+      const response = await dossiersAPI.createDossier(dossierData);
+      
+      if (response.data.success) {
+        setShowCreateDossierModal(false);
+        setAppointmentForDossier(null);
+        setDossierFormData({
+          titre: '',
+          description: '',
+          categorie: 'autre',
+          type: '',
+          priorite: 'normale'
+        });
+        alert('Dossier créé avec succès ! Vous pouvez le consulter dans la section "Mes Dossiers".');
+        // Optionnel : rediriger vers les dossiers
+        // router.push('/client/dossiers');
+      } else {
+        setError(response.data.message || 'Erreur lors de la création du dossier');
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors de la création du dossier:', err);
+      setError(err.response?.data?.message || 'Erreur lors de la création du dossier');
+    } finally {
+      setIsCreatingDossier(false);
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -255,144 +419,262 @@ function RendezVousPageContent() {
             <Button onClick={() => setIsReservationWidgetOpen(true)}>Prendre mon premier rendez-vous</Button>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {rendezVous.map((rdv) => {
-              const getStatutColor = (statut: string) => {
-                switch (statut) {
-                  case 'confirme':
-                    return 'bg-green-100 text-green-800';
-                  case 'en_attente':
-                    return 'bg-yellow-100 text-yellow-800';
-                  case 'annule':
-                    return 'bg-red-100 text-red-800';
-                  case 'termine':
-                    return 'bg-gray-100 text-gray-800';
-                  default:
-                    return 'bg-blue-100 text-blue-800';
+          <>
+            {/* Liste des rendez-vous en cartes - Style identique aux dossiers */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {rendezVous.map((rdv) => {
+                const getStatutColor = (statut: string) => {
+                  switch (statut) {
+                    case 'confirme':
+                      return 'bg-green-100 text-green-800';
+                    case 'en_attente':
+                      return 'bg-yellow-100 text-yellow-800';
+                    case 'annule':
+                      return 'bg-red-100 text-red-800';
+                    case 'termine':
+                      return 'bg-gray-100 text-gray-800';
+                    default:
+                      return 'bg-blue-100 text-blue-800';
+                  }
+                };
+
+                const getStatutLabel = (statut: string) => {
+                  switch (statut) {
+                    case 'confirme':
+                      return 'Confirmé';
+                    case 'en_attente':
+                      return 'En attente';
+                    case 'annule':
+                      return 'Annulé';
+                    case 'termine':
+                      return 'Terminé';
+                    default:
+                      return statut?.replace('_', ' ') || 'En attente';
+                  }
+                };
+
+                const formatDate = (date: string) => {
+                  if (!date) return '-';
+                  const d = new Date(date);
+                  return d.toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  });
+                };
+
+                const formatTime = (time: string) => {
+                  if (!time) return '';
+                  return time.substring(0, 5); // Format HH:MM
+                };
+
+                // Calculer si le rendez-vous est passé en tenant compte de la date ET de l'heure
+                let isPast = false;
+                if (rdv.date && rdv.heure) {
+                  const dateObj = new Date(rdv.date);
+                  const [hours, minutes] = rdv.heure.split(':').map(Number);
+                  const appointmentDateTime = new Date(dateObj);
+                  appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+                  const now = new Date();
+                  isPast = appointmentDateTime < now;
+                } else if (rdv.date) {
+                  const dateObj = new Date(rdv.date);
+                  const appointmentDateEnd = new Date(dateObj);
+                  appointmentDateEnd.setHours(23, 59, 59, 999);
+                  isPast = appointmentDateEnd < new Date();
                 }
-              };
 
-              const formatDate = (date: string) => {
-                const d = new Date(date);
-                return d.toLocaleDateString('fr-FR', { 
-                  weekday: 'long',
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                });
-              };
+                const canCancel = rdv.statut !== 'annule' && rdv.statut !== 'termine' && !isPast;
+                const canMarkAsDone = !isPast && rdv.statut !== 'annule';
+                const appointmentId = rdv._id || rdv.id;
 
-              const formatTime = (time: string) => {
-                if (!time) return '';
-                return time.substring(0, 5); // Format HH:MM
-              };
+                // Déterminer le style de la carte (bordure gauche colorée comme les dossiers)
+                const getCardBorderStyle = () => {
+                  if (rdv.statut === 'annule') {
+                    return 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200';
+                  }
+                  if (rdv.statut === 'termine' || rdv.effectue) {
+                    return 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-200';
+                  }
+                  if (isPast && !rdv.effectue) {
+                    return 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200';
+                  }
+                  if (rdv.statut === 'confirme') {
+                    return 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200';
+                  }
+                  return 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200';
+                };
 
-              // Calculer si le rendez-vous est passé en tenant compte de la date ET de l'heure
-              let isPast = false;
-              if (rdv.date && rdv.heure) {
-                const dateObj = new Date(rdv.date);
-                const [hours, minutes] = rdv.heure.split(':').map(Number);
-                const appointmentDateTime = new Date(dateObj);
-                appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
-                const now = new Date();
-                isPast = appointmentDateTime < now;
-              } else if (rdv.date) {
-                const dateObj = new Date(rdv.date);
-                const appointmentDateEnd = new Date(dateObj);
-                appointmentDateEnd.setHours(23, 59, 59, 999);
-                isPast = appointmentDateEnd < new Date();
-              }
-
-              const canCancel = rdv.statut !== 'annule' && rdv.statut !== 'termine';
-              const appointmentId = rdv._id || rdv.id;
-
-              // Déterminer le style de la carte
-              const getCardStyle = () => {
-                if (isPast && rdv.statut !== 'termine' && rdv.statut !== 'annule' && !rdv.effectue) {
-                  return 'bg-red-50 border-l-4 border-red-500';
-                }
-                if (rdv.effectue) {
-                  return 'bg-green-50 border-l-4 border-green-500';
-                }
-                return 'bg-white border-l-4 border-primary';
-              };
-
-              return (
-                <div key={appointmentId} className={`rounded-lg shadow-lg p-6 ${getCardStyle()} hover:shadow-xl transition-shadow`}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-xl font-semibold mb-2 text-foreground">{rdv.motif || 'Rendez-vous'}</h3>
-                      {rdv.description && (
-                        <p className="text-muted-foreground mb-3">{rdv.description}</p>
-                      )}
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p className="flex items-center gap-2">
-                          <span>📅</span>
-                          <span>{formatDate(rdv.date)}</span>
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <span>🕐</span>
-                          <span>{formatTime(rdv.heure)}</span>
-                        </p>
-                        {isPast && rdv.statut !== 'termine' && rdv.statut !== 'annule' && !rdv.effectue && (
-                          <p className="flex items-center gap-2 text-red-600 font-bold mt-2">
-                            <span>⚠️</span>
-                            <span>Rendez-vous dépassé</span>
-                          </p>
-                        )}
-                        {rdv.effectue && (
-                          <p className="flex items-center gap-2 text-green-700 font-bold mt-2">
-                            <span>✅</span>
-                            <span>Rendez-vous effectué</span>
-                          </p>
-                        )}
-                        {(rdv.nom || rdv.prenom) && (
-                          <p className="flex items-center gap-2">
-                            <span>👤</span>
-                            <span>{rdv.prenom} {rdv.nom}</span>
-                          </p>
-                        )}
-                        {rdv.email && (
-                          <p className="flex items-center gap-2">
-                            <span>✉️</span>
-                            <span>{rdv.email}</span>
-                          </p>
-                        )}
-                        {rdv.telephone && (
-                          <p className="flex items-center gap-2">
-                            <span>📞</span>
-                            <span>{rdv.telephone}</span>
+                return (
+                  <div
+                    key={appointmentId}
+                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${getCardBorderStyle()}`}
+                  >
+                    {/* En-tête de la carte */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <h3 className="font-bold text-base text-foreground mb-1 line-clamp-2 leading-tight">
+                          {rdv.motif || 'Rendez-vous'}
+                        </h3>
+                        {rdv.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                            {rdv.description}
                           </p>
                         )}
                       </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getStatutColor(rdv.statut || 'en_attente')}`}>
+                          {getStatutLabel(rdv.statut || 'en_attente')}
+                        </span>
+                        {isPast && !rdv.effectue && rdv.statut !== 'annule' && (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-red-100 text-red-800">
+                            ⚠️ Dépassé
+                          </span>
+                        )}
+                        {rdv.effectue ? (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-green-100 text-green-800">
+                            ✅ Effectué
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-800">
+                            ⏳ À venir
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="ml-4 flex flex-col items-end gap-2">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatutColor(rdv.statut || 'en_attente')}`}>
-                        {rdv.statut?.replace('_', ' ') || 'En attente'}
-                      </span>
-                      {canCancel && (
-                        <Button
-                          variant="outline"
-                          className="text-xs border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
-                          onClick={() => setShowCancelConfirm(appointmentId)}
-                          disabled={cancellingId === appointmentId}
-                        >
-                          {cancellingId === appointmentId ? 'Annulation...' : '❌ Annuler'}
-                        </Button>
+
+                    {/* Informations du rendez-vous */}
+                    <div className="space-y-2 mb-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">📅</span>
+                        <span className="font-medium text-foreground">
+                          {formatDate(rdv.date)}
+                        </span>
+                      </div>
+
+                      {rdv.heure && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">🕐</span>
+                          <span className="font-medium text-foreground">
+                            {formatTime(rdv.heure)}
+                          </span>
+                        </div>
+                      )}
+
+                      {(rdv.nom || rdv.prenom) && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">👤</span>
+                          <span className="text-foreground">
+                            {rdv.prenom} {rdv.nom}
+                          </span>
+                        </div>
+                      )}
+
+                      {rdv.email && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">✉️</span>
+                          <span className="text-foreground truncate">{rdv.email}</span>
+                        </div>
+                      )}
+
+                      {rdv.telephone && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">📞</span>
+                          <span className="text-foreground">{rdv.telephone}</span>
+                        </div>
                       )}
                     </div>
-                  </div>
-                  {rdv.notes && (
-                    <div className="pt-4 border-t">
-                      <p className="text-sm text-muted-foreground">
-                        <strong>Notes :</strong> {rdv.notes}
-                      </p>
+
+                    {/* Notes */}
+                    {rdv.notes && (
+                      <div className="mb-3 pt-2 border-t border-gray-100">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          <span className="font-semibold">Notes:</span> {rdv.notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="pt-3 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {canMarkAsDone && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`text-xs h-8 ${rdv.effectue 
+                                ? 'border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400' 
+                                : 'border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400'}`}
+                              onClick={() => handleMarkAsDone(appointmentId, !rdv.effectue)}
+                              disabled={markingAsDone === appointmentId}
+                            >
+                              {markingAsDone === appointmentId 
+                                ? '...' 
+                                : rdv.effectue 
+                                ? '❌ Marquer non effectué' 
+                                : '✅ Marquer effectué'}
+                            </Button>
+                          )}
+                          {rdv.effectue && canMarkAsDone && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8 border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
+                              onClick={() => {
+                                setAppointmentForDossier(rdv);
+                                setDossierFormData({
+                                  titre: `Dossier suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')}`,
+                                  description: `Dossier créé suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')} à ${rdv.heure}.\n\nMotif: ${rdv.motif || 'N/A'}\n${rdv.description ? `Description: ${rdv.description}` : ''}`,
+                                  categorie: 'autre',
+                                  type: '',
+                                  priorite: 'normale'
+                                });
+                                setShowCreateDossierModal(true);
+                              }}
+                            >
+                              📁 Créer un dossier
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {canCancel && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8"
+                                onClick={() => handleEditAppointment(rdv)}
+                                disabled={isUpdating}
+                              >
+                                ✏️ Modifier
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                                onClick={() => setShowCancelConfirm(appointmentId)}
+                                disabled={cancellingId === appointmentId}
+                              >
+                                {cancellingId === appointmentId ? 'Annulation...' : 'Annuler'}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {rendezVous.length > 0 && (
+              <div className="mt-6 pt-4 border-t flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Total: <span className="font-semibold text-foreground">{rendezVous.length}</span> rendez-vous{rendezVous.length > 1 ? '' : ''}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -408,6 +690,140 @@ function RendezVousPageContent() {
                 loadRendezVous(); // Recharger la liste des rendez-vous
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Modal de création de dossier depuis rendez-vous */}
+      {showCreateDossierModal && appointmentForDossier && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold">Créer un dossier depuis le rendez-vous</h3>
+              <button
+                onClick={() => {
+                  setShowCreateDossierModal(false);
+                  setAppointmentForDossier(null);
+                  setDossierFormData({
+                    titre: '',
+                    description: '',
+                    categorie: 'autre',
+                    type: '',
+                    priorite: 'normale'
+                  });
+                }}
+                className="text-2xl text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800">
+                <strong>Rendez-vous:</strong> {appointmentForDossier.motif || 'Rendez-vous'} - {new Date(appointmentForDossier.date).toLocaleDateString('fr-FR')} à {appointmentForDossier.heure}
+              </p>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleCreateDossierFromAppointment(); }} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Titre du dossier *</label>
+                <input
+                  type="text"
+                  value={dossierFormData.titre}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, titre: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Ex: Demande de titre de séjour"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Catégorie *</label>
+                <select
+                  value={dossierFormData.categorie}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, categorie: e.target.value, type: '' })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="sejour_titres">Séjour et titres de séjour</option>
+                  <option value="contentieux_administratif">Contentieux administratif</option>
+                  <option value="asile">Asile</option>
+                  <option value="regroupement_familial">Regroupement familial</option>
+                  <option value="nationalite_francaise">Nationalité française</option>
+                  <option value="eloignement_urgence">Éloignement et urgence</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Type</label>
+                <input
+                  type="text"
+                  value={dossierFormData.type}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Type de dossier"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea
+                  value={dossierFormData.description}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, description: e.target.value })}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Description du dossier..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Priorité</label>
+                <select
+                  value={dossierFormData.priorite}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, priorite: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="basse">Basse</option>
+                  <option value="normale">Normale</option>
+                  <option value="haute">Haute</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateDossierModal(false);
+                    setAppointmentForDossier(null);
+                    setDossierFormData({
+                      titre: '',
+                      description: '',
+                      categorie: 'autre',
+                      type: '',
+                      priorite: 'normale'
+                    });
+                  }}
+                  disabled={isCreatingDossier}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isCreatingDossier}
+                >
+                  {isCreatingDossier ? 'Création...' : 'Créer le dossier'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

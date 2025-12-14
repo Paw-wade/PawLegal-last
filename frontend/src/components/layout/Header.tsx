@@ -217,11 +217,7 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
   // Navigation par défaut selon le variant
   const defaultNavItems = {
     home: [
-      { href: '/', label: 'Accueil' },
-      { href: '/domaines', label: 'Domaines' },
-      { href: '/services', label: 'Services' },
       { href: '/contact', label: 'Contact' },
-      { href: '/faq', label: 'FAQ' },
       { href: '/calculateur', label: 'Calculateur', highlight: true },
       { href: '#', label: 'Dashboard', isDashboard: true },
     ],
@@ -331,7 +327,7 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                 </svg>
               </button>
             )}
-            {/* Logo seulement sur la page d'accueil */}
+            {/* Logo seulement sur la page d'accueil (pas sur le dashboard) */}
             {showNav && (
               <>
                 <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
@@ -406,6 +402,7 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
               )}
             </nav>
           )}
+
 
           {/* Informations utilisateur et actions */}
           <div className="flex items-center gap-2">

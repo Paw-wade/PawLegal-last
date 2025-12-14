@@ -1021,7 +1021,7 @@ export default function CalculateurPage() {
                       </div>
                       <span className={`text-blue-600 transition-transform duration-300 text-xs ${isPersonalInfoOpen ? 'rotate-180' : 'rotate-0'}`}>
                         ▼
-                      </span>
+                        </span>
                     </button>
                     
                     {isPersonalInfoOpen && (
@@ -1035,7 +1035,7 @@ export default function CalculateurPage() {
                             : <span className="text-blue-600/70 italic">Information non fournie</span>}
                         </p>
                       </div>
-                    </div>
+                      </div>
 
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-3 border border-blue-200/50 shadow-sm">
                       <div className="flex-1 min-w-0">
@@ -1043,8 +1043,8 @@ export default function CalculateurPage() {
                         <p className="text-xs font-medium text-blue-900 break-all">
                           {userProfile.email || <span className="text-blue-600/70 italic">Information non fournie</span>}
                         </p>
-                      </div>
                     </div>
+                  </div>
 
                     <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-lg p-3 border border-green-200/50 shadow-sm">
                       <div className="flex-1 min-w-0">
@@ -1072,7 +1072,7 @@ export default function CalculateurPage() {
                             <span className="text-gray-600/70 italic">Information non fournie</span>
                           )}
                         </p>
-                      </div>
+                        </div>
                     </div>
                       </div>
                     )}
@@ -1088,7 +1088,7 @@ export default function CalculateurPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-1 h-5 bg-green-500 rounded-full"></div>
                         <h3 className="text-sm font-bold text-foreground group-hover:text-green-600 transition-colors">Informations administratives</h3>
-                      </div>
+                        </div>
                       <span className={`text-green-600 transition-transform duration-300 text-xs ${isAdminInfoOpen ? 'rotate-180' : 'rotate-0'}`}>
                         ▼
                       </span>
@@ -1180,7 +1180,7 @@ export default function CalculateurPage() {
                                 <p className="text-[10px] text-red-700">
                                   Il est recommandé de déposer immédiatement une demande de renouvellement.
                                 </p>
-                              </div>
+                        </div>
                             ) : joursRestants !== null ? (
                               <div className="space-y-2">
                                 <p className={`text-[11px] font-semibold ${
@@ -1197,8 +1197,8 @@ export default function CalculateurPage() {
                                         joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
                                       }`}>Jours</p>
                                       <p className="text-lg font-bold">{joursRestants}</p>
-                                    </div>
-                                  )}
+                      </div>
+                    )}
                                   <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
                                     joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
                                   }`}>
@@ -1206,7 +1206,7 @@ export default function CalculateurPage() {
                                       joursRestants < 30 ? 'text-orange-700' : 'text-green-700'
                                     }`}>Heures</p>
                                     <p className="text-lg font-bold">{String(heuresRestantes).padStart(2, '0')}</p>
-                                  </div>
+                        </div>
                                   <div className={`bg-white/80 rounded-lg px-3 py-2 border-2 shadow-sm ${
                                     joursRestants < 30 ? 'border-orange-400 text-orange-900' : 'border-green-400 text-green-900'
                                   }`}>
@@ -1245,7 +1245,7 @@ export default function CalculateurPage() {
                         <p className="text-xs font-medium text-yellow-900 break-all">
                           {userProfile.numeroTitre || <span className="text-yellow-600/70 italic">Information non fournie</span>}
                         </p>
-                      </div>
+                        </div>
                     </div>
                       </div>
                     )}

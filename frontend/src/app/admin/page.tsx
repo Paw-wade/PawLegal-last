@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
-import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI } from '@/lib/api';
+import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI, dossiersAPI } from '@/lib/api';
+import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -38,6 +39,15 @@ export default function AdminDashboardPage() {
   const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
   const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
   const [weekTasks, setWeekTasks] = useState<any[]>([]);
+  // États pour les dossiers
+  const [dossiers, setDossiers] = useState<any[]>([]);
+  const [dossierFilter, setDossierFilter] = useState<'all' | 'recu' | 'en_cours_instruction' | 'decision_favorable' | 'decision_defavorable'>('all');
+  const [dossierPriorityFilter, setDossierPriorityFilter] = useState<'all' | 'urgente' | 'haute' | 'normale' | 'basse'>('all');
+  const [dossierCategorieFilter, setDossierCategorieFilter] = useState<string>('all');
+  // États pour les rendez-vous
+  const [allAppointments, setAllAppointments] = useState<any[]>([]);
+  const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'confirme' | 'en_attente' | 'annule' | 'termine'>('all');
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState<'all' | 'today' | 'tomorrow' | 'week'>('all');
   // Fonction pour obtenir la date du jour au format YYYY-MM-DD
   const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -61,6 +71,13 @@ export default function AdminDashboardPage() {
   const [showTaskStatusModal, setShowTaskStatusModal] = useState(false);
   const [taskStatusComment, setTaskStatusComment] = useState('');
   const [isUpdatingTaskStatus, setIsUpdatingTaskStatus] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<'all' | 'a_faire' | 'en_cours' | 'termine' | 'en_attente'>('all');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'urgente' | 'haute' | 'normale' | 'basse'>('all');
+  const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<string>('all');
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<any>(null);
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
+  const [isUpdatingTaskAssignment, setIsUpdatingTaskAssignment] = useState(false);
+  const [newAssigneeId, setNewAssigneeId] = useState<string>('');
   const hasChecked = useRef(false);
 
   useEffect(() => {
@@ -97,6 +114,8 @@ export default function AdminDashboardPage() {
     loadTeamMembers();
     checkUnreadMessages();
     loadNotifications();
+    loadDossiers();
+    loadAllAppointments();
   }, [session, status]);
 
   // Vérifier les messages non lus à la connexion
@@ -228,7 +247,7 @@ export default function AdminDashboardPage() {
       const response = await tasksAPI.getAllTasks();
       if (response.data.success) {
         const allTasks = response.data.tasks || [];
-        setTasks(allTasks.slice(0, 10)); // Garder les 10 dernières
+        setTasks(allTasks);
         const tasksEnCours = allTasks.filter((t: any) => 
           t.statut === 'a_faire' || t.statut === 'en_cours' || t.statut === 'en_attente'
         ).length;
@@ -240,6 +259,30 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error('Erreur lors du chargement des tâches:', error);
+    }
+  };
+
+  const loadDossiers = async () => {
+    try {
+      const response = await dossiersAPI.getAllDossiers();
+      if (response.data.success) {
+        const allDossiers = response.data.dossiers || [];
+        setDossiers(allDossiers);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des dossiers:', error);
+    }
+  };
+
+  const loadAllAppointments = async () => {
+    try {
+      const response = await appointmentsAPI.getAllAppointments();
+      if (response.data.success) {
+        const appointments = response.data.data || response.data.appointments || [];
+        setAllAppointments(appointments);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des rendez-vous:', error);
     }
   };
 
@@ -309,30 +352,62 @@ export default function AdminDashboardPage() {
         setWeekTasks(weekTasks);
         
         // Filtrer les tâches assignées à l'admin connecté
-        const currentUserId = (session.user as any)?.id;
-        const tasksForAdmin = weekTasks.filter((task: any) => {
-          // Tâches assignées à l'admin connecté
-          if (task.assignedTo) {
-            if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) {
-              return true;
-            }
-            if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) {
-              return true;
-            }
-          }
-          return false;
-        });
+        // Note: Le popup de notification des tâches a été désactivé
+        // const currentUserId = (session.user as any)?.id;
+        // const tasksForAdmin = weekTasks.filter((task: any) => {
+        //   // Tâches assignées à l'admin connecté
+        //   if (task.assignedTo) {
+        //     if (typeof task.assignedTo === 'object' && task.assignedTo._id === currentUserId) {
+        //       return true;
+        //     }
+        //     if (typeof task.assignedTo === 'string' && task.assignedTo === currentUserId) {
+        //       return true;
+        //     }
+        //   }
+        //   return false;
+        // });
         
         // Afficher la pop-up si il y a des tâches et qu'elle n'a pas encore été affichée
-        if (tasksForAdmin.length > 0 && !hasShownTasksNotification) {
-          setTimeout(() => {
-            setShowTasksNotificationModal(true);
-            setHasShownTasksNotification(true);
-          }, 1000); // Délai de 1 seconde après le chargement
-        }
+        // DÉSACTIVÉ: Le popup des tâches ne s'affiche plus à la connexion
+        // if (tasksForAdmin.length > 0 && !hasShownTasksNotification) {
+        //   setTimeout(() => {
+        //     setShowTasksNotificationModal(true);
+        //     setHasShownTasksNotification(true);
+        //   }, 1000); // Délai de 1 seconde après le chargement
+        // }
       }
     } catch (error) {
       console.error('Erreur lors du chargement des notifications:', error);
+    }
+  };
+
+  const handleUpdateTaskAssignment = async () => {
+    if (!selectedTaskDetail || !newAssigneeId) {
+      return;
+    }
+
+    setIsUpdatingTaskAssignment(true);
+    try {
+      await tasksAPI.updateTask(selectedTaskDetail._id, {
+        assignedTo: newAssigneeId
+      });
+      
+      // Recharger les tâches
+      await loadTasks();
+      
+      // Mettre à jour la tâche sélectionnée
+      const updatedTask = tasks.find((t: any) => t._id === selectedTaskDetail._id);
+      if (updatedTask) {
+        setSelectedTaskDetail(updatedTask);
+      }
+      
+      setNewAssigneeId('');
+      alert('Assignation mise à jour avec succès !');
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour de l\'assignation:', error);
+      alert('Erreur lors de la mise à jour de l\'assignation: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsUpdatingTaskAssignment(false);
     }
   };
 
@@ -476,47 +551,8 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Notifications intelligentes */}
-        {(todayAppointments.length > 0 || tomorrowAppointments.length > 0 || weekTasks.length > 0) && (
-          <div className="mb-8 grid md:grid-cols-3 gap-4">
-            {/* Rendez-vous du jour */}
-            {todayAppointments.length > 0 && (
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-lg p-6 border-2 border-blue-300">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
-                    <span className="text-2xl">📅</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-blue-900">Rendez-vous du jour</h3>
-                    <p className="text-sm text-blue-700">{todayAppointments.length} rendez-vous</p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {todayAppointments.slice(0, 5).map((apt: any) => {
-                    const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
-                    const isPast = apt.date && apt.heure ? (() => {
-                      const dateObj = new Date(apt.date);
-                      const [hours, minutes] = apt.heure.split(':').map(Number);
-                      const appointmentDateTime = new Date(dateObj);
-                      appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
-                      return appointmentDateTime < new Date();
-                    })() : false;
-                    return (
-                      <div key={apt._id || apt.id} className={`p-2 rounded-lg ${isPast && !apt.effectue ? 'bg-red-100 border border-red-300' : 'bg-white border border-blue-200'}`}>
-                        <p className="font-semibold text-sm text-foreground">{clientName}</p>
-                        <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
-                        {isPast && !apt.effectue && (
-                          <p className="text-xs text-red-600 font-bold mt-1">⚠️ Dépassé</p>
-                        )}
-              </div>
-                    );
-                  })}
-                </div>
-                <Link href="/admin/rendez-vous?filter=today" className="mt-4 inline-block text-sm text-blue-700 hover:text-blue-900 font-semibold">
-                  Voir tous →
-            </Link>
-          </div>
-            )}
-
+        {tomorrowAppointments.length > 0 && (
+          <div className="mb-8 grid md:grid-cols-1 gap-4">
             {/* Rendez-vous du lendemain */}
             {tomorrowAppointments.length > 0 && (
               <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl shadow-lg p-6 border-2 border-orange-300">
@@ -542,42 +578,6 @@ export default function AdminDashboardPage() {
                 </div>
                 <Link href="/admin/rendez-vous" className="mt-4 inline-block text-sm text-orange-700 hover:text-orange-900 font-semibold">
                   Voir tous →
-                </Link>
-              </div>
-            )}
-
-            {/* Tâches de la semaine */}
-            {weekTasks.length > 0 && (
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl shadow-lg p-6 border-2 border-purple-300">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center">
-                    <span className="text-2xl">✅</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-purple-900">Tâches de la semaine</h3>
-                    <p className="text-sm text-purple-700">{weekTasks.length} tâches</p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {weekTasks.slice(0, 5).map((task: any) => {
-                    const assignedUser = teamMembers.find((m: any) => m._id === task.assignedTo);
-                    return (
-                      <div key={task._id || task.id} className="p-2 rounded-lg bg-white border border-purple-200">
-                        <p className="font-semibold text-sm text-foreground line-clamp-1">{task.titre}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {assignedUser ? `👤 ${assignedUser.firstName} ${assignedUser.lastName}` : 'Non assigné'}
-                        </p>
-                        {task.dateEcheance && (
-                          <p className="text-xs text-muted-foreground">
-                            📅 {new Date(task.dateEcheance).toLocaleDateString('fr-FR')}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <Link href="/admin?section=tasks" className="mt-4 inline-block text-sm text-purple-700 hover:text-purple-900 font-semibold">
-                  Voir toutes →
                 </Link>
               </div>
             )}
@@ -747,7 +747,7 @@ export default function AdminDashboardPage() {
 
         {/* Section Gestion des Tâches */}
         <div id="tasks-section" className="bg-gradient-to-br from-white to-orange-50/30 rounded-2xl shadow-lg p-8 mb-8 border border-orange-200">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
@@ -764,6 +764,95 @@ export default function AdminDashboardPage() {
             </Button>
           </div>
 
+          {/* Statistiques des tâches */}
+          {tasks.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
+                <p className="text-2xl font-bold text-blue-900">{tasks.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">À faire</p>
+                <p className="text-2xl font-bold text-yellow-900">
+                  {tasks.filter((t: any) => t.statut === 'a_faire' || t.statut === 'en_attente').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">En cours</p>
+                <p className="text-2xl font-bold text-purple-900">
+                  {tasks.filter((t: any) => t.statut === 'en_cours').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Terminées</p>
+                <p className="text-2xl font-bold text-green-900">
+                  {tasks.filter((t: any) => t.statut === 'termine' || t.effectue).length}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres */}
+          {tasks.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-3 items-center bg-white rounded-lg p-4 border border-gray-200">
+              <span className="text-sm font-medium text-muted-foreground">Filtres:</span>
+              
+              {/* Filtre par statut */}
+              <select
+                value={taskFilter}
+                onChange={(e) => setTaskFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="a_faire">À faire</option>
+                <option value="en_cours">En cours</option>
+                <option value="en_attente">En attente</option>
+                <option value="termine">Terminées</option>
+              </select>
+
+              {/* Filtre par priorité */}
+              <select
+                value={taskPriorityFilter}
+                onChange={(e) => setTaskPriorityFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">Toutes les priorités</option>
+                <option value="urgente">Urgente</option>
+                <option value="haute">Haute</option>
+                <option value="normale">Normale</option>
+                <option value="basse">Basse</option>
+              </select>
+
+              {/* Filtre par assigné */}
+              <select
+                value={taskAssigneeFilter}
+                onChange={(e) => setTaskAssigneeFilter(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">Tous les assignés</option>
+                {teamMembers.map((member: any) => (
+                  <option key={member._id} value={member._id}>
+                    {member.firstName} {member.lastName}
+                  </option>
+                ))}
+              </select>
+
+              {/* Bouton réinitialiser */}
+              {(taskFilter !== 'all' || taskPriorityFilter !== 'all' || taskAssigneeFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setTaskFilter('all');
+                    setTaskPriorityFilter('all');
+                    setTaskAssigneeFilter('all');
+                  }}
+                  className="px-3 py-1.5 text-sm text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+          )}
+
           {tasks.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -774,69 +863,664 @@ export default function AdminDashboardPage() {
                 Créer la première tâche
               </Button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {tasks.map((task: any) => (
-                <div key={task._id} className="bg-white rounded-xl border-2 border-orange-200 p-5 hover:shadow-lg transition-all duration-200 hover:border-orange-400">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-1">{task.titre}</h3>
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatutColor(task.statut)}`}>
-                          {getStatutLabel(task.statut)}
-                        </span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(task.priorite)}`}>
-                          {task.priorite}
-                        </span>
+          ) : (() => {
+            // Filtrer les tâches
+            const filteredTasks = tasks.filter((task: any) => {
+              const matchStatut = taskFilter === 'all' || task.statut === taskFilter || (taskFilter === 'termine' && task.effectue);
+              const matchPriority = taskPriorityFilter === 'all' || task.priorite === taskPriorityFilter;
+              const matchAssignee = taskAssigneeFilter === 'all' || 
+                (task.assignedTo && (
+                  (typeof task.assignedTo === 'object' && task.assignedTo._id === taskAssigneeFilter) ||
+                  (typeof task.assignedTo === 'string' && task.assignedTo === taskAssigneeFilter)
+                ));
+              return matchStatut && matchPriority && matchAssignee;
+            });
+
+            if (filteredTasks.length === 0) {
+              return (
+                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <div className="text-4xl mb-4">🔍</div>
+                  <p className="text-muted-foreground mb-2 font-medium">Aucune tâche ne correspond aux filtres</p>
+                  <button
+                    onClick={() => {
+                      setTaskFilter('all');
+                      setTaskPriorityFilter('all');
+                      setTaskAssigneeFilter('all');
+                    }}
+                    className="text-sm text-orange-600 hover:text-orange-700 hover:underline"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredTasks.map((task: any) => {
+                  const isUrgent = task.dateEcheance && new Date(task.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+                  const isOverdue = task.dateEcheance && new Date(task.dateEcheance) < new Date();
+                  
+                  return (
+                    <div 
+                      key={task._id} 
+                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
+                        isOverdue && !task.effectue
+                          ? 'border-red-400 bg-red-50/50'
+                          : isUrgent && !task.effectue
+                          ? 'border-orange-400 bg-orange-50/50'
+                          : task.effectue
+                          ? 'border-green-300 bg-green-50/30'
+                          : 'border-orange-200 hover:border-orange-400'
+                      }`}
+                    >
+                      {/* En-tête de la carte */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-2 leading-tight">
+                            {task.titre}
+                          </h3>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatutColor(task.statut)}`}>
+                              {getStatutLabel(task.statut)}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(task.priorite)}`}>
+                              {task.priorite === 'urgente' ? '🔴 ' : task.priorite === 'haute' ? '🟠 ' : ''}
+                              {task.priorite}
+                            </span>
+                            {isOverdue && !task.effectue && (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                ⚠️ En retard
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  {task.description && (
-                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{task.description}</p>
-                  )}
-                  <div className="space-y-2 pt-3 border-t border-orange-100">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">👤 Assigné à:</span>
-                      <span className="font-semibold text-foreground">{task.assignedTo?.firstName} {task.assignedTo?.lastName}</span>
-                    </div>
-                    {task.dateEcheance && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">⏰ Échéance:</span>
-                        <span className="font-semibold text-foreground">{new Date(task.dateEcheance).toLocaleDateString('fr-FR')}</span>
-                      </div>
-                    )}
-                    {task.dossier && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">📁 Dossier:</span>
-                        <span className="font-semibold text-foreground truncate">{task.dossier.titre}</span>
-                      </div>
-                    )}
-                    {task.effectue && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-green-600 font-semibold">✅ Tâche effectuée</span>
-                        {task.commentaireEffectue && (
-                          <span className="text-muted-foreground italic">- {task.commentaireEffectue}</span>
+
+                      {/* Description */}
+                      {task.description && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-3 leading-relaxed">
+                          {task.description}
+                        </p>
+                      )}
+
+                      {/* Informations */}
+                      <div className="space-y-2 pt-3 border-t border-gray-100">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">👤</span>
+                          <span className="font-semibold text-foreground">
+                            {task.assignedTo?.firstName ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}` : 'Non assigné'}
+                          </span>
+                        </div>
+                        {task.dateEcheance && (
+                          <div className={`flex items-center gap-2 text-xs ${isOverdue && !task.effectue ? 'text-red-600 font-bold' : isUrgent && !task.effectue ? 'text-orange-600 font-semibold' : ''}`}>
+                            <span>⏰</span>
+                            <span>
+                              Échéance: {new Date(task.dateEcheance).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </span>
+                            {isOverdue && !task.effectue && <span className="text-red-600">⚠️</span>}
+                          </div>
+                        )}
+                        {task.dossier && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span>📁</span>
+                            <span className="font-semibold text-foreground truncate">{task.dossier.titre}</span>
+                          </div>
+                        )}
+                        {task.effectue && (
+                          <div className="flex items-center gap-2 text-xs bg-green-50 rounded-md p-2">
+                            <span className="text-green-600 font-semibold">✅ Tâche effectuée</span>
+                            {task.commentaireEffectue && (
+                              <span className="text-muted-foreground italic text-xs">- {task.commentaireEffectue}</span>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-orange-100 flex justify-end">
-                    <Button
-                      onClick={() => {
-                        setSelectedTaskForStatus(task);
-                        setTaskStatusComment(task.commentaireEffectue || '');
-                        setShowTaskStatusModal(true);
-                      }}
-                      variant="outline"
-                      className="text-sm"
-                    >
-                      {task.effectue ? 'Modifier le statut' : 'Marquer comme effectuée'}
-                    </Button>
-                  </div>
+
+                      {/* Actions */}
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
+                        <Button
+                          onClick={() => {
+                            setSelectedTaskDetail(task);
+                            setShowTaskDetailModal(true);
+                          }}
+                          variant="outline"
+                          className="text-sm flex-1"
+                        >
+                          👁️ Voir détails
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setSelectedTaskForStatus(task);
+                            setTaskStatusComment(task.commentaireEffectue || '');
+                            setShowTaskStatusModal(true);
+                          }}
+                          variant="outline"
+                          className="text-sm flex-1"
+                        >
+                          {task.effectue ? '✏️ Modifier' : '✅ Marquer effectuée'}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Section Gestion des Dossiers */}
+        <div id="dossiers-management-section" className="bg-gradient-to-br from-white to-blue-50/30 rounded-2xl shadow-lg p-8 mb-8 border border-blue-200">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-2xl">📁</span>
                 </div>
-              ))}
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Gestion des Dossiers</h2>
+                  <p className="text-muted-foreground text-sm mt-1">Suivez et gérez tous les dossiers clients</p>
+                </div>
+              </div>
+            </div>
+            <Link href="/admin/dossiers">
+              <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md">
+                + Nouveau dossier
+              </Button>
+            </Link>
+          </div>
+
+          {/* Statistiques des dossiers */}
+          {dossiers.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
+                <p className="text-2xl font-bold text-blue-900">{dossiers.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
+                <p className="text-2xl font-bold text-yellow-900">
+                  {dossiers.filter((d: any) => d.statut === 'recu' || d.statut === 'en_attente_onboarding').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">En cours</p>
+                <p className="text-2xl font-bold text-purple-900">
+                  {dossiers.filter((d: any) => d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Favorables</p>
+                <p className="text-2xl font-bold text-green-900">
+                  {dossiers.filter((d: any) => d.statut === 'decision_favorable' || d.statut === 'gain_cause').length}
+                </p>
+              </div>
             </div>
           )}
+
+          {/* Filtres */}
+          {dossiers.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-3 items-center bg-white rounded-lg p-4 border border-gray-200">
+              <span className="text-sm font-medium text-muted-foreground">Filtres:</span>
+              
+              {/* Filtre par statut */}
+              <select
+                value={dossierFilter}
+                onChange={(e) => setDossierFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="recu">Reçu</option>
+                <option value="en_cours_instruction">En cours d'instruction</option>
+                <option value="decision_favorable">Décision favorable</option>
+                <option value="decision_defavorable">Décision défavorable</option>
+              </select>
+
+              {/* Filtre par priorité */}
+              <select
+                value={dossierPriorityFilter}
+                onChange={(e) => setDossierPriorityFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">Toutes les priorités</option>
+                <option value="urgente">Urgente</option>
+                <option value="haute">Haute</option>
+                <option value="normale">Normale</option>
+                <option value="basse">Basse</option>
+              </select>
+
+              {/* Bouton réinitialiser */}
+              {(dossierFilter !== 'all' || dossierPriorityFilter !== 'all' || dossierCategorieFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setDossierFilter('all');
+                    setDossierPriorityFilter('all');
+                    setDossierCategorieFilter('all');
+                  }}
+                  className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+          )}
+
+          {dossiers.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-4xl">📁</span>
+              </div>
+              <p className="text-muted-foreground mb-4 font-medium">Aucun dossier pour le moment</p>
+              <Link href="/admin/dossiers">
+                <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
+                  Créer le premier dossier
+                </Button>
+              </Link>
+            </div>
+          ) : (() => {
+            // Filtrer les dossiers
+            const filteredDossiers = dossiers.filter((dossier: any) => {
+              const matchStatut = dossierFilter === 'all' || dossier.statut === dossierFilter;
+              const matchPriority = dossierPriorityFilter === 'all' || dossier.priorite === dossierPriorityFilter;
+              const matchCategorie = dossierCategorieFilter === 'all' || dossier.categorie === dossierCategorieFilter;
+              return matchStatut && matchPriority && matchCategorie;
+            });
+
+            if (filteredDossiers.length === 0) {
+              return (
+                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <div className="text-4xl mb-4">🔍</div>
+                  <p className="text-muted-foreground mb-2 font-medium">Aucun dossier ne correspond aux filtres</p>
+                  <button
+                    onClick={() => {
+                      setDossierFilter('all');
+                      setDossierPriorityFilter('all');
+                      setDossierCategorieFilter('all');
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredDossiers.slice(0, 9).map((dossier: any) => {
+                  const isUrgent = dossier.dateEcheance && new Date(dossier.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+                  const isOverdue = dossier.dateEcheance && new Date(dossier.dateEcheance) < new Date();
+                  
+                  return (
+                    <div 
+                      key={dossier._id} 
+                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
+                        isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule'
+                          ? 'border-red-400 bg-red-50/50'
+                          : isUrgent && dossier.priorite === 'urgente'
+                          ? 'border-orange-400 bg-orange-50/50'
+                          : dossier.statut === 'decision_favorable'
+                          ? 'border-green-300 bg-green-50/30'
+                          : 'border-blue-200 hover:border-blue-400'
+                      }`}
+                    >
+                      {/* En-tête de la carte */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-2 leading-tight">
+                            {dossier.titre || 'Sans titre'}
+                          </h3>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
+                              {getStatutLabel(dossier.statut)}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(dossier.priorite)}`}>
+                              {dossier.priorite === 'urgente' ? '🔴 ' : dossier.priorite === 'haute' ? '🟠 ' : ''}
+                              {dossier.priorite}
+                            </span>
+                            {isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' && (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                ⚠️ En retard
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {dossier.description && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
+                          {dossier.description}
+                        </p>
+                      )}
+
+                      {/* Informations */}
+                      <div className="space-y-2 pt-3 border-t border-gray-100">
+                        {dossier.user && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">👤</span>
+                            <span className="font-semibold text-foreground">
+                              {dossier.user.firstName ? `${dossier.user.firstName} ${dossier.user.lastName}` : dossier.clientNom ? `${dossier.clientPrenom} ${dossier.clientNom}` : 'Client'}
+                            </span>
+                          </div>
+                        )}
+                        {dossier.dateEcheance && (
+                          <div className={`flex items-center gap-2 text-xs ${isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' ? 'text-red-600 font-bold' : isUrgent && dossier.priorite === 'urgente' ? 'text-orange-600 font-semibold' : ''}`}>
+                            <span>⏰</span>
+                            <span>
+                              Échéance: {new Date(dossier.dateEcheance).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </span>
+                            {isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' && <span className="text-red-600">⚠️</span>}
+                          </div>
+                        )}
+                        {dossier.categorie && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span>📋</span>
+                            <span className="font-semibold text-foreground truncate">{dossier.categorie.replace('_', ' ')}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
+                        <Link href={`/admin/dossiers/${dossier._id}`} className="flex-1">
+                          <Button variant="outline" className="text-sm w-full">
+                            👁️ Voir détails
+                          </Button>
+                        </Link>
+                        <Link href="/admin/dossiers" className="flex-1">
+                          <Button variant="outline" className="text-sm w-full">
+                            ✏️ Modifier
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Section Gestion des Rendez-vous */}
+        <div id="appointments-management-section" className="bg-gradient-to-br from-white to-green-50/30 rounded-2xl shadow-lg p-8 mb-8 border border-green-200">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-2xl">📅</span>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Gestion des Rendez-vous</h2>
+                  <p className="text-muted-foreground text-sm mt-1">Gérez le calendrier et les rendez-vous clients</p>
+                </div>
+              </div>
+            </div>
+            <Link href="/admin/rendez-vous">
+              <Button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md">
+                + Nouveau rendez-vous
+              </Button>
+            </Link>
+          </div>
+
+          {/* Statistiques des rendez-vous */}
+          {allAppointments.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
+                <p className="text-2xl font-bold text-green-900">{allAppointments.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Confirmés</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {allAppointments.filter((a: any) => a.statut === 'confirme').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
+                <p className="text-2xl font-bold text-yellow-900">
+                  {allAppointments.filter((a: any) => a.statut === 'en_attente').length}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-red-700 font-semibold mb-1 uppercase tracking-wide">Annulés</p>
+                <p className="text-2xl font-bold text-red-900">
+                  {allAppointments.filter((a: any) => a.statut === 'annule' || a.statut === 'annulé').length}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres */}
+          {allAppointments.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-3 items-center bg-white rounded-lg p-4 border border-gray-200">
+              <span className="text-sm font-medium text-muted-foreground">Filtres:</span>
+              
+              {/* Filtre par statut */}
+              <select
+                value={appointmentFilter}
+                onChange={(e) => setAppointmentFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="confirme">Confirmés</option>
+                <option value="en_attente">En attente</option>
+                <option value="termine">Terminés</option>
+                <option value="annule">Annulés</option>
+              </select>
+
+              {/* Filtre par date */}
+              <select
+                value={appointmentDateFilter}
+                onChange={(e) => setAppointmentDateFilter(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              >
+                <option value="all">Toutes les dates</option>
+                <option value="today">Aujourd'hui</option>
+                <option value="tomorrow">Demain</option>
+                <option value="week">Cette semaine</option>
+              </select>
+
+              {/* Bouton réinitialiser */}
+              {(appointmentFilter !== 'all' || appointmentDateFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setAppointmentFilter('all');
+                    setAppointmentDateFilter('all');
+                  }}
+                  className="px-3 py-1.5 text-sm text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+          )}
+
+          {allAppointments.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-4xl">📅</span>
+              </div>
+              <p className="text-muted-foreground mb-4 font-medium">Aucun rendez-vous pour le moment</p>
+              <Link href="/admin/rendez-vous">
+                <Button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700">
+                  Créer le premier rendez-vous
+                </Button>
+              </Link>
+            </div>
+          ) : (() => {
+            // Filtrer les rendez-vous
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+            const filteredAppointments = allAppointments.filter((apt: any) => {
+              const matchStatut = appointmentFilter === 'all' || apt.statut === appointmentFilter;
+              
+              let matchDate = true;
+              if (appointmentDateFilter !== 'all' && apt.date) {
+                const aptDate = new Date(apt.date);
+                aptDate.setHours(0, 0, 0, 0);
+                
+                if (appointmentDateFilter === 'today') {
+                  matchDate = aptDate.getTime() === today.getTime();
+                } else if (appointmentDateFilter === 'tomorrow') {
+                  matchDate = aptDate.getTime() === tomorrow.getTime();
+                } else if (appointmentDateFilter === 'week') {
+                  matchDate = aptDate >= today && aptDate <= weekFromNow;
+                }
+              }
+              
+              return matchStatut && matchDate;
+            });
+
+            if (filteredAppointments.length === 0) {
+              return (
+                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <div className="text-4xl mb-4">🔍</div>
+                  <p className="text-muted-foreground mb-2 font-medium">Aucun rendez-vous ne correspond aux filtres</p>
+                  <button
+                    onClick={() => {
+                      setAppointmentFilter('all');
+                      setAppointmentDateFilter('all');
+                    }}
+                    className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredAppointments.slice(0, 9).map((apt: any) => {
+                  const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
+                  const isPast = apt.date && apt.heure ? (() => {
+                    const dateObj = new Date(apt.date);
+                    const [hours, minutes] = apt.heure.split(':').map(Number);
+                    const appointmentDateTime = new Date(dateObj);
+                    appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+                    return appointmentDateTime < new Date();
+                  })() : false;
+                  
+                  return (
+                    <div 
+                      key={apt._id || apt.id} 
+                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
+                        apt.statut === 'annule' || apt.statut === 'annulé'
+                          ? 'border-red-300 bg-red-50/30'
+                          : isPast && !apt.effectue
+                          ? 'border-red-400 bg-red-50/50'
+                          : apt.statut === 'termine' || apt.effectue
+                          ? 'border-green-300 bg-green-50/30'
+                          : apt.statut === 'confirme'
+                          ? 'border-green-200 hover:border-green-400'
+                          : 'border-yellow-200 hover:border-yellow-400'
+                      }`}
+                    >
+                      {/* En-tête de la carte */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-2 leading-tight">
+                            {apt.motif || 'Rendez-vous'}
+                          </h3>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              apt.statut === 'confirme' ? 'bg-green-100 text-green-800' :
+                              apt.statut === 'en_attente' ? 'bg-yellow-100 text-yellow-800' :
+                              apt.statut === 'annule' || apt.statut === 'annulé' ? 'bg-red-100 text-red-800' :
+                              apt.statut === 'termine' ? 'bg-gray-100 text-gray-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {apt.statut === 'confirme' ? 'Confirmé' :
+                               apt.statut === 'en_attente' ? 'En attente' :
+                               apt.statut === 'annule' || apt.statut === 'annulé' ? 'Annulé' :
+                               apt.statut === 'termine' ? 'Terminé' :
+                               apt.statut?.replace('_', ' ') || 'En attente'}
+                            </span>
+                            {isPast && !apt.effectue && (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                ⚠️ Dépassé
+                              </span>
+                            )}
+                            {apt.effectue && (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                ✅ Effectué
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {apt.description && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
+                          {apt.description}
+                        </p>
+                      )}
+
+                      {/* Informations */}
+                      <div className="space-y-2 pt-3 border-t border-gray-100">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">👤</span>
+                          <span className="font-semibold text-foreground">{clientName}</span>
+                        </div>
+                        {apt.date && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span>📅</span>
+                            <span>
+                              {new Date(apt.date).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                        )}
+                        {apt.heure && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span>⏰</span>
+                            <span>{apt.heure.substring(0, 5)}</span>
+                          </div>
+                        )}
+                        {apt.email && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span>✉️</span>
+                            <span className="truncate">{apt.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
+                        <Link href="/admin/rendez-vous" className="flex-1">
+                          <Button variant="outline" className="text-sm w-full">
+                            👁️ Voir détails
+                          </Button>
+                        </Link>
+                        <Link href="/admin/rendez-vous" className="flex-1">
+                          <Button variant="outline" className="text-sm w-full">
+                            ✏️ Modifier
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Activités récentes et graphiques */}
@@ -1119,6 +1803,243 @@ export default function AdminDashboardPage() {
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de détail de tâche */}
+        {showTaskDetailModal && selectedTaskDetail && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold">Détails de la tâche</h3>
+                <button
+                  onClick={() => {
+                    setShowTaskDetailModal(false);
+                    setSelectedTaskDetail(null);
+                    setNewAssigneeId('');
+                  }}
+                  className="text-2xl text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Titre */}
+                <div>
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">Titre</label>
+                  <p className="text-lg font-bold text-foreground">{selectedTaskDetail.titre}</p>
+                </div>
+
+                {/* Statut et Priorité */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Statut</label>
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatutColor(selectedTaskDetail.statut)}`}>
+                      {getStatutLabel(selectedTaskDetail.statut)}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Priorité</label>
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getPrioriteColor(selectedTaskDetail.priorite)}`}>
+                      {selectedTaskDetail.priorite === 'urgente' ? '🔴 ' : selectedTaskDetail.priorite === 'haute' ? '🟠 ' : ''}
+                      {selectedTaskDetail.priorite}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedTaskDetail.description && (
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Description</label>
+                    <p className="text-foreground bg-gray-50 rounded-md p-3 whitespace-pre-wrap">
+                      {selectedTaskDetail.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Assignation */}
+                <div>
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
+                    Assigné à
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-foreground font-medium">
+                        {selectedTaskDetail.assignedTo?.firstName 
+                          ? `${selectedTaskDetail.assignedTo.firstName} ${selectedTaskDetail.assignedTo.lastName} (${selectedTaskDetail.assignedTo.email})`
+                          : 'Non assigné'}
+                      </p>
+                    </div>
+                    <div className="flex-1">
+                      <select
+                        value={newAssigneeId || (selectedTaskDetail.assignedTo?._id || selectedTaskDetail.assignedTo || '')}
+                        onChange={(e) => setNewAssigneeId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Sélectionner un membre</option>
+                        {teamMembers.map((member: any) => (
+                          <option key={member._id} value={member._id}>
+                            {member.firstName} {member.lastName} ({member.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <Button
+                      onClick={handleUpdateTaskAssignment}
+                      disabled={isUpdatingTaskAssignment || !newAssigneeId || newAssigneeId === (selectedTaskDetail.assignedTo?._id || selectedTaskDetail.assignedTo || '')}
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
+                    >
+                      {isUpdatingTaskAssignment ? 'Mise à jour...' : 'Réassigner'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div className="grid grid-cols-2 gap-4">
+                  {selectedTaskDetail.dateEcheance && (
+                    <div>
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">Date d'échéance</label>
+                      <p className="text-foreground">
+                        {new Date(selectedTaskDetail.dateEcheance).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                        {new Date(selectedTaskDetail.dateEcheance) < new Date() && !selectedTaskDetail.effectue && (
+                          <span className="ml-2 text-red-600 font-semibold">⚠️ En retard</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  {selectedTaskDetail.dateDebut && (
+                    <div>
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">Date de début</label>
+                      <p className="text-foreground">
+                        {new Date(selectedTaskDetail.dateDebut).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                  {selectedTaskDetail.dateFin && (
+                    <div>
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">Date de fin</label>
+                      <p className="text-foreground">
+                        {new Date(selectedTaskDetail.dateFin).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                  {selectedTaskDetail.dateEffectue && (
+                    <div>
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">Date d'effectuation</label>
+                      <p className="text-foreground">
+                        {new Date(selectedTaskDetail.dateEffectue).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dossier lié */}
+                {selectedTaskDetail.dossier && (
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Dossier lié</label>
+                    <p className="text-foreground font-medium">
+                      {selectedTaskDetail.dossier.titre || selectedTaskDetail.dossier}
+                      {selectedTaskDetail.dossier.numero && (
+                        <span className="text-muted-foreground ml-2">
+                          (N° {selectedTaskDetail.dossier.numero})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {selectedTaskDetail.notes && (
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Notes</label>
+                    <p className="text-foreground bg-gray-50 rounded-md p-3 whitespace-pre-wrap">
+                      {selectedTaskDetail.notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Commentaire d'effectuation */}
+                {selectedTaskDetail.commentaireEffectue && (
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">Commentaire d'effectuation</label>
+                    <p className="text-foreground bg-green-50 rounded-md p-3 whitespace-pre-wrap border border-green-200">
+                      {selectedTaskDetail.commentaireEffectue}
+                    </p>
+                  </div>
+                )}
+
+                {/* Informations de création */}
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Créé par</label>
+                      <p className="text-foreground">
+                        {selectedTaskDetail.createdBy?.firstName 
+                          ? `${selectedTaskDetail.createdBy.firstName} ${selectedTaskDetail.createdBy.lastName}`
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Date de création</label>
+                      <p className="text-foreground">
+                        {selectedTaskDetail.createdAt 
+                          ? new Date(selectedTaskDetail.createdAt).toLocaleDateString('fr-FR', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowTaskDetailModal(false);
+                      setSelectedTaskDetail(null);
+                      setNewAssigneeId('');
+                    }}
+                  >
+                    Fermer
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSelectedTaskForStatus(selectedTaskDetail);
+                      setTaskStatusComment(selectedTaskDetail.commentaireEffectue || '');
+                      setShowTaskDetailModal(false);
+                      setShowTaskStatusModal(true);
+                    }}
+                    className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
+                  >
+                    {selectedTaskDetail.effectue ? 'Modifier le statut' : 'Marquer comme effectuée'}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}

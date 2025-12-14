@@ -2,6 +2,7 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const Log = require('../models/Log');
 const { protect, authorize } = require('../middleware/auth');
+const { createDocumentWithHeader } = require('../utils/documentHeader');
 
 const router = express.Router();
 
@@ -68,8 +69,8 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
       });
     }
 
-    // Créer le document PDF
-    const doc = new PDFDocument({
+    // Créer le document PDF avec en-tête standard
+    const doc = createDocumentWithHeader({
       margin: 50,
       size: 'A4'
     });

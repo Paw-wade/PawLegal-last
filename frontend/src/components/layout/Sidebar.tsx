@@ -29,9 +29,9 @@ const clientMenuItems: MenuItem[] = [
 ];
 
 const adminMenuItems: MenuItem[] = [
-  { href: '/admin', label: 'Tableau de bord', icon: '📊' },
+  { href: '/admin', label: 'Accueil', icon: '🏠' },
   { href: '/admin/utilisateurs', label: 'Utilisateurs', icon: '👥' },
-  { href: '/admin/dossiers', label: 'Dossiers', icon: '📁' },
+  { href: '/admin/dossiers', label: 'Mes Dossiers', icon: '📁' },
   { href: '/admin/documents', label: 'Documents', icon: '📄' },
   { href: '/admin/rendez-vous', label: 'Rendez-vous', icon: '📅' },
   { href: '/admin/creneaux', label: 'Créneaux', icon: '⏰' },

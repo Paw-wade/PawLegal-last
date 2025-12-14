@@ -388,8 +388,8 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground mb-1">Téléphone</p>
-                      <a href="tel:+33123456789" className="text-primary hover:underline text-sm">
-                        +33 1 23 45 67 89
+                      <a href="tel:0768033358" className="text-primary hover:underline text-sm">
+                        07 68 03 33 58
                       </a>
                     </div>
                   </div>

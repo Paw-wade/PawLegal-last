@@ -24,7 +24,7 @@ export function Footer() {
             <span className="text-gray-400">|</span>
             <span className="text-gray-400">contact@pawlegal.fr</span>
             <span className="text-gray-400">|</span>
-            <span className="text-gray-400">+33 1 23 45 67 89</span>
+            <span className="text-gray-400">07 68 03 33 58</span>
           </div>
 
           <div className="text-gray-400">

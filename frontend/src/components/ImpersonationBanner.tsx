@@ -32,7 +32,7 @@ export function ImpersonationBanner({ userName, userEmail, onStopImpersonating }
               Mode impersonation actif
             </p>
             <p className="text-xs md:text-sm text-yellow-700 truncate">
-              Vous consultez le compte de <strong>{userName}</strong> ({userEmail})
+              Vous êtes sur le <strong>dashboard de l&apos;utilisateur</strong> <strong>{userName}</strong> ({userEmail})
             </p>
           </div>
         </div>

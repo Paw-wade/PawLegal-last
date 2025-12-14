@@ -360,7 +360,7 @@ export default function SignupPage() {
                   type="tel"
                   value={formData.phone}
                   onChange={handleChange}
-                  placeholder="+33 1 23 45 67 89"
+                  placeholder="07 68 03 33 58"
                 />
               </div>
 

@@ -83,7 +83,8 @@ router.post(
         priorite,
         dateEcheance,
         notes,
-        assignedTo
+        assignedTo,
+        rendezVousId
       } = req.body;
 
       // Vérifier si un utilisateur est spécifié (pour utilisateurs connectés)
@@ -148,8 +149,43 @@ router.post(
         dateEcheance: dateEcheance || null,
         notes: notes || '',
         createdBy: req.user ? req.user.id : null, // null si créé par un visiteur
-        assignedTo: assignedTo || null
+        assignedTo: assignedTo || null,
+        rendezVous: rendezVousId ? [rendezVousId] : []
       });
+
+      // Si le dossier est créé depuis un rendez-vous, notifier les admins
+      if (rendezVousId && finalUserId) {
+        try {
+          const RendezVous = require('../models/RendezVous');
+          const rendezVous = await RendezVous.findById(rendezVousId);
+          
+          if (rendezVous && user) {
+            // Notifier tous les admins actifs
+            const admins = await User.find({ 
+              role: { $in: ['admin', 'superadmin'] },
+              isActive: true 
+            });
+            
+            for (const admin of admins) {
+              await createNotification(
+                admin._id,
+                'dossier_created',
+                'Nouveau dossier créé depuis un rendez-vous',
+                `Un nouveau dossier "${dossier.titre}" a été créé par ${user.firstName} ${user.lastName} suite au rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')}.`,
+                '/admin/dossiers',
+                {
+                  dossierId: dossier._id.toString(),
+                  rendezVousId: rendezVousId.toString(),
+                  userId: finalUserId.toString()
+                }
+              );
+            }
+          }
+        } catch (notifError) {
+          console.error('Erreur lors de la création des notifications:', notifError);
+          // Ne pas bloquer la création du dossier si la notification échoue
+        }
+      }
 
       // Logger l'action (si utilisateur connecté)
       if (req.user) {
@@ -169,7 +205,8 @@ router.post(
               titre,
               categorie: dossier.categorie,
               type: dossier.type,
-              statut
+              statut,
+              rendezVousId: rendezVousId || null
             }
           });
         } catch (logError) {
@@ -413,7 +450,8 @@ router.post(
         dateEcheance: dateEcheance || null,
         notes: notes || '',
         createdBy: req.user.id,
-        assignedTo: assignedTo || null
+        assignedTo: assignedTo || null,
+        rendezVous: rendezVousId ? [rendezVousId] : []
       });
 
       // Logger l'action
@@ -985,6 +1023,221 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
     });
   } catch (error) {
     console.error('Erreur lors de la suppression du dossier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// ROUTES DE COLLABORATION
+// ============================================
+
+// @route   POST /api/user/dossiers/:id/open
+// @desc    Ouvrir un dossier (devenir collaborateur actif)
+// @access  Private (Admin/SuperAdmin ou membre de l'équipe)
+router.post('/:id/open', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const dossierId = req.params.id;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const dossier = await Dossier.findById(dossierId)
+      .populate('teamMembers', 'firstName lastName email role')
+      .populate('teamLeader', 'firstName lastName email role')
+      .populate('activeCollaborators.user', 'firstName lastName email role');
+
+    if (!dossier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dossier non trouvé'
+      });
+    }
+
+    // Vérifier si le dossier est clôturé ou annulé
+    const statutsFinaux = ['annule', 'decision_favorable', 'decision_defavorable', 'rejet', 'gain_cause'];
+    const isDossierClosed = statutsFinaux.includes(dossier.statut);
+
+    // SuperAdmin peut toujours ouvrir même si clôturé
+    if (isDossierClosed && userRole !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Ce dossier est clôturé ou annulé. La collaboration n\'est plus possible.',
+        dossierClosed: true
+      });
+    }
+
+    // Vérifier que l'utilisateur est membre de l'équipe ou superadmin
+    const isTeamMember = dossier.teamMembers.some(member => 
+      (member._id || member).toString() === userId.toString()
+    );
+    const isSuperAdmin = userRole === 'superadmin';
+
+    if (!isTeamMember && !isSuperAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Vous devez être membre de l\'équipe pour collaborer sur ce dossier'
+      });
+    }
+
+    // Vérifier si l'utilisateur est déjà collaborateur actif
+    const existingCollaborator = dossier.activeCollaborators.find(collab => 
+      (collab.user._id || collab.user).toString() === userId.toString()
+    );
+
+    if (existingCollaborator) {
+      // Mettre à jour la dernière activité
+      existingCollaborator.lastActivity = new Date();
+      await dossier.save();
+    } else {
+      // Ajouter comme collaborateur actif
+      dossier.activeCollaborators.push({
+        user: userId,
+        joinedAt: new Date(),
+        lastActivity: new Date()
+      });
+      await dossier.save();
+
+      // Notifier les autres collaborateurs
+      const otherCollaborators = dossier.activeCollaborators
+        .filter(collab => (collab.user._id || collab.user).toString() !== userId.toString())
+        .map(collab => collab.user._id || collab.user);
+
+      const currentUser = await User.findById(userId);
+      const dossierTitre = dossier.titre || `Dossier ${dossier.numero || dossier._id}`;
+
+      for (const collaboratorId of otherCollaborators) {
+        await createNotification(
+          collaboratorId,
+          'dossier_collaborator_active',
+          'Collaborateur actif sur le dossier',
+          `L'administrateur ${currentUser.firstName} ${currentUser.lastName} est actuellement collaborateur actif sur le dossier "${dossierTitre}".`,
+          `/admin/dossiers/${dossier._id}`,
+          {
+            dossierId: dossier._id.toString(),
+            titre: dossierTitre,
+            activeCollaboratorId: userId.toString(),
+            activeCollaboratorName: `${currentUser.firstName} ${currentUser.lastName}`
+          }
+        );
+      }
+
+      // Notifier aussi les autres membres de l'équipe qui ne sont pas encore collaborateurs actifs
+      const teamMemberIds = dossier.teamMembers
+        .map(member => (member._id || member).toString())
+        .filter(id => id !== userId.toString() && !otherCollaborators.some(collabId => collabId.toString() === id));
+
+      for (const memberId of teamMemberIds) {
+        await createNotification(
+          memberId,
+          'dossier_collaborator_active',
+          'Collaborateur actif sur le dossier',
+          `L'administrateur ${currentUser.firstName} ${currentUser.lastName} est actuellement collaborateur actif sur le dossier "${dossierTitre}".`,
+          `/admin/dossiers/${dossier._id}`,
+          {
+            dossierId: dossier._id.toString(),
+            titre: dossierTitre,
+            activeCollaboratorId: userId.toString(),
+            activeCollaboratorName: `${currentUser.firstName} ${currentUser.lastName}`
+          }
+        );
+      }
+
+      console.log(`✅ ${currentUser.firstName} ${currentUser.lastName} est maintenant collaborateur actif sur le dossier ${dossier._id}`);
+    }
+
+    const updatedDossier = await Dossier.findById(dossierId)
+      .populate('teamMembers', 'firstName lastName email role')
+      .populate('teamLeader', 'firstName lastName email role')
+      .populate('activeCollaborators.user', 'firstName lastName email role');
+
+    res.json({
+      success: true,
+      message: 'Dossier ouvert avec succès. Vous êtes maintenant collaborateur actif.',
+      dossier: updatedDossier,
+      isCollaborator: true
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'ouverture du dossier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/user/dossiers/:id/close-collaboration
+// @desc    Fermer la collaboration (quitter le statut de collaborateur actif)
+// @access  Private
+router.post('/:id/close-collaboration', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const dossierId = req.params.id;
+    const userId = req.user.id;
+
+    const dossier = await Dossier.findById(dossierId);
+
+    if (!dossier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dossier non trouvé'
+      });
+    }
+
+    // Retirer l'utilisateur des collaborateurs actifs
+    dossier.activeCollaborators = dossier.activeCollaborators.filter(collab => 
+      (collab.user._id || collab.user).toString() !== userId.toString()
+    );
+    await dossier.save();
+
+    res.json({
+      success: true,
+      message: 'Collaboration fermée avec succès',
+      dossier
+    });
+  } catch (error) {
+    console.error('Erreur lors de la fermeture de la collaboration:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/user/dossiers/:id/collaborators
+// @desc    Obtenir la liste des collaborateurs actifs
+// @access  Private
+router.get('/:id/collaborators', protect, async (req, res) => {
+  try {
+    const dossierId = req.params.id;
+
+    const dossier = await Dossier.findById(dossierId)
+      .populate('activeCollaborators.user', 'firstName lastName email role')
+      .populate('teamLeader', 'firstName lastName email role');
+
+    if (!dossier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dossier non trouvé'
+      });
+    }
+
+    // Vérifier si le dossier est clôturé
+    const statutsFinaux = ['annule', 'decision_favorable', 'decision_defavorable', 'rejet', 'gain_cause'];
+    const isDossierClosed = statutsFinaux.includes(dossier.statut);
+
+    res.json({
+      success: true,
+      collaborators: dossier.activeCollaborators || [],
+      teamLeader: dossier.teamLeader || null,
+      isDossierClosed,
+      message: isDossierClosed ? 'Ce dossier est clôturé. La collaboration n\'est plus active.' : null
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des collaborateurs:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',

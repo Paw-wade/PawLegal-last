@@ -76,7 +76,8 @@ const dossierSchema = new mongoose.Schema({
       'refere_suspension_rep',
       'gain_cause',
       'rejet',
-      'decision_favorable'
+      'decision_favorable',
+      'autre'
     ],
     default: 'recu'
   },
@@ -116,8 +117,40 @@ const dossierSchema = new mongoose.Schema({
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false // Le membre de l'équipe à qui le dossier est assigné
+    required: false // Le membre de l'équipe à qui le dossier est assigné (déprécié, utiliser teamMembers)
   },
+  // Équipe de traitement du dossier
+  teamMembers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  }],
+  teamLeader: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Chef d'équipe unique
+  },
+  externalMembers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ExternalTeamMember',
+    required: false
+  }],
+  // Collaborateurs actifs (état temporaire)
+  activeCollaborators: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    joinedAt: {
+      type: Date,
+      default: Date.now
+    },
+    lastActivity: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -131,6 +164,14 @@ const dossierSchema = new mongoose.Schema({
 // Générer automatiquement un numéro unique pour le dossier avant de sauvegarder
 dossierSchema.pre('save', async function(next) {
   this.updatedAt = Date.now();
+  
+  // Nettoyer les collaborateurs actifs si le dossier est clôturé ou annulé
+  const statutsFinaux = ['annule', 'decision_favorable', 'decision_defavorable', 'rejet', 'gain_cause'];
+  if (this.isModified('statut') && statutsFinaux.includes(this.statut)) {
+    // Vider la liste des collaborateurs actifs
+    this.activeCollaborators = [];
+    console.log(`🧹 Nettoyage des collaborateurs actifs pour le dossier ${this._id} (statut: ${this.statut})`);
+  }
   
   // Générer un numéro unique si ce n'est pas déjà défini
   if (!this.numero) {

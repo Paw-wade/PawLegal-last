@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { documentsAPI } from '@/lib/api';
+import { PDFViewer } from './PDFViewer';
 
 interface DocumentPreviewProps {
   document: {
@@ -167,10 +168,26 @@ export function DocumentPreview({ document, isOpen, onClose }: DocumentPreviewPr
           ) : canPreview && previewUrl ? (
             <div className="flex items-center justify-center h-full">
               {isPDF ? (
-                <iframe
+                <PDFViewer
                   src={previewUrl}
-                  className="w-full h-full min-h-[600px] border-0 rounded-lg"
                   title={document.nom}
+                  documentId={documentId || ''}
+                  onDownload={async () => {
+                    try {
+                      const response = await documentsAPI.downloadDocument(documentId || '');
+                      const url = window.URL.createObjectURL(new Blob([response.data]));
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.setAttribute('download', document.nom);
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch (err: any) {
+                      console.error('Erreur lors du téléchargement:', err);
+                      alert('Erreur lors du téléchargement du document');
+                    }
+                  }}
                 />
               ) : isImage ? (
                 <img

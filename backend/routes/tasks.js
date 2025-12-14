@@ -228,17 +228,23 @@ router.put(
         });
       }
 
+      console.log('📝 Mise à jour de la tâche:', req.params.id);
+      console.log('📝 Données reçues:', req.body);
+      
       const task = await Task.findById(req.params.id);
       if (!task) {
+        console.error('❌ Tâche non trouvée:', req.params.id);
         return res.status(404).json({
           success: false,
           message: 'Tâche non trouvée'
         });
       }
+      
+      console.log('✅ Tâche trouvée:', task.titre);
 
       // Vérifier les permissions
-      const isCreator = task.createdBy.toString() === req.user.id;
-      const isAssigned = task.assignedTo.toString() === req.user.id;
+      const isCreator = task.createdBy && task.createdBy.toString() === req.user.id;
+      const isAssigned = task.assignedTo && task.assignedTo.toString() === req.user.id;
       const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
 
       if (!isCreator && !isAssigned && !isAdmin) {
@@ -258,20 +264,26 @@ router.put(
         dateDebut,
         dateFin,
         dossier,
-        notes
+        notes,
+        effectue,
+        commentaireEffectue
       } = req.body;
 
       // Vérifier que l'utilisateur assigné existe si fourni
       if (assignedTo) {
+        console.log('👤 Vérification de l\'utilisateur assigné:', assignedTo);
         const assignedUser = await User.findById(assignedTo);
         if (!assignedUser) {
+          console.error('❌ Utilisateur assigné non trouvé:', assignedTo);
           return res.status(404).json({
             success: false,
             message: 'Utilisateur assigné non trouvé'
           });
         }
+        console.log('✅ Utilisateur assigné trouvé:', assignedUser.email);
         // Seuls les admins peuvent réassigner
         if (!isAdmin) {
+          console.error('❌ Tentative de réassignation par un non-admin');
           return res.status(403).json({
             success: false,
             message: 'Seuls les administrateurs peuvent réassigner une tâche'
@@ -304,9 +316,9 @@ router.put(
 
       // Gérer le statut effectué (seul l'utilisateur assigné peut modifier)
       const wasEffectue = task.effectue;
-      if (effectue !== undefined && isAssigned) {
-        task.effectue = effectue;
-        if (effectue) {
+      if (req.body.effectue !== undefined && isAssigned) {
+        task.effectue = req.body.effectue;
+        if (req.body.effectue) {
           task.dateEffectue = new Date();
           // Si marqué comme effectué, mettre le statut à "termine" si ce n'est pas déjà fait
           if (task.statut !== 'termine') {
@@ -321,8 +333,8 @@ router.put(
       }
       
       // Gérer le commentaire (seul l'utilisateur assigné peut modifier)
-      if (commentaireEffectue !== undefined && isAssigned) {
-        task.commentaireEffectue = commentaireEffectue || null;
+      if (req.body.commentaireEffectue !== undefined && isAssigned) {
+        task.commentaireEffectue = req.body.commentaireEffectue || null;
       }
 
       // Si le statut passe à "termine", enregistrer la date de fin
@@ -331,7 +343,7 @@ router.put(
       }
 
       // Créer une notification pour le créateur si la tâche est marquée comme effectuée
-      if (effectue === true && !wasEffectue && task.createdBy) {
+      if (req.body.effectue === true && !wasEffectue && task.createdBy) {
         try {
           const assignedUser = await User.findById(req.user.id);
           const assignedUserName = assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Un utilisateur';
@@ -340,12 +352,12 @@ router.put(
             user: task.createdBy,
             type: 'other',
             titre: 'Tâche effectuée',
-            message: `${assignedUserName} a marqué la tâche "${task.titre}" comme effectuée.${commentaireEffectue ? ` Commentaire: ${commentaireEffectue}` : ''}`,
+            message: `${assignedUserName} a marqué la tâche "${task.titre}" comme effectuée.${req.body.commentaireEffectue ? ` Commentaire: ${req.body.commentaireEffectue}` : ''}`,
             lien: `/admin?section=tasks`,
             metadata: {
               taskId: task._id.toString(),
               assignedUserId: req.user.id,
-              commentaire: commentaireEffectue || null
+              commentaire: req.body.commentaireEffectue || null
             }
           });
         } catch (notifError) {
@@ -354,13 +366,16 @@ router.put(
         }
       }
 
+      console.log('💾 Sauvegarde de la tâche...');
       await task.save();
+      console.log('✅ Tâche sauvegardée avec succès');
 
       const taskPopulated = await Task.findById(task._id)
         .populate('assignedTo', 'firstName lastName email role')
         .populate('createdBy', 'firstName lastName email role')
         .populate('dossier', 'titre numero statut');
 
+      console.log('✅ Tâche mise à jour avec succès');
       res.json({
         success: true,
         message: 'Tâche mise à jour avec succès',
@@ -368,10 +383,11 @@ router.put(
       });
     } catch (error) {
       console.error('Erreur lors de la mise à jour de la tâche:', error);
+      console.error('Stack trace:', error.stack);
       res.status(500).json({
         success: false,
         message: 'Erreur serveur',
-        error: error.message
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Une erreur est survenue lors de la mise à jour de la tâche'
       });
     }
   }
