@@ -121,14 +121,19 @@ export default function HomePage() {
                 Spécialisés en droit des étrangers et droit du travail, nous vous accompagnons dans toutes vos démarches administratives avec expertise et professionnalisme.
               </p>
               <div className="flex gap-3 mt-4">
-                <Link href="/auth/signup">
-                  <Button size="default" className="shadow-md">
-                    Créer mon compte gratuit
-                  </Button>
-                </Link>
+                <div className="flex flex-col">
+                  <Link href="/auth/signup">
+                    <Button size="default" className="shadow-md">
+                      Créer mon compte gratuit
+                    </Button>
+                  </Link>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Suivez en temps réel l'évolution de votre dossier
+                  </p>
+                </div>
                 <Link href="/contact">
                   <Button size="default" variant="outline" className="shadow-md">
-                    Consultation gratuite
+                    Consultation rapide
                   </Button>
                 </Link>
               </div>

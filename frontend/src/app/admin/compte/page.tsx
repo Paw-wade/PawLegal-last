@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Header } from '@/components/layout/Header';
 import { userAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
@@ -272,8 +271,6 @@ export default function AdminComptePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/10 to-background">
-      <Header variant="admin" />
-
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         {/* En-tête amélioré */}
         <div className="mb-8">

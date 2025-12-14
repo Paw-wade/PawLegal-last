@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
-import { messagesAPI } from '@/lib/api';
+import { messagesAPI, notificationsAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -56,10 +55,12 @@ export default function AdminMessagesPage() {
   const [formData, setFormData] = useState({
     sujet: '',
     contenu: '',
-    destinataires: [] as string[],
+    destinataire: '' as string, // Destinataire unique (obligatoire)
+    copie: [] as string[], // Copie (optionnelle)
   });
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [messageNotifications, setMessageNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -75,6 +76,18 @@ export default function AdminMessagesPage() {
     }
   }, [session, status, router, filter]);
 
+  // Charger automatiquement les notifications quand un message est sélectionné
+  useEffect(() => {
+    if (selectedMessage) {
+      const messageId = selectedMessage._id || selectedMessage.id;
+      if (messageId) {
+        loadMessageNotifications(messageId);
+      }
+    } else {
+      setMessageNotifications([]);
+    }
+  }, [selectedMessage]);
+
   const loadMessages = async () => {
     setIsLoading(true);
     setError(null);
@@ -88,6 +101,20 @@ export default function AdminMessagesPage() {
       setError(err.response?.data?.message || 'Erreur lors du chargement des messages');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadMessageNotifications = async (messageId: string) => {
+    try {
+      const response = await notificationsAPI.getNotifications({ limit: 100 });
+      if (response.data.success) {
+        const relatedNotifications = (response.data.notifications || []).filter((notif: any) => 
+          notif.metadata?.messageId === messageId?.toString()
+        );
+        setMessageNotifications(relatedNotifications);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des notifications du message:', err);
     }
   };
 
@@ -109,14 +136,26 @@ export default function AdminMessagesPage() {
     return { admins, clients };
   };
 
-  const toggleUserSelection = (userId: string) => {
+  const toggleCopieSelection = (userId: string) => {
     setFormData(prev => {
-      const isSelected = prev.destinataires.includes(userId);
+      const isSelected = prev.copie.includes(userId);
       if (isSelected) {
-        return { ...prev, destinataires: prev.destinataires.filter(id => id !== userId) };
+        return { ...prev, copie: prev.copie.filter(id => id !== userId) };
       } else {
-        return { ...prev, destinataires: [...prev.destinataires, userId] };
+        // Ne pas ajouter si c'est déjà le destinataire principal
+        if (prev.destinataire === userId) {
+          return prev;
+        }
+        return { ...prev, copie: [...prev.copie, userId] };
       }
+    });
+  };
+
+  const handleDestinataireChange = (userId: string) => {
+    setFormData(prev => {
+      // Retirer de la copie si c'était en copie
+      const newCopie = prev.copie.filter(id => id !== userId);
+      return { ...prev, destinataire: userId, copie: newCopie };
     });
   };
 
@@ -125,8 +164,8 @@ export default function AdminMessagesPage() {
     setIsSubmitting(true);
     setError(null);
 
-    if (formData.destinataires.length === 0) {
-      setError('Veuillez sélectionner au moins un destinataire');
+    if (!formData.destinataire) {
+      setError('Veuillez sélectionner un destinataire');
       setIsSubmitting(false);
       return;
     }
@@ -135,8 +174,11 @@ export default function AdminMessagesPage() {
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
-      formData.destinataires.forEach(dest => {
-        formDataToSend.append('destinataires', dest);
+      formDataToSend.append('destinataire', formData.destinataire); // Destinataire unique
+      
+      // Ajouter les destinataires en copie
+      formData.copie.forEach(copieId => {
+        formDataToSend.append('copie', copieId);
       });
 
       // Ajouter les pièces jointes
@@ -148,7 +190,7 @@ export default function AdminMessagesPage() {
       if (response.data.success) {
         alert('Message envoyé avec succès !');
         setShowComposeModal(false);
-        setFormData({ sujet: '', contenu: '', destinataires: [] });
+        setFormData({ sujet: '', contenu: '', destinataire: '', copie: [] });
         setAttachments([]);
         loadMessages();
       }
@@ -211,7 +253,6 @@ export default function AdminMessagesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="admin" />
 
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
@@ -303,10 +344,17 @@ export default function AdminMessagesPage() {
                         <span>
                           {isReceived ? 'De' : 'À'}: {isReceived 
                             ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
+                            : message.typeMessage === 'user_to_admins'
+                            ? 'Tous les administrateurs'
                             : message.destinataires?.map((d: any) => 
                                 `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
                               ).join(', ')
                           }
+                          {message.copie && message.copie.length > 0 && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (CC: {message.copie.length})
+                            </span>
+                          )}
                         </span>
                         <span>•</span>
                         <span>{formatDate(message.createdAt)}</span>
@@ -334,15 +382,58 @@ export default function AdminMessagesPage() {
                 <button onClick={() => setShowComposeModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
               </div>
               <form onSubmit={handleSendMessage} className="p-6 space-y-4">
+                {/* Destinataire principal (choix unique) */}
                 <div>
-                  <Label htmlFor="destinataires">Destinataires *</Label>
-                  <div className="mt-2 border border-input rounded-md p-4 max-h-96 overflow-y-auto bg-background">
+                  <Label htmlFor="destinataire">Destinataire principal *</Label>
+                  <p className="text-xs text-muted-foreground mb-2">Sélectionnez un seul destinataire</p>
+                  <div className="mt-2 border border-input rounded-md p-4 max-h-64 overflow-y-auto bg-background">
                     {(() => {
                       const { admins, clients } = getUsersByCategory();
                       const currentUserId = (session?.user as any)?.id;
                       
                       return (
                         <div className="space-y-4">
+                          {/* Catégorie Utilisateurs */}
+                          {clients.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
+                                👤 Utilisateurs ({clients.length})
+                              </h3>
+                              <div className="space-y-2">
+                                {clients.map((user) => {
+                                  const userId = user._id || user.id;
+                                  const isSelected = formData.destinataire === userId;
+                                  return (
+                                    <label
+                                      key={userId}
+                                      className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                        isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name="destinataire"
+                                        value={userId}
+                                        checked={isSelected}
+                                        onChange={() => handleDestinataireChange(userId)}
+                                        className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                                      />
+                                      <div className="flex-1">
+                                        <div className="font-medium text-sm">
+                                          {user.firstName} {user.lastName}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">{user.email}</div>
+                                      </div>
+                                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                        Client
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Catégorie Administrateurs */}
                           {admins.length > 0 && (
                             <div>
@@ -354,7 +445,7 @@ export default function AdminMessagesPage() {
                                   .filter(user => (user._id || user.id) !== currentUserId)
                                   .map((user) => {
                                     const userId = user._id || user.id;
-                                    const isSelected = formData.destinataires.includes(userId);
+                                    const isSelected = formData.destinataire === userId;
                                     return (
                                       <label
                                         key={userId}
@@ -363,10 +454,12 @@ export default function AdminMessagesPage() {
                                         }`}
                                       >
                                         <input
-                                          type="checkbox"
+                                          type="radio"
+                                          name="destinataire"
+                                          value={userId}
                                           checked={isSelected}
-                                          onChange={() => toggleUserSelection(userId)}
-                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                          onChange={() => handleDestinataireChange(userId)}
+                                          className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
                                         />
                                         <div className="flex-1">
                                           <div className="font-medium text-sm">
@@ -376,47 +469,6 @@ export default function AdminMessagesPage() {
                                         </div>
                                         <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                                           {user.role === 'superadmin' ? 'Super Admin' : 'Admin'}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Catégorie Utilisateurs */}
-                          {clients.length > 0 && (
-                            <div>
-                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
-                                👤 Utilisateurs ({clients.length})
-                              </h3>
-                              <div className="space-y-2">
-                                {clients
-                                  .filter(user => (user._id || user.id) !== currentUserId)
-                                  .map((user) => {
-                                    const userId = user._id || user.id;
-                                    const isSelected = formData.destinataires.includes(userId);
-                                    return (
-                                      <label
-                                        key={userId}
-                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => toggleUserSelection(userId)}
-                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                                        />
-                                        <div className="flex-1">
-                                          <div className="font-medium text-sm">
-                                            {user.firstName} {user.lastName}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">{user.email}</div>
-                                        </div>
-                                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                          Client
                                         </span>
                                       </label>
                                     );
@@ -435,9 +487,74 @@ export default function AdminMessagesPage() {
                     })()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {formData.destinataires.length > 0 
-                      ? `${formData.destinataires.length} destinataire(s) sélectionné(s)`
-                      : 'Sélectionnez un ou plusieurs destinataires'}
+                    {formData.destinataire 
+                      ? 'Destinataire sélectionné'
+                      : 'Sélectionnez un destinataire'}
+                  </p>
+                </div>
+
+                {/* Copie (CC) - optionnelle */}
+                <div>
+                  <Label htmlFor="copie">Copie (CC) - Optionnel</Label>
+                  <p className="text-xs text-muted-foreground mb-2">Vous pouvez mettre d'autres personnes en copie</p>
+                  <div className="mt-2 border border-input rounded-md p-4 max-h-64 overflow-y-auto bg-background">
+                    {(() => {
+                      const { admins, clients } = getUsersByCategory();
+                      const currentUserId = (session?.user as any)?.id;
+                      const allUsers = [...clients, ...admins].filter(user => 
+                        (user._id || user.id) !== currentUserId && 
+                        (user._id || user.id) !== formData.destinataire
+                      );
+                      
+                      if (allUsers.length === 0) {
+                        return (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            Aucun utilisateur disponible pour la copie
+                          </p>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {allUsers.map((user) => {
+                            const userId = user._id || user.id;
+                            const isInCopie = formData.copie.includes(userId);
+                            const isAdmin = user.role === 'admin' || user.role === 'superadmin';
+                            return (
+                              <label
+                                key={userId}
+                                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                  isInCopie ? 'bg-blue-50 border-2 border-blue-300' : 'border border-transparent'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isInCopie}
+                                  onChange={() => toggleCopieSelection(userId)}
+                                  className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                />
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm">
+                                    {user.firstName} {user.lastName}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{user.email}</div>
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                  isAdmin ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {isAdmin ? (user.role === 'superadmin' ? 'Super Admin' : 'Admin') : 'Client'}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {formData.copie.length > 0 
+                      ? `${formData.copie.length} personne(s) en copie`
+                      : 'Aucune copie'}
                   </p>
                 </div>
                 <div>
@@ -499,7 +616,7 @@ export default function AdminMessagesPage() {
                   <Button type="button" variant="outline" onClick={() => setShowComposeModal(false)} disabled={isSubmitting}>
                     Annuler
                   </Button>
-                  <Button type="submit" disabled={isSubmitting || formData.destinataires.length === 0}>
+                  <Button type="submit" disabled={isSubmitting || !formData.destinataire}>
                     {isSubmitting ? 'Envoi...' : 'Envoyer'}
                   </Button>
                 </div>
@@ -514,9 +631,47 @@ export default function AdminMessagesPage() {
             <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
                 <h2 className="text-2xl font-bold">{selectedMessage.sujet}</h2>
-                <button onClick={() => setSelectedMessage(null)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
+                <button onClick={() => {
+                  setSelectedMessage(null);
+                  setMessageNotifications([]);
+                }} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
               </div>
               <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isMessageRead(selectedMessage)}
+                      onChange={async () => {
+                        if (!isMessageRead(selectedMessage)) {
+                          try {
+                            await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
+                            await loadMessages();
+                            setSelectedMessage(null);
+                            setSelectedMessage(await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message));
+                          } catch (err) {
+                            console.error('Erreur lors du marquage comme lu:', err);
+                          }
+                        }
+                      }}
+                      className="w-5 h-5 text-primary rounded border-gray-300 focus:ring-primary"
+                    />
+                    <Label className="text-sm font-medium cursor-pointer" onClick={async () => {
+                      if (!isMessageRead(selectedMessage)) {
+                        try {
+                          await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
+                          await loadMessages();
+                          setSelectedMessage(null);
+                          setSelectedMessage(await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message));
+                        } catch (err) {
+                          console.error('Erreur lors du marquage comme lu:', err);
+                        }
+                      }
+                    }}>
+                      Marquer comme lu
+                    </Label>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground mb-1">De</p>
@@ -531,10 +686,22 @@ export default function AdminMessagesPage() {
                   <div className="col-span-2">
                     <p className="text-muted-foreground mb-1">À</p>
                     <p className="font-semibold">
-                      {selectedMessage.destinataires?.map((d: any) => 
-                        `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
-                      ).join(', ')}
+                      {selectedMessage.typeMessage === 'user_to_admins' 
+                        ? 'Tous les administrateurs'
+                        : selectedMessage.destinataires?.map((d: any) => 
+                            `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
+                          ).join(', ')}
                     </p>
+                    {selectedMessage.copie && selectedMessage.copie.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-muted-foreground mb-1 text-xs">Copie (CC)</p>
+                        <p className="font-semibold text-xs">
+                          {selectedMessage.copie.map((c: any) => 
+                            `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email
+                          ).join(', ')}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="pt-4 border-t">
@@ -566,6 +733,48 @@ export default function AdminMessagesPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Notifications liées au message */}
+                <div className="pt-4 border-t">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-muted-foreground font-semibold">Notifications liées</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const messageId = selectedMessage._id || selectedMessage.id;
+                        loadMessageNotifications(messageId);
+                      }}
+                    >
+                      Actualiser
+                    </Button>
+                  </div>
+                  {messageNotifications.length > 0 ? (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {messageNotifications.map((notif: any) => (
+                        <div key={notif._id || notif.id} className="p-3 bg-gray-50 rounded-md border-l-4 border-blue-500">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-foreground mb-1">{notif.titre}</p>
+                              <p className="text-xs text-muted-foreground">{notif.message}</p>
+                            </div>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                              {new Date(notif.createdAt).toLocaleDateString('fr-FR', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Aucune notification liée à ce message</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

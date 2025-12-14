@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { appointmentsAPI, userAPI } from '@/lib/api';
@@ -216,8 +215,6 @@ function RendezVousPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-16">
         {/* Banner d'impersonation */}
         {isImpersonating && impersonatedUser && (

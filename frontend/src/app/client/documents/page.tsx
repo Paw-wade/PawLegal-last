@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/layout/Header';
 import { documentsAPI } from '@/lib/api';
 import { DocumentPreview } from '@/components/DocumentPreview';
 
@@ -238,8 +237,6 @@ export default function DocumentsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>

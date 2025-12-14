@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { dossiersAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 
@@ -203,8 +202,6 @@ export default function DossiersPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { notificationsAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', size = 'default', className = '', ...props }: any) {
@@ -161,8 +160,6 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="admin" />
-
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/layout/Header';
 import { creneauxAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
@@ -355,8 +354,6 @@ export default function AdminCreneauxPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <Header variant="admin" />
-
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>

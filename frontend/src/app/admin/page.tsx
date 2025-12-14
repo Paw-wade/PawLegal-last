@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI } from '@/lib/api';
 
@@ -463,9 +462,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      {/* Header Professionnel Admin */}
-      <Header variant="admin" />
-
       <main className="container mx-auto px-4 py-8">
         {/* En-tête avec navigation rapide */}
         <div id="dashboard-top" className="mb-8 scroll-mt-20">

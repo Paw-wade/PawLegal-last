@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { DossierDetailView } from '@/components/DossierDetailView';
 import { dossiersAPI, notificationsAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
@@ -177,7 +176,6 @@ export default function DossierDetailPage() {
   if (error || !dossier) {
     return (
       <div className="min-h-screen bg-background">
-        <Header variant="client" />
         <main className="container mx-auto px-4 py-16">
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">❌</div>
@@ -194,8 +192,6 @@ export default function DossierDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>

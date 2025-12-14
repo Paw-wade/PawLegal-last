@@ -183,7 +183,9 @@ router.post(
       console.log('📨 POST /api/messages - Requête reçue:', {
         user: req.user?.email,
         userId: req.user?.id,
+        userRole: req.user?.role,
         body: req.body,
+        bodyKeys: Object.keys(req.body || {}),
         files: req.files ? req.files.length : 0
       });
 
@@ -200,7 +202,9 @@ router.post(
       const mongoose = require('mongoose');
       const userId = req.user.id;
       const userRole = req.user.role;
-      const { sujet, contenu, destinataire, copie } = req.body; // destinataire (singulier) et copie (tableau)
+      const { sujet, contenu, destinataire, copie, destinataires } = req.body; // destinataire (singulier) et copie (tableau), destinataires (ancien format pour compatibilité)
+      
+      console.log('📨 Données extraites:', { sujet, contenu, destinataire, copie, destinataires, userRole });
 
       // Convertir userId en ObjectId si nécessaire
       const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
@@ -219,8 +223,11 @@ router.post(
       let typeMessage = 'user_to_admins';
 
       // CAS 1: Utilisateur (client) → Tous les administrateurs
+      // IMPORTANT: Pour les clients, aucun destinataire n'est requis - le message va automatiquement à tous les admins
       if (userRole === 'client') {
-        console.log('👤 Message d\'un utilisateur → Tous les administrateurs');
+        console.log('👤 Message d\'un utilisateur (client) → Tous les administrateurs');
+        console.log('👤 Pas besoin de destinataire - récupération automatique des admins');
+        console.log('👤 destinataire fourni:', destinataire, 'copie fournie:', copie);
         
         // Récupérer tous les administrateurs actifs
         const admins = await User.find({
@@ -228,7 +235,10 @@ router.post(
           isActive: { $ne: false }
         });
 
+        console.log(`👤 Admins trouvés: ${admins.length}`);
+
         if (admins.length === 0) {
+          console.error('❌ Aucun administrateur disponible');
           return res.status(400).json({
             success: false,
             message: 'Aucun administrateur disponible'

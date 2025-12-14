@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { messagesAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
@@ -200,8 +199,6 @@ export default function MessagesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -292,6 +289,8 @@ export default function MessagesPage() {
                         <span>
                           {isReceived ? 'De' : 'À'}: {isReceived 
                             ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
+                            : message.typeMessage === 'user_to_admins'
+                            ? 'Tous les administrateurs'
                             : message.destinataires?.map((d: any) => 
                                 `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
                               ).join(', ') || 'Équipe admin'
@@ -323,111 +322,17 @@ export default function MessagesPage() {
                 <button onClick={() => setShowComposeModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
               </div>
               <form onSubmit={handleSendMessage} className="p-6 space-y-4">
-                <div>
-                  <Label htmlFor="destinataires">Destinataires *</Label>
-                  <div className="mt-2 border border-input rounded-md p-4 max-h-96 overflow-y-auto bg-background">
-                    {(() => {
-                      const { admins, clients } = getUsersByCategory();
-                      const currentUserId = (session?.user as any)?.id;
-                      
-                      return (
-                        <div className="space-y-4">
-                          {/* Catégorie Administrateurs */}
-                          {admins.length > 0 && (
-                            <div>
-                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
-                                👥 Administrateurs ({admins.length})
-                              </h3>
-                              <div className="space-y-2">
-                                {admins
-                                  .filter(user => (user._id || user.id) !== currentUserId)
-                                  .map((user) => {
-                                    const userId = user._id || user.id;
-                                    const isSelected = formData.destinataires.includes(userId);
-                                    return (
-                                      <label
-                                        key={userId}
-                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => toggleUserSelection(userId)}
-                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                                        />
-                                        <div className="flex-1">
-                                          <div className="font-medium text-sm">
-                                            {user.firstName} {user.lastName}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">{user.email}</div>
-                                        </div>
-                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                                          {user.role === 'superadmin' ? 'Super Admin' : 'Admin'}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Catégorie Utilisateurs */}
-                          {clients.length > 0 && (
-                            <div>
-                              <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
-                                👤 Utilisateurs ({clients.length})
-                              </h3>
-                              <div className="space-y-2">
-                                {clients
-                                  .filter(user => (user._id || user.id) !== currentUserId)
-                                  .map((user) => {
-                                    const userId = user._id || user.id;
-                                    const isSelected = formData.destinataires.includes(userId);
-                                    return (
-                                      <label
-                                        key={userId}
-                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-                                          isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => toggleUserSelection(userId)}
-                                          className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                                        />
-                                        <div className="flex-1">
-                                          <div className="font-medium text-sm">
-                                            {user.firstName} {user.lastName}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">{user.email}</div>
-                                        </div>
-                                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                          Client
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                              </div>
-                            </div>
-                          )}
-
-                          {admins.length === 0 && clients.length === 0 && (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              Aucun utilisateur disponible
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
+                {/* Pour les clients : message automatiquement envoyé à tous les admins */}
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">ℹ️</span>
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900 mb-1">Message automatique aux administrateurs</p>
+                      <p className="text-xs text-blue-700">
+                        Votre message sera automatiquement envoyé à tous les administrateurs de l'équipe. Vous n'avez pas besoin de sélectionner de destinataire.
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {formData.destinataires.length > 0 
-                      ? `${formData.destinataires.length} destinataire(s) sélectionné(s)`
-                      : 'Sélectionnez un ou plusieurs destinataires'}
-                  </p>
                 </div>
                 <div>
                   <Label htmlFor="sujet">Sujet *</Label>

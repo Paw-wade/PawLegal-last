@@ -59,9 +59,10 @@ interface HeaderProps {
   variant?: 'home' | 'client' | 'admin';
   showNav?: boolean;
   navItems?: Array<{ href: string; label: string; active?: boolean; highlight?: boolean }>;
+  onMenuClick?: () => void; // Pour le bouton hamburger
 }
 
-export function Header({ variant = 'home', showNav = true, navItems }: HeaderProps) {
+export function Header({ variant = 'home', showNav = true, navItems, onMenuClick }: HeaderProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const pathname = usePathname();
@@ -316,19 +317,36 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
     <header className="border-b border-gray-200/80 bg-white/98 backdrop-blur-md sticky top-0 z-50 shadow-sm">
       <div className="container mx-auto px-4 py-2.5">
         <div className="flex items-center justify-between">
-          {/* Logo */}
+          {/* Logo et bouton menu (pour dashboard) */}
           <div className="flex items-center gap-3">
-            <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
-              variant === 'home' ? 'text-xl' : 'text-lg'
-            }`}>
-              Paw Legal
-            </Link>
-            <div className="h-4 w-px bg-gray-300"></div>
-            <p className={`text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap ${
-              variant === 'home' ? '' : ''
-            }`}>
-              {variant === 'admin' ? 'Panneau d\'Administration' : variant === 'client' ? 'Espace Client' : 'Service d\'accompagnement juridique'}
-            </p>
+            {/* Bouton hamburger pour mobile/tablette sur dashboard */}
+            {!showNav && onMenuClick && (
+              <button
+                onClick={onMenuClick}
+                className="lg:hidden p-2 hover:bg-gray-100 rounded-md transition-colors"
+                aria-label="Ouvrir le menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
+            {/* Logo seulement sur la page d'accueil */}
+            {showNav && (
+              <>
+                <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
+                  variant === 'home' ? 'text-xl' : 'text-lg'
+                }`}>
+                  Paw Legal
+                </Link>
+                <div className="h-4 w-px bg-gray-300"></div>
+                <p className={`text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap ${
+                  variant === 'home' ? '' : ''
+                }`}>
+                  {variant === 'admin' ? 'Panneau d&apos;Administration' : variant === 'client' ? 'Espace Client' : 'Service d&apos;accompagnement juridique'}
+                </p>
+              </>
+            )}
           </div>
 
           {/* Navigation */}
@@ -389,8 +407,8 @@ export function Header({ variant = 'home', showNav = true, navItems }: HeaderPro
             </nav>
           )}
 
-            {/* Informations utilisateur et actions */}
-            <div className="flex items-center gap-2">
+          {/* Informations utilisateur et actions */}
+          <div className="flex items-center gap-2">
               {isAuthenticated ? (
                 <>
                   {/* Badge de notification */}

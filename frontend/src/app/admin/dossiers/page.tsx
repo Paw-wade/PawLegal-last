@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { dossiersAPI, userAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
@@ -574,8 +573,6 @@ export default function AdminDossiersPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header variant="admin" />
-
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>

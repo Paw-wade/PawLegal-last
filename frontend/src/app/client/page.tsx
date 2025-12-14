@@ -4,10 +4,8 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
-import { NotificationBadge } from '@/components/NotificationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
@@ -404,9 +402,6 @@ function ClientDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      {/* Header Professionnel */}
-      <Header variant="client" />
-
       <main className="container mx-auto px-4 py-8">
         {/* Banner d'impersonation */}
         <div id="dashboard-top" className="scroll-mt-20"></div>
@@ -638,8 +633,6 @@ function ClientDashboardContent() {
             </div>
           </Link>
 
-          {/* Badge de notification - UNIQUE, pas de répétition */}
-          <NotificationBadge variant="dashboard" />
         </div>
 
         {/* Dernières activités */}
