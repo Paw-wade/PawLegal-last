@@ -119,6 +119,10 @@ export default function SignInPage() {
             isRedirecting.current = true;
             
             if (userRole === 'admin' || userRole === 'superadmin') {
+              // Nettoyer le flag de vue client lors de la connexion pour revenir à la vue admin par défaut
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('adminWantsClientView');
+              }
               window.location.href = '/admin';
             } else {
               const profilComplete = sessionData?.user?.profilComplete;

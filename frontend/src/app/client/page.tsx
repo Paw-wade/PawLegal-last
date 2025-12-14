@@ -93,11 +93,16 @@ function ClientDashboardContent() {
       }
       
       // Si admin et pas en mode impersonation, rediriger vers l'espace admin
+      // MAIS seulement si l'admin accède directement à /client (pas s'il a cliqué sur "Vue Client")
       if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
         // Ne pas rediriger si on est en mode impersonation
         if (!impersonateUserId) {
-        router.push('/admin');
-        return;
+          // Vérifier si l'admin a explicitement demandé la vue client (via localStorage)
+          const wantsClientView = typeof window !== 'undefined' && localStorage.getItem('adminWantsClientView') === 'true';
+          if (!wantsClientView) {
+            router.push('/admin');
+            return;
+          }
         }
       }
 

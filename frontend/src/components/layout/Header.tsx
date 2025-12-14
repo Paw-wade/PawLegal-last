@@ -274,6 +274,7 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
     // Nettoyer complètement l'état de l'utilisateur
     localStorage.removeItem('token');
     sessionStorage.removeItem('token');
+    localStorage.removeItem('adminWantsClientView'); // Nettoyer le flag de vue client
     setUserInfo(null);
     
     // Si on a une session NextAuth, la déconnecter
@@ -424,6 +425,47 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                     </Link>
                     <p className="text-[10px] text-gray-500 font-normal leading-tight">{roleLabel}</p>
                   </div>
+                  
+                  {/* Bouton "Basculer vers la vue client" pour les admins */}
+                  {(userRole === 'admin' || userRole === 'superadmin') && pathname?.startsWith('/admin') && (
+                    <Link 
+                      href="/client"
+                      onClick={() => {
+                        // Marquer que l'admin veut voir la vue client
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('adminWantsClientView', 'true');
+                        }
+                      }}
+                    >
+                      <Button 
+                        variant="outline" 
+                        className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900 hover:bg-gray-100 border-gray-300"
+                      >
+                        👁️ Vue Client
+                      </Button>
+                    </Link>
+                  )}
+                  
+                  {/* Bouton "Retour à la vue admin" pour les admins en vue client */}
+                  {(userRole === 'admin' || userRole === 'superadmin') && pathname?.startsWith('/client') && !pathname?.includes('/impersonate') && (
+                    <Link 
+                      href="/admin"
+                      onClick={() => {
+                        // Retirer le flag de vue client
+                        if (typeof window !== 'undefined') {
+                          localStorage.removeItem('adminWantsClientView');
+                        }
+                      }}
+                    >
+                      <Button 
+                        variant="outline" 
+                        className="text-xs px-2.5 py-1.5 h-auto text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
+                      >
+                        🔙 Vue Admin
+                      </Button>
+                    </Link>
+                  )}
+                  
                   <Button 
                     variant="ghost" 
                     className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900 hover:bg-gray-100"
