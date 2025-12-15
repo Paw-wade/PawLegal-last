@@ -294,35 +294,8 @@ router.post(
       let typeMessage = 'user_to_admins';
       let threadId;
 
-      // CAS 1: Utilisateur (client) → Tous les administrateurs
-      // IMPORTANT: Pour les clients, aucun destinataire n'est requis - le message va automatiquement à tous les admins
-      if (userRole === 'client') {
-        console.log('👤 Message d\'un utilisateur (client) → Tous les administrateurs');
-        console.log('👤 Pas besoin de destinataire - récupération automatique des admins');
-        console.log('👤 destinataire fourni:', destinataire, 'copie fournie:', copie);
-        
-        // Récupérer tous les administrateurs actifs
-        const admins = await User.find({
-          role: { $in: ['admin', 'superadmin'] },
-          isActive: { $ne: false }
-        });
-
-        console.log(`👤 Admins trouvés: ${admins.length}`);
-
-        if (admins.length === 0) {
-          console.error('❌ Aucun administrateur disponible');
-          return res.status(400).json({
-            success: false,
-            message: 'Aucun administrateur disponible'
-          });
-        }
-
-        destinatairesIds = admins.map(admin => admin._id);
-        typeMessage = 'user_to_admins';
-        console.log(`✅ Message adressé à ${destinatairesIds.length} administrateur(s)`);
-      }
-      // CAS 2: Administrateur → Un destinataire (utilisateur ou admin) + copie optionnelle
-      else if (userRole === 'admin' || userRole === 'superadmin') {
+      // CAS 1: Administrateur / Super administrateur → Un destinataire (utilisateur ou admin) + copie optionnelle
+      if (userRole === 'admin' || userRole === 'superadmin') {
         console.log('👨‍💼 Message d\'un administrateur');
         
         // Vérifier qu'un destinataire est fourni
@@ -422,10 +395,29 @@ router.post(
 
         console.log(`✅ Message adressé à ${destinatairesIds.length} destinataire(s) principal(aux) et ${copieIds.length} en copie`);
       } else {
-        return res.status(403).json({
-          success: false,
-          message: 'Vous n\'avez pas la permission d\'envoyer des messages'
+        // CAS 2: Tout autre rôle (client, avocat, assistant, etc.) → Tous les administrateurs
+        // Aucun destinataire explicite requis : le message est routé automatiquement vers les admins
+        console.log(`👤 Message d'un utilisateur non administrateur (rôle: ${userRole}) → Tous les administrateurs`);
+        console.log('👤 Pas besoin de destinataire - récupération automatique des admins');
+
+        const admins = await User.find({
+          role: { $in: ['admin', 'superadmin'] },
+          isActive: { $ne: false }
         });
+
+        console.log(`👤 Admins trouvés: ${admins.length}`);
+
+        if (admins.length === 0) {
+          console.error('❌ Aucun administrateur disponible');
+          return res.status(400).json({
+            success: false,
+            message: 'Aucun administrateur disponible'
+          });
+        }
+
+        destinatairesIds = admins.map(admin => admin._id);
+        typeMessage = 'user_to_admins';
+        console.log(`✅ Message adressé à ${destinatairesIds.length} administrateur(s)`);
       }
 
       // Traiter les pièces jointes
