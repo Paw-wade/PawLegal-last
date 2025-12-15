@@ -1,7 +1,5 @@
 {
-  "/client/compte/page": "app/client/compte/page.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
   "/client/page": "app/client/page.js",
-  "/client/messages/[id]/page": "app/client/messages/[id]/page.js",
-  "/client/notifications/page": "app/client/notifications/page.js",
   "/client/messages/page": "app/client/messages/page.js"
 }
