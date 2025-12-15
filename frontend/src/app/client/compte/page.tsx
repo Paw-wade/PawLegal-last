@@ -100,8 +100,15 @@ export default function ComptePage() {
       router.push('/auth/signin');
     } else if (session && !(session.user as any).profilComplete) {
       router.push('/auth/complete-profile');
-    } else if (session && ((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin')) {
-      router.push('/admin');
+    } else if (session) {
+      // Vérifier si on est en mode impersonation
+      const isImpersonating = typeof window !== 'undefined' && 
+        !!localStorage.getItem('impersonateUserId');
+      
+      // Si admin et PAS en impersonation, rediriger vers /admin
+      if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
+        router.push('/admin');
+      }
     }
   }, [session, status, router]);
 

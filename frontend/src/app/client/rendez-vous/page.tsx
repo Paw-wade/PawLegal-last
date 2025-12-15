@@ -5,7 +5,6 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ReservationWidget } from '@/components/ReservationWidget';
-import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { appointmentsAPI, userAPI, dossiersAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', size = 'default', className = '', ...props }: any) {
@@ -380,14 +379,6 @@ function RendezVousPageContent() {
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-16">
-        {/* Banner d'impersonation */}
-        {isImpersonating && impersonatedUser && (
-          <ImpersonationBanner
-            userName={getUserName()}
-            userEmail={getUserEmail()}
-            onStopImpersonating={stopImpersonating}
-          />
-        )}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Rendez-vous</h1>

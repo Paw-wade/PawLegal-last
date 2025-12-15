@@ -48,6 +48,25 @@ const taskSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Historique des commentaires/notes internes liés à la tâche
+  commentaires: [
+    {
+      utilisateur: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+      contenu: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
   effectue: {
     type: Boolean,
     default: false

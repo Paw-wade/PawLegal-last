@@ -185,6 +185,7 @@ export default function AdminDossiersPage() {
   const [motifRefus, setMotifRefus] = useState('');
   const [showStatutModal, setShowStatutModal] = useState<{ dossierId: string; dossierTitre: string; currentStatut: string; newStatut: string } | null>(null);
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'favorable' | 'unfavorable'>('all');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -968,37 +969,132 @@ export default function AdminDossiersPage() {
             </div>
           ) : (
             <>
-              {/* Statistiques rapides */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+              {/* Statistiques rapides (badges cliquables) */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('pending')}
+                  className={`text-left bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm transition-all ${
+                    statusFilter === 'pending'
+                      ? 'ring-2 ring-yellow-500/60 shadow-md'
+                      : 'hover:shadow-md hover:-translate-y-0.5'
+                  }`}
+                >
                   <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
                   <p className="text-2xl font-bold text-yellow-900">
                     {dossiers.filter((d: any) => d.statut === 'recu' || d.statut === 'en_attente_onboarding').length}
                   </p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('in_progress')}
+                  className={`text-left bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm transition-all ${
+                    statusFilter === 'in_progress'
+                      ? 'ring-2 ring-blue-500/60 shadow-md'
+                      : 'hover:shadow-md hover:-translate-y-0.5'
+                  }`}
+                >
                   <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">En cours</p>
                   <p className="text-2xl font-bold text-blue-900">
                     {dossiers.filter((d: any) => d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet').length}
                   </p>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('favorable')}
+                  className={`text-left bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm transition-all ${
+                    statusFilter === 'favorable'
+                      ? 'ring-2 ring-green-500/60 shadow-md'
+                      : 'hover:shadow-md hover:-translate-y-0.5'
+                  }`}
+                >
                   <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Favorables</p>
                   <p className="text-2xl font-bold text-green-900">
                     {dossiers.filter((d: any) => d.statut === 'decision_favorable' || d.statut === 'gain_cause').length}
                   </p>
-                </div>
-                <div className="bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('unfavorable')}
+                  className={`text-left bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-lg p-4 shadow-sm transition-all ${
+                    statusFilter === 'unfavorable'
+                      ? 'ring-2 ring-red-500/60 shadow-md'
+                      : 'hover:shadow-md hover:-translate-y-0.5'
+                  }`}
+                >
                   <p className="text-xs text-red-700 font-semibold mb-1 uppercase tracking-wide">Défavorables</p>
                   <p className="text-2xl font-bold text-red-900">
                     {dossiers.filter((d: any) => d.statut === 'decision_defavorable' || d.statut === 'refuse' || d.statut === 'rejet').length}
                   </p>
+                </button>
+              </div>
+
+              {/* Indicateur de filtre actif et réinitialisation */}
+              <div className="flex items-center justify-between mb-4 text-xs text-muted-foreground">
+                <div>
+                  {statusFilter === 'all' ? (
+                    <span>Tous les dossiers sont affichés.</span>
+                  ) : (
+                    <span>
+                      Filtre appliqué :{' '}
+                      <span className="font-semibold text-primary">
+                        {statusFilter === 'pending' && 'En attente'}
+                        {statusFilter === 'in_progress' && 'En cours'}
+                        {statusFilter === 'favorable' && 'Favorables'}
+                        {statusFilter === 'unfavorable' && 'Défavorables'}
+                      </span>
+                    </span>
+                  )}
                 </div>
+                {statusFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className="px-2 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    Réinitialiser le filtre
+                  </button>
+                )}
               </div>
 
               {/* Liste des dossiers en cartes */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {dossiers.map((dossier) => (
+              {(() => {
+                const filteredDossiers = dossiers.filter((d: any) => {
+                  if (statusFilter === 'pending') {
+                    return d.statut === 'recu' || d.statut === 'en_attente_onboarding';
+                  }
+                  if (statusFilter === 'in_progress') {
+                    return d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet';
+                  }
+                  if (statusFilter === 'favorable') {
+                    return d.statut === 'decision_favorable' || d.statut === 'gain_cause';
+                  }
+                  if (statusFilter === 'unfavorable') {
+                    return d.statut === 'decision_defavorable' || d.statut === 'refuse' || d.statut === 'rejet';
+                  }
+                  return true;
+                });
+
+                if (filteredDossiers.length === 0) {
+                  return (
+                    <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Aucun dossier ne correspond au filtre sélectionné.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter('all')}
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary/90"
+                      >
+                        Réinitialiser le filtre
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredDossiers.map((dossier) => (
                   <div
                     key={dossier._id || dossier.id}
                     className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${
@@ -1194,7 +1290,9 @@ export default function AdminDossiersPage() {
                     </div>
                   </div>
                 ))}
-              </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 

@@ -6,7 +6,7 @@ const Document = require('../models/Document');
 const User = require('../models/User');
 const Log = require('../models/Log');
 const { protect, authorize } = require('../middleware/auth');
-const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
+const { handleImpersonation, logImpersonationAction, getEffectiveUserId, getEffectiveUser } = require('../middleware/impersonation');
 
 const router = express.Router();
 
@@ -155,7 +155,7 @@ router.post('/', upload.single('document'), async (req, res) => {
     const { nom, description, categorie } = req.body;
 
     const document = await Document.create({
-      user: req.user.id,
+      user: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
       nom: nom || req.file.originalname,
       nomFichier: req.file.filename,
       cheminFichier: req.file.path,
@@ -168,10 +168,10 @@ router.post('/', upload.single('document'), async (req, res) => {
     // Logger l'action
     try {
       await Log.create({
-        user: req.user.id,
-        userEmail: req.user.email,
+        user: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
+        userEmail: getEffectiveUser(req)?.email || req.user.email,
         action: 'document_uploaded',
-        description: `${req.user.email} a téléversé le document "${document.nom}"`,
+        description: `${getEffectiveUser(req)?.email || req.user.email} a téléversé le document "${document.nom}"`,
         ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
         userAgent: req.get('user-agent'),
         metadata: {
@@ -398,7 +398,8 @@ router.get('/:id/download', async (req, res) => {
     // Vérifier les permissions
     // L'utilisateur peut télécharger ses propres documents
     // Les admins peuvent télécharger tous les documents
-    if (document.user.toString() !== req.user.id.toString() && 
+    const effectiveUserId = getEffectiveUserId(req);
+    if (document.user.toString() !== effectiveUserId.toString() && 
         req.user.role !== 'admin' && 
         req.user.role !== 'superadmin') {
       return res.status(403).json({
@@ -469,7 +470,8 @@ router.delete('/:id', async (req, res) => {
     }
 
     // Vérifier les permissions
-    if (document.user.toString() !== req.user.id.toString() && 
+    const effectiveUserId = getEffectiveUserId(req);
+    if (document.user.toString() !== effectiveUserId.toString() && 
         req.user.role !== 'admin' && 
         req.user.role !== 'superadmin') {
       return res.status(403).json({
@@ -488,11 +490,13 @@ router.delete('/:id', async (req, res) => {
 
     // Logger l'action
     try {
+      const effectiveUserId = getEffectiveUserId(req);
+      const effectiveUser = getEffectiveUser(req);
       await Log.create({
-        user: req.user.id,
-        userEmail: req.user.email,
+        user: effectiveUserId, // Utilise l'ID impersonné si en impersonation
+        userEmail: effectiveUser?.email || req.user.email,
         action: 'document_deleted',
-        description: `${req.user.email} a supprimé le document "${document.nom}"`,
+        description: `${effectiveUser?.email || req.user.email} a supprimé le document "${document.nom}"`,
         ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
         userAgent: req.get('user-agent'),
         metadata: {

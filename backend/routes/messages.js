@@ -7,7 +7,9 @@ const { body, validationResult } = require('express-validator');
 const MessageInterne = require('../models/MessageInterne');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Dossier = require('../models/Dossier');
 const { protect, authorize } = require('../middleware/auth');
+const { getEffectiveUserId, getEffectiveUser } = require('../middleware/impersonation');
 const { sendNotificationSMS, formatPhoneNumber } = require('../sendSMS');
 
 // Configuration de multer pour les pièces jointes
@@ -43,14 +45,17 @@ router.use(protect);
 // pour éviter que Express ne les intercepte avec le paramètre :id
 
 // @route   GET /api/messages/unread-count
-// @desc    Récupérer le nombre de messages non lus
+// @desc    Récupérer le nombre de messages non lus (destinataire ou copie)
 // @access  Private
 router.get('/unread-count', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     
     const count = await MessageInterne.countDocuments({
-      destinataires: userId,
+      $or: [
+        { destinataires: userId },
+        { copie: userId }
+      ],
       'lu.user': { $ne: userId },
       'archive.user': { $ne: userId }
     });
@@ -105,8 +110,8 @@ router.get('/', async (req, res) => {
       path: req.path
     });
     
-    const userId = req.user.id;
-    const { type = 'all' } = req.query; // 'all', 'received', 'sent', 'unread'
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
+    const { type = 'all', dossierId } = req.query; // 'all', 'received', 'sent', 'unread', filtrage éventuel par dossier
 
     let query = {};
     
@@ -142,19 +147,83 @@ router.get('/', async (req, res) => {
 
     // Exclure les messages archivés par l'utilisateur
     query['archive.user'] = { $ne: userId };
+    
+    // Filtrer par dossier si fourni
+    if (dossierId) {
+      const mongoose = require('mongoose');
+      const dossierIdObj = typeof dossierId === 'string' && mongoose.Types.ObjectId.isValid(dossierId)
+        ? new mongoose.Types.ObjectId(dossierId)
+        : dossierId;
+      query.dossierId = dossierIdObj;
+    }
 
     const messages = await MessageInterne.find(query)
       .populate('expediteur', 'firstName lastName email role')
       .populate('destinataires', 'firstName lastName email role')
       .populate('copie', 'firstName lastName email role')
+      .populate('messageParent', 'sujet expediteur')
       .sort({ createdAt: -1 })
       .limit(100);
 
     console.log('✅ Messages trouvés:', messages.length);
 
+    // Par défaut, ne pas casser l'API si la logique de threads pose problème
+    let threads = [];
+
+    try {
+      // Regrouper les messages par fil de discussion (thread)
+      // Un fil de discussion commence par un message sans parent
+      // Tous les messages avec le même parent ou qui remontent au même message racine forment un fil
+      const threadMap = new Map();
+      const rootMessages = [];
+      
+      messages.forEach(message => {
+        if (!message.messageParent) {
+          // Message racine (sans parent)
+          rootMessages.push(message);
+          threadMap.set(message._id.toString(), [message]);
+        } else {
+          // Message réponse - trouver le message racine
+          let rootId = message.messageParent._id?.toString() || message.messageParent.toString();
+          let currentMessage = messages.find(m => m._id.toString() === rootId);
+          
+          // Remonter jusqu'au message racine
+          while (currentMessage && currentMessage.messageParent) {
+            rootId = currentMessage.messageParent._id?.toString() || currentMessage.messageParent.toString();
+            currentMessage = messages.find(m => m._id.toString() === rootId);
+          }
+          
+          if (!threadMap.has(rootId)) {
+            threadMap.set(rootId, []);
+          }
+          threadMap.get(rootId).push(message);
+        }
+      });
+      
+      // Organiser les messages par fil de discussion
+      threads = rootMessages.map(root => {
+        const threadMessages = threadMap.get(root._id.toString()) || [root];
+        // Trier les messages du fil par date
+        threadMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        return {
+          root: root,
+          messages: threadMessages,
+          lastMessage: threadMessages[threadMessages.length - 1]
+        };
+      });
+      
+      // Trier les fils par date du dernier message
+      threads.sort((a, b) => new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt));
+    } catch (threadError) {
+      console.error('⚠️ Erreur lors de la construction des fils de discussion:', threadError);
+      // On continue quand même en renvoyant simplement la liste des messages
+      threads = [];
+    }
+
     res.json({
       success: true,
-      messages: messages
+      messages: messages,
+      threads: threads // Fils de discussion (peut être vide en cas d'erreur)
     });
   } catch (error) {
     console.error('❌ Erreur lors de la récupération des messages:', error);
@@ -176,7 +245,8 @@ router.post(
   [
     body('sujet').trim().notEmpty().withMessage('Le sujet est requis'),
     body('contenu').trim().notEmpty().withMessage('Le contenu est requis'),
-    body('destinataires').optional().isArray().withMessage('Les destinataires doivent être un tableau')
+    body('destinataires').optional().isArray().withMessage('Les destinataires doivent être un tableau'),
+    body('dossierId').notEmpty().withMessage('Le dossier lié au message est requis')
   ],
   async (req, res) => {
     try {
@@ -200,11 +270,12 @@ router.post(
       }
 
       const mongoose = require('mongoose');
-      const userId = req.user.id;
-      const userRole = req.user.role;
-      const { sujet, contenu, destinataire, copie, destinataires } = req.body; // destinataire (singulier) et copie (tableau), destinataires (ancien format pour compatibilité)
+      const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
+      const effectiveUser = getEffectiveUser(req);
+      const userRole = effectiveUser?.role || req.user.role;
+      const { sujet, contenu, destinataire, copie, destinataires, messageParent, dossierId } = req.body; // messageParent pour les fils de discussion
       
-      console.log('📨 Données extraites:', { sujet, contenu, destinataire, copie, destinataires, userRole });
+      console.log('📨 Données extraites:', { sujet, contenu, destinataire, copie, destinataires, dossierId, userRole });
 
       // Convertir userId en ObjectId si nécessaire
       const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
@@ -214,13 +285,38 @@ router.post(
         contenu, 
         destinataire, 
         copie, 
+        dossierId,
         userRole,
         userId: userIdObj.toString() 
       });
 
+      // Vérifier et charger le dossier lié
+      if (!dossierId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vous devez sélectionner un dossier pour envoyer un message'
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(dossierId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Identifiant de dossier invalide'
+        });
+      }
+
+      const dossier = await Dossier.findById(dossierId);
+      if (!dossier) {
+        return res.status(404).json({
+          success: false,
+          message: 'Dossier non trouvé'
+        });
+      }
+
       let destinatairesIds = [];
       let copieIds = [];
       let typeMessage = 'user_to_admins';
+      let threadId;
 
       // CAS 1: Utilisateur (client) → Tous les administrateurs
       // IMPORTANT: Pour les clients, aucun destinataire n'est requis - le message va automatiquement à tous les admins
@@ -378,8 +474,35 @@ router.post(
         destinataires: destinatairesIds,
         sujet: sujet.trim(),
         contenu: contenu.trim(),
-        typeMessage: typeMessage
+        typeMessage: typeMessage,
+        dossierId: dossier._id
       };
+      
+      // Ajouter le message parent si c'est une réponse
+      if (messageParent && mongoose.Types.ObjectId.isValid(messageParent)) {
+        // Vérifier que le message parent existe
+        const parentMessage = await MessageInterne.findById(messageParent);
+        if (parentMessage) {
+          // Vérifier que le parent est bien rattaché au même dossier
+          if (parentMessage.dossierId.toString() !== dossier._id.toString()) {
+            return res.status(400).json({
+              success: false,
+              message: 'Le message parent appartient à un autre dossier'
+            });
+          }
+          messageData.messageParent = new mongoose.Types.ObjectId(messageParent);
+          threadId = parentMessage.threadId || parentMessage._id.toString();
+          console.log('📎 Message parent trouvé:', messageParent, 'threadId:', threadId);
+        } else {
+          console.warn('⚠️ Message parent non trouvé:', messageParent);
+        }
+      }
+
+      // Générer un threadId si nécessaire (nouveau fil)
+      if (!threadId) {
+        threadId = new mongoose.Types.ObjectId().toString();
+      }
+      messageData.threadId = threadId;
       
       // Ajouter la copie si elle existe
       if (copieIds.length > 0) {
@@ -591,14 +714,15 @@ router.post(
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const messageId = req.params.id;
 
     const message = await MessageInterne.findOne({
       _id: messageId,
       $or: [
         { expediteur: userId },
-        { destinataires: userId }
+        { destinataires: userId },
+        { copie: userId }
       ],
       'archive.user': { $ne: userId }
     })
@@ -644,8 +768,9 @@ router.get('/:id', async (req, res) => {
 router.put('/:id/read', async (req, res) => {
   try {
     const mongoose = require('mongoose');
-    const userId = req.user.id;
-    const userRole = req.user.role;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
+    const effectiveUser = getEffectiveUser(req);
+    const userRole = effectiveUser?.role || req.user.role;
     const messageId = req.params.id;
 
     const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
@@ -743,7 +868,7 @@ router.put('/:id/read', async (req, res) => {
 // @access  Private
 router.put('/:id/archive', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const messageId = req.params.id;
 
     const message = await MessageInterne.findOne({
@@ -789,7 +914,7 @@ router.put('/:id/archive', async (req, res) => {
 // @access  Private
 router.delete('/:id', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const messageId = req.params.id;
 
     const message = await MessageInterne.findOne({
@@ -838,7 +963,7 @@ router.delete('/:id', async (req, res) => {
 // @access  Private
 router.get('/:id/download/:fileIndex', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const messageId = req.params.id;
     const fileIndex = parseInt(req.params.fileIndex);
 

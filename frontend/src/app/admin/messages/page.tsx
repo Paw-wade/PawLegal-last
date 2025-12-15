@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { messagesAPI, notificationsAPI } from '@/lib/api';
+import { messagesAPI, notificationsAPI, dossiersAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -70,6 +70,8 @@ export default function AdminMessagesPage() {
     copie: [] as string[],
   });
   const [replyAttachments, setReplyAttachments] = useState<File[]>([]);
+  const [dossiers, setDossiers] = useState<any[]>([]);
+  const [selectedDossierId, setSelectedDossierId] = useState<string>('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -80,10 +82,11 @@ export default function AdminMessagesPage() {
         router.push('/client');
         return;
       }
+      loadDossiers();
       loadMessages();
       loadUsers();
     }
-  }, [session, status, router, filter]);
+  }, [session, status, router, filter, selectedDossierId]);
 
   // Charger automatiquement les notifications quand un message est sélectionné
   useEffect(() => {
@@ -101,7 +104,11 @@ export default function AdminMessagesPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await messagesAPI.getMessages({ type: filter });
+      const params: any = { type: filter };
+      if (selectedDossierId) {
+        params.dossierId = selectedDossierId;
+      }
+      const response = await messagesAPI.getMessages(params);
       if (response.data.success) {
         setMessages(response.data.messages || []);
       }
@@ -135,6 +142,18 @@ export default function AdminMessagesPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des utilisateurs:', err);
+    }
+  };
+
+  const loadDossiers = async () => {
+    try {
+      const response = await dossiersAPI.getAllDossiers();
+      if (response.data.success) {
+        const list = response.data.dossiers || [];
+        setDossiers(list);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des dossiers pour la messagerie:', err);
     }
   };
 
@@ -178,12 +197,18 @@ export default function AdminMessagesPage() {
       setIsSubmitting(false);
       return;
     }
+    if (!selectedDossierId) {
+      setError('Veuillez sélectionner un dossier lié au message');
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
       formDataToSend.append('destinataire', formData.destinataire); // Destinataire unique
+      formDataToSend.append('dossierId', selectedDossierId);
       
       // Ajouter les destinataires en copie
       formData.copie.forEach(copieId => {
@@ -264,12 +289,36 @@ export default function AdminMessagesPage() {
     <div className="min-h-screen bg-background">
 
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-4xl font-bold mb-2">Messagerie Interne</h1>
             <p className="text-muted-foreground">Communiquez avec les utilisateurs</p>
           </div>
-          <Button onClick={() => setShowComposeModal(true)}>+ Nouveau message</Button>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Dossier :</span>
+              <select
+                value={selectedDossierId}
+                onChange={(e) => setSelectedDossierId(e.target.value)}
+                className="px-3 py-2 border border-input rounded-md text-sm bg-background max-w-xs"
+              >
+                <option value="">Sélectionnez un dossier</option>
+                {dossiers.map((dossier) => (
+                  <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
+                    {dossier.titre || dossier.numero || 'Dossier'} – {dossier.numero}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button onClick={() => setShowComposeModal(true)} disabled={!selectedDossierId}>
+              + Nouveau message
+            </Button>
+            {!selectedDossierId && (
+              <p className="text-xs text-red-600 max-w-xs text-right">
+                Vous devez sélectionner un dossier pour envoyer un message.
+              </p>
+            )}
+          </div>
         </div>
 
         {error && (

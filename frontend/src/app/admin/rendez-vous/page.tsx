@@ -54,6 +54,7 @@ export default function AdminRendezVousPage() {
   const router = useRouter();
   const [rendezVous, setRendezVous] = useState<any[]>([]);
   const [filter, setFilter] = useState('all'); // all, today, week, month
+  const [statusFilter, setStatusFilter] = useState<'all' | 'en_attente' | 'confirme' | 'annule' | 'termine'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingRdv, setEditingRdv] = useState<any | null>(null);
@@ -239,30 +240,84 @@ export default function AdminRendezVousPage() {
         {/* Statistiques rapides */}
         {!isLoading && rendezVous.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('en_attente')}
+              className={`text-left bg-blue-50 border border-blue-200 rounded-lg p-4 transition-all ${
+                statusFilter === 'en_attente' ? 'ring-2 ring-blue-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              }`}
+            >
               <p className="text-xs text-blue-700 font-medium mb-1">En attente</p>
               <p className="text-2xl font-bold text-blue-900">
                 {rendezVous.filter((r: any) => r.statut === 'en_attente').length}
               </p>
-            </div>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('confirme')}
+              className={`text-left bg-green-50 border border-green-200 rounded-lg p-4 transition-all ${
+                statusFilter === 'confirme' ? 'ring-2 ring-green-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              }`}
+            >
               <p className="text-xs text-green-700 font-medium mb-1">Confirmés</p>
               <p className="text-2xl font-bold text-green-900">
                 {rendezVous.filter((r: any) => r.statut === 'confirme' || r.statut === 'confirmé').length}
               </p>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('annule')}
+              className={`text-left bg-red-50 border border-red-200 rounded-lg p-4 transition-all ${
+                statusFilter === 'annule' ? 'ring-2 ring-red-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              }`}
+            >
               <p className="text-xs text-red-700 font-medium mb-1">Annulés</p>
               <p className="text-2xl font-bold text-red-900">
                 {rendezVous.filter((r: any) => r.statut === 'annule' || r.statut === 'annulé').length}
               </p>
-            </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('termine')}
+              className={`text-left bg-gray-50 border border-gray-200 rounded-lg p-4 transition-all ${
+                statusFilter === 'termine' ? 'ring-2 ring-gray-500 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              }`}
+            >
               <p className="text-xs text-gray-700 font-medium mb-1">Terminés</p>
               <p className="text-2xl font-bold text-gray-900">
                 {rendezVous.filter((r: any) => r.statut === 'termine' || r.statut === 'terminé').length}
               </p>
+            </button>
+          </div>
+        )}
+
+        {/* Indicateur de filtre de statut actif */}
+        {!isLoading && rendezVous.length > 0 && (
+          <div className="flex items-center justify-between mb-4 text-xs text-muted-foreground">
+            <div>
+              {statusFilter === 'all' ? (
+                <span>Tous les statuts de rendez-vous sont affichés.</span>
+              ) : (
+                <span>
+                  Filtre statut :{' '}
+                  <span className="font-semibold text-primary">
+                    {statusFilter === 'en_attente' && 'En attente'}
+                    {statusFilter === 'confirme' && 'Confirmés'}
+                    {statusFilter === 'annule' && 'Annulés'}
+                    {statusFilter === 'termine' && 'Terminés'}
+                  </span>
+                </span>
+              )}
             </div>
+            {statusFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Réinitialiser le filtre
+              </button>
+            )}
           </div>
         )}
 
@@ -288,9 +343,37 @@ export default function AdminRendezVousPage() {
                 {filter === 'all' ? 'Aucun rendez-vous programmé' : `Aucun rendez-vous pour cette période`}
               </p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {rendezVous.map((rdv) => {
+          ) : (() => {
+            const filteredByStatus = rendezVous.filter((rdv: any) => {
+              const statut = rdv.statut || 'en_attente';
+              if (statusFilter === 'all') return true;
+              if (statusFilter === 'en_attente') return statut === 'en_attente';
+              if (statusFilter === 'confirme') return statut === 'confirme' || statut === 'confirmé';
+              if (statusFilter === 'annule') return statut === 'annule' || statut === 'annulé';
+              if (statusFilter === 'termine') return statut === 'termine' || statut === 'terminé';
+              return true;
+            });
+
+            if (filteredByStatus.length === 0) {
+              return (
+                <div className="text-center py-16">
+                  <p className="text-muted-foreground text-sm mb-3">
+                    Aucun rendez-vous ne correspond au filtre de statut sélectionné.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary/90"
+                  >
+                    Réinitialiser le filtre de statut
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredByStatus.map((rdv) => {
                 const clientName = `${rdv.prenom || ''} ${rdv.nom || ''}`.trim() || 'Client';
                 const dateObj = rdv.date ? new Date(rdv.date) : null;
                 const formattedDate = dateObj ? dateObj.toLocaleDateString('fr-FR', { 
@@ -525,7 +608,8 @@ export default function AdminRendezVousPage() {
                 );
               })}
             </div>
-          )}
+            );
+          })()}
 
           {!isLoading && rendezVous.length > 0 && (
             <div className="mt-6 pt-4 border-t flex items-center justify-between">

@@ -51,8 +51,15 @@ export default function TemoignagesPage() {
       router.push('/auth/signin');
     } else if (session && !(session.user as any).profilComplete) {
       router.push('/auth/complete-profile');
-    } else if (session && ((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin')) {
-      router.push('/admin');
+    } else if (session) {
+      // Vérifier si on est en mode impersonation
+      const isImpersonating = typeof window !== 'undefined' && 
+        !!localStorage.getItem('impersonateUserId');
+      
+      // Si admin et PAS en impersonation, rediriger vers /admin
+      if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
+        router.push('/admin');
+      }
     }
   }, [session, status, router]);
 
@@ -137,46 +144,6 @@ export default function TemoignagesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      {/* Header */}
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">PL</span>
-              </div>
-              <div>
-                <Link href="/" className="text-xl font-bold text-foreground">Paw Legal</Link>
-                <p className="text-xs text-muted-foreground">Espace Client</p>
-              </div>
-            </div>
-            <nav className="hidden md:flex items-center gap-1">
-              <Link href="/client" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/client/dossiers" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Mes dossiers
-              </Link>
-              <Link href="/client/rendez-vous" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Rendez-vous
-              </Link>
-              <Link href="/client/documents" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Documents
-              </Link>
-            </nav>
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                className="text-sm"
-                onClick={() => signOut({ callbackUrl: '/' })}
-              >
-                Déconnexion
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <main className="container mx-auto px-4 py-8 max-w-3xl">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">

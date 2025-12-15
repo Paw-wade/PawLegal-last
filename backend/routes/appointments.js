@@ -3,7 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const RendezVous = require('../models/RendezVous');
 const { protect, authorize } = require('../middleware/auth');
-const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
+const { handleImpersonation, logImpersonationAction, getEffectiveUserId, getEffectiveUser } = require('../middleware/impersonation');
 const { sendNotificationSMS } = require('../sendSMS');
 
 // @route   POST /api/appointments
@@ -103,6 +103,45 @@ router.post(
       });
 
       console.log('✅ Rendez-vous créé avec succès:', rendezVous._id);
+
+      // Notifier tous les administrateurs (superadmin + admins) d'une nouvelle demande de rendez-vous
+      try {
+        const Notification = require('../models/Notification');
+        const User = require('../models/User');
+
+        const admins = await User.find({
+          role: { $in: ['admin', 'superadmin'] },
+          isActive: { $ne: false }
+        });
+
+        const dateLabel = new Date(rendezVous.date).toLocaleDateString('fr-FR', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+
+        for (const admin of admins) {
+          await Notification.create({
+            user: admin._id,
+            type: 'appointment_created',
+            titre: 'Nouveau rendez-vous demandé',
+            message: `${prenom} ${nom} (${email}) a demandé un rendez-vous le ${dateLabel} à ${heure}.`,
+            lien: '/admin?section=appointments',
+            metadata: {
+              appointmentId: rendezVous._id.toString(),
+              userId: userId ? userId.toString() : null,
+              email,
+              telephone,
+              date: rendezVous.date,
+              heure: rendezVous.heure
+            }
+          });
+        }
+
+        console.log(`✅ Notifications de rendez-vous envoyées à ${admins.length} administrateur(s)`);
+      } catch (notifError) {
+        console.error('⚠️ Erreur lors de la création des notifications de rendez-vous (non bloquant):', notifError);
+      }
 
       res.status(201).json({
         success: true,
@@ -471,7 +510,10 @@ router.put(
       }
 
       // Vérifier que l'utilisateur est le propriétaire du rendez-vous
-      if (rendezVous.user && rendezVous.user.toString() !== req.user.id) {
+      const effectiveUserId = getEffectiveUserId(req);
+      const effectiveUser = getEffectiveUser(req);
+      
+      if (rendezVous.user && rendezVous.user.toString() !== effectiveUserId) {
         return res.status(403).json({
           success: false,
           message: 'Vous n\'avez pas l\'autorisation de modifier ce rendez-vous'
@@ -479,7 +521,7 @@ router.put(
       }
 
       // Vérifier aussi par email si pas d'utilisateur connecté mais rendez-vous créé avec email
-      if (!rendezVous.user && rendezVous.email !== req.user.email) {
+      if (!rendezVous.user && rendezVous.email !== effectiveUser?.email) {
         return res.status(403).json({
           success: false,
           message: 'Vous n\'avez pas l\'autorisation de modifier ce rendez-vous'

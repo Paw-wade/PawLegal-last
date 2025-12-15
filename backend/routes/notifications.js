@@ -20,7 +20,9 @@ router.get('/', async (req, res) => {
     }
     
     const notifications = await Notification.find(filter)
-      .sort({ createdAt: -1 })
+      // Toujours afficher les notifications non lues en premier,
+      // puis trier chaque groupe par date de création (plus récentes en premier)
+      .sort({ lu: 1, createdAt: -1 })
       .limit(parseInt(limit));
     
     res.json({

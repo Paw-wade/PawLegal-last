@@ -217,8 +217,6 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
   // Navigation par défaut selon le variant
   const defaultNavItems = {
     home: [
-      { href: '/contact', label: 'Contact' },
-      { href: '/calculateur', label: 'Calculateur', highlight: true },
       { href: '#', label: 'Dashboard', isDashboard: true },
     ],
     client: [
@@ -274,7 +272,6 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
     // Nettoyer complètement l'état de l'utilisateur
     localStorage.removeItem('token');
     sessionStorage.removeItem('token');
-    localStorage.removeItem('adminWantsClientView'); // Nettoyer le flag de vue client
     setUserInfo(null);
     
     // Si on a une session NextAuth, la déconnecter
@@ -316,8 +313,8 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
         <div className="flex items-center justify-between">
           {/* Logo et bouton menu (pour dashboard) */}
           <div className="flex items-center gap-3">
-            {/* Bouton hamburger pour mobile/tablette sur dashboard */}
-            {!showNav && onMenuClick && (
+            {/* Bouton hamburger pour mobile/tablette sur dashboard - uniquement pour les clients */}
+            {!showNav && onMenuClick && variant === 'client' && (
               <button
                 onClick={onMenuClick}
                 className="lg:hidden p-2 hover:bg-gray-100 rounded-md transition-colors"
@@ -328,26 +325,72 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                 </svg>
               </button>
             )}
-            {/* Logo seulement sur la page d'accueil (pas sur le dashboard) */}
-            {showNav && (
-              <>
-                <Link href="/" className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
+            {/* Logo - toujours visible, redirige toujours vers la page d'accueil */}
+            <>
+              <Link
+                href="/"
+                className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
                   variant === 'home' ? 'text-xl' : 'text-lg'
-                }`}>
-                  Paw Legal
-                </Link>
-                <div className="h-4 w-px bg-gray-300"></div>
-                <p className={`text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap ${
-                  variant === 'home' ? '' : ''
-                }`}>
-                  {variant === 'admin' ? 'Panneau d&apos;Administration' : variant === 'client' ? 'Espace Client' : 'Service d&apos;accompagnement juridique'}
-                </p>
-              </>
-            )}
+                }`}
+              >
+                Paw Legal
+              </Link>
+              <div className="h-4 w-px bg-gray-300"></div>
+              <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
+                {variant === 'admin'
+                  ? "Panneau d'Administration"
+                  : variant === 'client'
+                  ? 'Espace Client'
+                  : "Service d'accompagnement juridique"}
+              </p>
+            </>
           </div>
 
-          {/* Navigation */}
-          {showNav && (
+          {/* Navigation - Liens permanents (Domaines, Services, FAQ, Contact, Calculateur, Dashboard sur l'accueil) */}
+          <nav className="hidden md:flex items-center gap-0.5">
+            <Link
+              href="/domaines"
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            >
+              Domaines
+            </Link>
+            <Link
+              href="/services"
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            >
+              Services
+            </Link>
+            <Link
+              href="/faq"
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            >
+              FAQ
+            </Link>
+            <Link
+              href="/contact"
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            >
+              Contact
+            </Link>
+            <Link
+              href="/calculateur"
+              className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 bg-orange-500 text-white hover:bg-orange-600 shadow-sm font-semibold"
+            >
+              Calculateur
+            </Link>
+            {variant === 'home' && (
+              <button
+                type="button"
+                onClick={handleDashboardClick}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              >
+                Dashboard
+              </button>
+            )}
+          </nav>
+
+          {/* Navigation - Liens conditionnels (showNav) - pas pour la home pour éviter le décalage */}
+          {showNav && variant !== 'home' && (
             <nav className="hidden md:flex items-center gap-0.5">
               {currentNavItems.map((item) => {
                 // Si c'est le Dashboard, utiliser un bouton au lieu d'un Link
@@ -425,47 +468,6 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                     </Link>
                     <p className="text-[10px] text-gray-500 font-normal leading-tight">{roleLabel}</p>
                   </div>
-                  
-                  {/* Bouton "Basculer vers la vue client" pour les admins */}
-                  {(userRole === 'admin' || userRole === 'superadmin') && pathname?.startsWith('/admin') && (
-                    <Link 
-                      href="/client"
-                      onClick={() => {
-                        // Marquer que l'admin veut voir la vue client
-                        if (typeof window !== 'undefined') {
-                          localStorage.setItem('adminWantsClientView', 'true');
-                        }
-                      }}
-                    >
-                      <Button 
-                        variant="outline" 
-                        className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900 hover:bg-gray-100 border-gray-300"
-                      >
-                        👁️ Vue Client
-                      </Button>
-                    </Link>
-                  )}
-                  
-                  {/* Bouton "Retour à la vue admin" pour les admins en vue client */}
-                  {(userRole === 'admin' || userRole === 'superadmin') && pathname?.startsWith('/client') && !pathname?.includes('/impersonate') && (
-                    <Link 
-                      href="/admin"
-                      onClick={() => {
-                        // Retirer le flag de vue client
-                        if (typeof window !== 'undefined') {
-                          localStorage.removeItem('adminWantsClientView');
-                        }
-                      }}
-                    >
-                      <Button 
-                        variant="outline" 
-                        className="text-xs px-2.5 py-1.5 h-auto text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
-                      >
-                        🔙 Vue Admin
-                      </Button>
-                    </Link>
-                  )}
-                  
                   <Button 
                     variant="ghost" 
                     className="text-xs px-2.5 py-1.5 h-auto text-gray-700 hover:text-gray-900 hover:bg-gray-100"

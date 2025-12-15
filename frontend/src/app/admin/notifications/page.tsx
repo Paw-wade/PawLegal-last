@@ -141,6 +141,25 @@ export default function AdminNotificationsPage() {
     return colors[type] || 'bg-gray-50 border-l-4 border-gray-500';
   };
 
+  type NotificationCategoryKey = 'dossiers' | 'rendezvous' | 'messages' | 'documents' | 'autres';
+
+  const getNotificationCategory = (notification: any): NotificationCategoryKey => {
+    const type = notification.type || '';
+    if (type.startsWith('dossier_')) return 'dossiers';
+    if (type.startsWith('appointment_')) return 'rendezvous';
+    if (type === 'message_received') return 'messages';
+    if (type === 'document_uploaded') return 'documents';
+    return 'autres';
+  };
+
+  const categoryDefinitions: { key: NotificationCategoryKey; label: string; icon: string }[] = [
+    { key: 'dossiers', label: 'Dossiers', icon: '📁' },
+    { key: 'rendezvous', label: 'Rendez-vous', icon: '📅' },
+    { key: 'messages', label: 'Messagerie', icon: '💬' },
+    { key: 'documents', label: 'Documents', icon: '📄' },
+    { key: 'autres', label: 'Autres notifications', icon: '🔔' },
+  ];
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -157,6 +176,20 @@ export default function AdminNotificationsPage() {
   }
 
   const unreadCount = notifications.filter(n => !n.lu).length;
+  const filteredNotifications = filter === 'unread' ? notifications.filter(n => !n.lu) : notifications;
+
+  const categorizedNotifications: Record<NotificationCategoryKey, any[]> = {
+    dossiers: [],
+    rendezvous: [],
+    messages: [],
+    documents: [],
+    autres: [],
+  };
+
+  filteredNotifications.forEach((notif) => {
+    const key = getNotificationCategory(notif);
+    categorizedNotifications[key].push(notif);
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -204,7 +237,7 @@ export default function AdminNotificationsPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Chargement des notifications...</p>
           </div>
-        ) : notifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 ? (
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🔔</div>
             <p className="text-muted-foreground text-lg mb-2">
@@ -215,78 +248,96 @@ export default function AdminNotificationsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {notifications.map((notification) => (
-              <div
-                key={notification._id || notification.id}
-                className={`bg-white rounded-xl shadow-md p-5 border transition-all hover:shadow-lg ${
-                  notification.lu 
-                    ? 'opacity-60 border-gray-200' 
-                    : `${getNotificationColor(notification.type)} shadow-lg`
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
-                    notification.lu ? 'bg-gray-100' : 'bg-primary/10'
-                  }`}>
-                    {getNotificationIcon(notification.type)}
+          <div className="space-y-8">
+            {categoryDefinitions.map(({ key, label, icon }) => {
+              const items = categorizedNotifications[key];
+              if (!items.length) return null;
+
+              return (
+                <section key={key}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                    </h2>
+                    <span className="text-xs text-muted-foreground">{items.length} notification(s)</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between mb-2 gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className={`font-bold text-base ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
-                            {notification.titre}
-                          </h3>
-                          {!notification.lu && (
-                            <span className="inline-block w-2 h-2 bg-primary rounded-full flex-shrink-0"></span>
-                          )}
-                        </div>
-                        <p className={`text-sm mb-2 ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
-                          {notification.message}
-                        </p>
-                      </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                        {new Date(notification.createdAt).toLocaleDateString('fr-FR', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {notification.lien && (
-                        <Link href={notification.lien}>
-                          <Button variant="outline" size="sm" className="text-xs">
-                            Voir les détails
-                          </Button>
-                        </Link>
-                      )}
-                      {!notification.lu && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleMarkAsRead(notification._id || notification.id)}
-                          className="text-xs"
-                        >
-                          Marquer comme lu
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(notification._id || notification.id)}
-                        className="text-red-600 hover:text-red-700 text-xs"
+                  <div className="grid grid-cols-1 gap-4">
+                    {items.map((notification: any) => (
+                      <div
+                        key={notification._id || notification.id}
+                        className={`bg-white rounded-xl shadow-md p-5 border transition-all hover:shadow-lg ${
+                          notification.lu 
+                            ? 'opacity-60 border-gray-200' 
+                            : `${getNotificationColor(notification.type)} shadow-lg`
+                        }`}
                       >
-                        Supprimer
-                      </Button>
-                    </div>
+                        <div className="flex items-start gap-4">
+                          <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
+                            notification.lu ? 'bg-gray-100' : 'bg-primary/10'
+                          }`}>
+                            {getNotificationIcon(notification.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between mb-2 gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className={`font-bold text-base ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                    {notification.titre}
+                                  </h3>
+                                  {!notification.lu && (
+                                    <span className="inline-block w-2 h-2 bg-primary rounded-full flex-shrink-0"></span>
+                                  )}
+                                </div>
+                                <p className={`text-sm mb-2 ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                  {notification.message}
+                                </p>
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                {new Date(notification.createdAt).toLocaleDateString('fr-FR', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              {notification.lien && (
+                                <Link href={notification.lien}>
+                                  <Button variant="outline" size="sm" className="text-xs">
+                                    Voir les détails
+                                  </Button>
+                                </Link>
+                              )}
+                              {!notification.lu && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleMarkAsRead(notification._id || notification.id)}
+                                  className="text-xs"
+                                >
+                                  Marquer comme lu
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(notification._id || notification.id)}
+                                className="text-red-600 hover:text-red-700 text-xs"
+                              >
+                                Supprimer
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              </div>
-            ))}
+                </section>
+              );
+            })}
           </div>
         )}
       </main>

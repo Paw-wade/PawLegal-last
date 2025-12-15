@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { DossierDetailView } from '@/components/DossierDetailView';
-import { dossiersAPI, notificationsAPI } from '@/lib/api';
+import { dossiersAPI, notificationsAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
@@ -29,6 +29,9 @@ export default function DossierDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -51,6 +54,7 @@ export default function DossierDetailPage() {
       }
       loadDossier();
       loadNotifications();
+      loadMessagesForDossier();
     } else if (token) {
       loadDossier();
       loadNotifications();
@@ -63,6 +67,7 @@ export default function DossierDetailPage() {
       if (session || localStorage.getItem('token')) {
         loadDossier();
         loadNotifications();
+        loadMessagesForDossier();
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
 
@@ -112,6 +117,24 @@ export default function DossierDetailPage() {
       }
     } catch (err: any) {
       console.error('❌ Erreur lors du chargement des notifications:', err);
+    }
+  };
+
+  const loadMessagesForDossier = async () => {
+    if (!dossierId) return;
+
+    setIsLoadingMessages(true);
+    setMessagesError(null);
+    try {
+      const response = await messagesAPI.getMessages({ type: 'all', dossierId });
+      if (response.data.success) {
+        setMessages(response.data.messages || []);
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors du chargement des messages du dossier:', err);
+      setMessagesError(err.response?.data?.message || 'Erreur lors du chargement des messages du dossier');
+    } finally {
+      setIsLoadingMessages(false);
     }
   };
 
@@ -371,6 +394,48 @@ export default function DossierDetailPage() {
                   <span className="font-medium">{notifications.length}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Messagerie liée au dossier */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Messagerie du dossier</h2>
+              {isLoadingMessages ? (
+                <p className="text-sm text-muted-foreground">Chargement des messages...</p>
+              ) : messagesError ? (
+                <p className="text-sm text-red-600">{messagesError}</p>
+              ) : messages.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Aucun message pour ce dossier pour le moment. Vous pouvez écrire à l&apos;équipe juridique depuis la page Messagerie.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {messages.slice(0, 5).map((msg: any) => (
+                    <div
+                      key={msg._id || msg.id}
+                      className="border border-gray-100 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className="font-semibold truncate">{msg.sujet}</p>
+                        <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                          {new Date(msg.createdAt).toLocaleDateString('fr-FR', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {msg.contenu}
+                      </p>
+                    </div>
+                  ))}
+                  <Link href="/client/messages" className="block mt-2">
+                    <Button variant="outline" className="w-full text-xs">
+                      Voir tous les messages
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>

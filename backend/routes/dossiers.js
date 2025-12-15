@@ -4,7 +4,7 @@ const Dossier = require('../models/Dossier');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { protect, authorize } = require('../middleware/auth');
-const { handleImpersonation, logImpersonationAction } = require('../middleware/impersonation');
+const { handleImpersonation, logImpersonationAction, notifyImpersonationAction, getEffectiveUserId, getEffectiveUser } = require('../middleware/impersonation');
 
 const router = express.Router();
 
@@ -91,9 +91,9 @@ router.post(
       let user = null;
       let finalUserId = userId;
       
-      // Si l'utilisateur est connecté mais n'a pas fourni d'ID, utiliser l'ID de la session
+      // Si l'utilisateur est connecté mais n'a pas fourni d'ID, utiliser l'ID effectif (impersonné si en impersonation)
       if (!finalUserId && req.user && req.user.id) {
-        finalUserId = req.user.id;
+        finalUserId = getEffectiveUserId(req);
       }
       
       if (finalUserId) {
@@ -148,7 +148,7 @@ router.post(
         priorite: priorite || 'normale',
         dateEcheance: dateEcheance || null,
         notes: notes || '',
-        createdBy: req.user ? req.user.id : null, // null si créé par un visiteur
+        createdBy: req.user ? getEffectiveUserId(req) : null, // null si créé par un visiteur, utilise l'ID impersonné si en impersonation
         assignedTo: assignedTo || null,
         rendezVous: rendezVousId ? [rendezVousId] : []
       });
@@ -193,7 +193,7 @@ router.post(
           const Log = require('../models/Log');
           await Log.create({
             action: 'dossier_created',
-            user: req.user.id,
+            user: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
             userEmail: req.user.email,
             targetUser: finalUserId || null,
             targetUserEmail: finalUserId ? user.email : clientEmail,
@@ -410,9 +410,9 @@ router.post(
 
       // Tous les champs sont optionnels - pas de validation obligatoire pour les visiteurs
 
-      // Si l'utilisateur est connecté mais n'a pas fourni d'ID, utiliser l'ID de la session
+      // Si l'utilisateur est connecté mais n'a pas fourni d'ID, utiliser l'ID effectif (impersonné si en impersonation)
       if (!userId && req.user && req.user.id) {
-        userId = req.user.id;
+        userId = getEffectiveUserId(req);
         user = await User.findById(userId);
       }
 
@@ -449,7 +449,7 @@ router.post(
         priorite: priorite || 'normale',
         dateEcheance: dateEcheance || null,
         notes: notes || '',
-        createdBy: req.user.id,
+        createdBy: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
         assignedTo: assignedTo || null,
         rendezVous: rendezVousId ? [rendezVousId] : []
       });
@@ -845,6 +845,31 @@ router.put(
         console.error('Erreur lors de l\'enregistrement du log:', logError);
       }
 
+      // Si en mode impersonation, notifier l'utilisateur impersonné et les autres admins
+      if (req.impersonateUserId) {
+        const actionMessage = statut && statut !== oldStatut
+          ? `a modifié le statut du dossier "${dossier.titre}" de "${oldStatut}" à "${statut}"`
+          : assignedTo !== undefined && assignedTo !== oldAssignedTo
+          ? `a modifié l'assignation du dossier "${dossier.titre}"`
+          : `a modifié le dossier "${dossier.titre}"`;
+        
+        await notifyImpersonationAction(
+          req,
+          'dossier_updated',
+          'Modification de dossier',
+          actionMessage,
+          `/client/dossiers/${dossier._id}`,
+          {
+            dossierId: dossier._id.toString(),
+            titre: dossier.titre,
+            oldStatut,
+            newStatut: statut,
+            oldAssignedTo,
+            newAssignedTo: assignedTo
+          }
+        );
+      }
+
       const dossierPopulated = await Dossier.findById(dossier._id)
         .populate('user', 'firstName lastName email phone')
         .populate('createdBy', 'firstName lastName email');
@@ -880,7 +905,7 @@ router.patch('/:id/cancel', protect, async (req, res) => {
     }
 
     // Vérifier que l'utilisateur est le propriétaire du dossier
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const dossierUserId = dossier.user ? (dossier.user._id ? dossier.user._id.toString() : dossier.user.toString()) : null;
     
     if (dossierUserId !== userId) {
@@ -1041,7 +1066,7 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
 router.post('/:id/open', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
     const dossierId = req.params.id;
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const userRole = req.user.role;
 
     const dossier = await Dossier.findById(dossierId)
@@ -1175,7 +1200,7 @@ router.post('/:id/open', protect, authorize('admin', 'superadmin'), async (req, 
 router.post('/:id/close-collaboration', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
     const dossierId = req.params.id;
-    const userId = req.user.id;
+    const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
 
     const dossier = await Dossier.findById(dossierId);
 

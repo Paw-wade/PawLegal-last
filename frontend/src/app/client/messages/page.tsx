@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { messagesAPI } from '@/lib/api';
+import { messagesAPI, dossiersAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -46,11 +46,13 @@ export default function MessagesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [messages, setMessages] = useState<any[]>([]);
+  const [threads, setThreads] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'received' | 'sent' | 'unread'>('all');
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     sujet: '',
@@ -59,23 +61,74 @@ export default function MessagesPage() {
   });
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyData, setReplyData] = useState({
+    sujet: '',
+    contenu: '',
+  });
+  const [replyAttachments, setReplyAttachments] = useState<File[]>([]);
+  const [isReplying, setIsReplying] = useState(false);
+  const [dossiers, setDossiers] = useState<any[]>([]);
+  const [selectedDossierId, setSelectedDossierId] = useState<string>('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
     } else if (status === 'authenticated') {
+      loadDossiers();
       loadMessages();
       loadUsers(); // Charger les utilisateurs pour tous les utilisateurs authentifiés
     }
-  }, [session, status, router, filter]);
+  }, [session, status, router, filter, selectedDossierId]);
 
   const loadMessages = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await messagesAPI.getMessages({ type: filter });
+      const params: any = { type: filter };
+      if (selectedDossierId) {
+        params.dossierId = selectedDossierId;
+      }
+      const response = await messagesAPI.getMessages(params);
       if (response.data.success) {
         setMessages(response.data.messages || []);
+        // Si le backend renvoie des threads, les utiliser
+        if (response.data.threads) {
+          setThreads(response.data.threads);
+        } else {
+          // Sinon, créer des threads à partir des messages
+          const threadsMap = new Map();
+          const rootMessages: any[] = [];
+          
+          (response.data.messages || []).forEach((message: any) => {
+            if (!message.messageParent) {
+              rootMessages.push(message);
+              threadsMap.set(message._id || message.id, [message]);
+            } else {
+              const parentId = message.messageParent?._id || message.messageParent || message.messageParent;
+              if (!threadsMap.has(parentId)) {
+                threadsMap.set(parentId, []);
+              }
+              threadsMap.get(parentId).push(message);
+            }
+          });
+          
+          const threadsList = rootMessages.map(root => {
+            const threadMessages = threadsMap.get(root._id || root.id) || [root];
+            threadMessages.sort((a: any, b: any) => new Date(a.createdAt) - new Date(b.createdAt));
+            return {
+              root: root,
+              messages: threadMessages,
+              lastMessage: threadMessages[threadMessages.length - 1]
+            };
+          });
+          
+          threadsList.sort((a: any, b: any) => 
+            new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt)
+          );
+          
+          setThreads(threadsList);
+        }
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des messages:', err);
@@ -93,6 +146,21 @@ export default function MessagesPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des utilisateurs:', err);
+    }
+  };
+
+  const loadDossiers = async () => {
+    try {
+      const response = await dossiersAPI.getMyDossiers();
+      if (response.data.success) {
+        const list = response.data.dossiers || [];
+        setDossiers(list);
+        if (!selectedDossierId && list.length === 1) {
+          setOnlyThreadId(list[0]._id || list[0].id);
+        }
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des dossiers pour la messagerie:', err);
     }
   };
 
@@ -120,11 +188,17 @@ export default function MessagesPage() {
     setError(null);
 
     try {
-      // Pour les clients, pas besoin de destinataires - le message va automatiquement à tous les admins
+      // Pour les clients, le message doit être rattaché à un dossier
+      if (!selectedDossierId) {
+        setError('Vous devez sélectionner un dossier pour envoyer un message.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
-      // Pas de destinataires pour les clients - le backend gère automatiquement
+      formDataToSend.append('dossierId', selectedDossierId);
 
       // Ajouter les pièces jointes
       attachments.forEach((file) => {
@@ -164,6 +238,57 @@ export default function MessagesPage() {
     }
   };
 
+  const handleReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMessage) return;
+    
+    setIsReplying(true);
+    setError(null);
+
+    try {
+      if (!selectedMessage) {
+        setError('Aucun message sélectionné.');
+        setIsReplying(false);
+        return;
+      }
+
+      const dossierId = selectedMessage.dossierId || selectedDossierId;
+      if (!dossierId) {
+        setError('Ce message n\'est rattaché à aucun dossier. La réponse ne peut pas être envoyée.');
+        setIsReplying(false);
+        return;
+      }
+
+      // Pour les clients, la réponse va automatiquement à tous les admins mais doit être rattachée au même dossier
+      const formDataToSend = new FormData();
+      formDataToSend.append('sujet', replyData.sujet);
+      formDataToSend.append('contenu', replyData.contenu);
+      const messageParentId = selectedMessage.messageParent?._id || selectedMessage.messageParent || selectedMessage._id || selectedMessage.id;
+      formDataToSend.append('messageParent', messageParentId);
+      formDataToSend.append('dossierId', dossierId);
+
+      // Ajouter les pièces jointes
+      replyAttachments.forEach((file) => {
+        formDataToSend.append('piecesJointes', file);
+      });
+
+      const response = await messagesAPI.sendMessage(formDataToSend);
+      if (response.data.success) {
+        alert('Réponse envoyée avec succès à tous les administrateurs !');
+        setShowReplyModal(false);
+        setReplyData({ sujet: '', contenu: '' });
+        setReplyAttachments([]);
+        loadMessages();
+        setSelectedMessage(null);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors de l\'envoi de la réponse:', err);
+      setError(err.response?.data?.message || 'Erreur lors de l\'envoi de la réponse');
+    } finally {
+      setIsReplying(false);
+    }
+  };
+
   const formatDate = (date: string | Date) => {
     const d = new Date(date);
     const now = new Date();
@@ -200,12 +325,38 @@ export default function MessagesPage() {
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-4xl font-bold mb-2">Messagerie</h1>
             <p className="text-muted-foreground">Communiquez avec {isAdmin ? 'les utilisateurs' : 'l\'équipe administrative'}</p>
           </div>
-          <Button onClick={() => setShowComposeModal(true)}>+ Nouveau message</Button>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Dossier :</span>
+              <select
+                value={selectedDossierId}
+                onChange={(e) => setSelectedDossierId(e.target.value)}
+                className="px-3 py-2 border border-input rounded-md text-sm bg-background"
+              >
+                <option value="">Sélectionnez un dossier</option>
+                {dossiers.map((dossier) => (
+                  <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
+                    {dossier.titre || dossier.numero || 'Dossier'} – {dossier.numero}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowComposeModal(true)} disabled={!selectedDossierId}>
+                + Nouveau message
+              </Button>
+            </div>
+            {!selectedDossierId && (
+              <p className="text-xs text-red-600 max-w-xs text-right">
+                Vous devez sélectionner un dossier pour rédiger ou répondre à un message.
+              </p>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -460,7 +611,135 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 )}
+                
+                {/* Bouton Répondre - uniquement pour les messages reçus */}
+                {selectedMessage.destinataires?.some((d: any) => 
+                  d._id?.toString() === (session?.user as any)?.id?.toString() || 
+                  d.toString() === (session?.user as any)?.id?.toString()
+                ) && (
+                  <div className="pt-4 border-t flex justify-end">
+                    <Button 
+                      onClick={() => {
+                        setReplyData({
+                          sujet: `Re: ${selectedMessage.sujet}`,
+                          contenu: '',
+                        });
+                        setShowReplyModal(true);
+                      }}
+                    >
+                      Répondre
+                    </Button>
+                  </div>
+                )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de réponse */}
+        {showReplyModal && selectedMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Répondre</h2>
+                <button 
+                  onClick={() => {
+                    setShowReplyModal(false);
+                    setReplyData({ sujet: '', contenu: '' });
+                    setReplyAttachments([]);
+                  }} 
+                  className="text-muted-foreground hover:text-foreground text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+              <form onSubmit={handleReply} className="p-6 space-y-4">
+                {/* Pour les clients : réponse automatiquement envoyée à tous les admins */}
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">ℹ️</span>
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900 mb-1">Réponse automatique aux administrateurs</p>
+                      <p className="text-xs text-blue-700">
+                        Votre réponse sera automatiquement envoyée à tous les administrateurs de l'équipe.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="reply-sujet">Sujet *</Label>
+                  <Input
+                    id="reply-sujet"
+                    value={replyData.sujet}
+                    onChange={(e) => setReplyData({ ...replyData, sujet: e.target.value })}
+                    required
+                    className="mt-1"
+                    placeholder="Sujet de la réponse"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="reply-contenu">Message *</Label>
+                  <Textarea
+                    id="reply-contenu"
+                    value={replyData.contenu}
+                    onChange={(e) => setReplyData({ ...replyData, contenu: e.target.value })}
+                    required
+                    className="mt-1"
+                    placeholder="Votre réponse..."
+                    rows={6}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="reply-attachments">Pièces jointes (max 5 fichiers, 10MB chacun)</Label>
+                  <Input
+                    id="reply-attachments"
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      if (files.length > 5) {
+                        alert('Maximum 5 fichiers autorisés');
+                        return;
+                      }
+                      setReplyAttachments(files);
+                    }}
+                    className="mt-1"
+                  />
+                  {replyAttachments.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {replyAttachments.map((file, index) => (
+                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between">
+                          <span>📎 {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                          <button
+                            type="button"
+                            onClick={() => setReplyAttachments(replyAttachments.filter((_, i) => i !== index))}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowReplyModal(false);
+                      setReplyData({ sujet: '', contenu: '' });
+                      setReplyAttachments([]);
+                    }} 
+                    disabled={isReplying}
+                  >
+                    Annuler
+                  </Button>
+                  <Button type="submit" disabled={isReplying}>
+                    {isReplying ? 'Envoi...' : 'Envoyer la réponse'}
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         )}

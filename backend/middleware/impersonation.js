@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Log = require('../models/Log');
+const Notification = require('../models/Notification');
 
 /**
  * Middleware pour gérer l'impersonation
@@ -120,5 +121,109 @@ const logImpersonationAction = async (req, action, description, metadata = {}) =
   }
 };
 
-module.exports = { handleImpersonation, logImpersonationAction };
+/**
+ * Helper pour notifier l'utilisateur impersonné et tous les autres administrateurs
+ * lorsqu'une action est effectuée en mode impersonation
+ */
+const notifyImpersonationAction = async (req, actionType, titre, message, lien = null, metadata = {}) => {
+  if (!req.impersonateUserId) return; // Pas d'impersonation, pas de notification spéciale
+
+  try {
+    const adminName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email;
+    const targetUserName = req.impersonateTargetUser 
+      ? `${req.impersonateTargetUser.firstName || ''} ${req.impersonateTargetUser.lastName || ''}`.trim() || req.impersonateTargetUser.email
+      : 'Utilisateur';
+
+    // 1. Notifier l'utilisateur impersonné
+    if (req.impersonateUserId) {
+      try {
+        await Notification.create({
+          user: req.impersonateUserId,
+          type: actionType || 'other',
+          titre: titre || 'Action effectuée sur votre compte',
+          message: message || `L'administrateur ${adminName} a effectué une action sur votre compte en mode impersonation.`,
+          lien: lien,
+          metadata: {
+            ...metadata,
+            impersonation: true,
+            adminId: req.impersonateAdminId,
+            adminEmail: req.user.email,
+            adminName: adminName
+          }
+        });
+        console.log(`✅ Notification envoyée à l'utilisateur impersonné: ${req.impersonateTargetUser?.email}`);
+      } catch (notifError) {
+        console.error('❌ Erreur lors de la notification de l\'utilisateur impersonné:', notifError);
+      }
+    }
+
+    // 2. Notifier tous les autres administrateurs (sauf celui qui effectue l'action)
+    try {
+      const otherAdmins = await User.find({
+        role: { $in: ['admin', 'superadmin'] },
+        _id: { $ne: req.impersonateAdminId }, // Exclure l'admin qui effectue l'action
+        isActive: true
+      });
+
+      const adminNotificationMessage = `L'administrateur ${adminName} (${req.user.email}) a effectué l'action suivante sur le compte de ${targetUserName} (${req.impersonateTargetUser?.email}) en mode impersonation : ${message || 'Action effectuée'}`;
+
+      for (const admin of otherAdmins) {
+        try {
+          await Notification.create({
+            user: admin._id,
+            type: actionType || 'other',
+            titre: titre || `Action impersonation - ${targetUserName}`,
+            message: adminNotificationMessage,
+            lien: lien,
+            metadata: {
+              ...metadata,
+              impersonation: true,
+              adminId: req.impersonateAdminId,
+              adminEmail: req.user.email,
+              adminName: adminName,
+              targetUserId: req.impersonateUserId,
+              targetUserEmail: req.impersonateTargetUser?.email,
+              targetUserName: targetUserName
+            }
+          });
+        } catch (adminNotifError) {
+          console.error(`❌ Erreur lors de la notification de l'admin ${admin.email}:`, adminNotifError);
+        }
+      }
+      console.log(`✅ Notifications envoyées à ${otherAdmins.length} administrateur(s)`);
+    } catch (adminsError) {
+      console.error('❌ Erreur lors de la notification des administrateurs:', adminsError);
+    }
+
+    // 3. Logger l'action
+    await logImpersonationAction(req, actionType || 'action', message || 'Action effectuée en mode impersonation', metadata);
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la notification d\'action impersonation:', error);
+    // Ne pas bloquer l'action principale si les notifications échouent
+  }
+};
+
+/**
+ * Helper pour obtenir l'ID utilisateur effectif (impersonné si en impersonation, sinon l'utilisateur connecté)
+ * Cette fonction doit être utilisée partout où on enregistre une action au nom d'un utilisateur
+ */
+const getEffectiveUserId = (req) => {
+  return req.impersonateUserId || req.user?.id || null;
+};
+
+/**
+ * Helper pour obtenir l'utilisateur effectif (impersonné si en impersonation, sinon l'utilisateur connecté)
+ */
+const getEffectiveUser = (req) => {
+  return req.impersonateTargetUser || req.user || null;
+};
+
+module.exports = { 
+  handleImpersonation, 
+  logImpersonationAction, 
+  notifyImpersonationAction,
+  getEffectiveUserId,
+  getEffectiveUser
+};
 

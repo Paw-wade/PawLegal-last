@@ -49,23 +49,46 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const impersonateUserId = localStorage.getItem('impersonateUserId');
-      setIsImpersonating(!!impersonateUserId);
-      
-      if (impersonateUserId) {
-        // Récupérer les infos de l'utilisateur impersonné si nécessaire
-        // Pour l'instant, on utilise juste le flag
+    const checkImpersonation = () => {
+      if (typeof window !== 'undefined') {
+        const impersonateUserId = localStorage.getItem('impersonateUserId');
+        setIsImpersonating(!!impersonateUserId);
       }
-    }
-  }, []);
+    };
+
+    // Vérifier immédiatement
+    checkImpersonation();
+
+    // Écouter les changements de localStorage (pour détecter les changements d'impersonation)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'impersonateUserId') {
+        checkImpersonation();
+      }
+    };
+
+    // Écouter les événements de stockage (pour les changements dans d'autres onglets)
+    window.addEventListener('storage', handleStorageChange);
+
+    // Vérifier périodiquement (pour les changements dans le même onglet)
+    const interval = setInterval(checkImpersonation, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [pathname]); // Re-vérifier quand la route change
 
   // Déterminer le rôle à utiliser (impersonné ou réel)
   const userRole = (session?.user as any)?.role || 'client';
-  const effectiveRole = isImpersonating ? 'client' : userRole;
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  
+  // IMPORTANT: Les admins ne voient le menu client QUE s'ils sont en mode impersonation
+  // Sinon, ils voient toujours le menu admin
+  const effectiveRole = isImpersonating ? 'client' : (isAdmin ? 'admin' : 'client');
 
   // Sélectionner les items de menu selon le rôle
-  const menuItems = effectiveRole === 'admin' || effectiveRole === 'superadmin' 
+  // Pour les admins : menu admin par défaut, menu client uniquement en impersonation
+  const menuItems = (isAdmin && !isImpersonating) 
     ? adminMenuItems 
     : clientMenuItems;
 
@@ -156,13 +179,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Footer de la sidebar */}
         <div className="p-4 border-t border-gray-200">
           <div className="text-xs text-muted-foreground text-center">
-            <p className="font-semibold text-gray-600">
-              {effectiveRole === 'admin' || effectiveRole === 'superadmin' 
-                ? 'Mode Administrateur' 
-                : 'Mode Client'}
-            </p>
-            {isImpersonating && (
-              <p className="text-yellow-600 mt-1">🔑 Impersonation active</p>
+            {isAdmin ? (
+              <p className="font-semibold text-gray-600">
+                Mode Administrateur
+              </p>
+            ) : (
+              <p className="font-semibold text-gray-600">
+                Mode Client
+              </p>
             )}
           </div>
         </div>

@@ -77,7 +77,25 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
         console.log('🔑 Token ajouté à la requête:', config.url);
       } else {
-        console.warn('⚠️ Aucun token trouvé pour la requête:', config.url);
+        // Ne pas spammer la console pour les routes publiques
+        const url = config.url || '';
+        const isPublicEndpoint =
+          url.includes('/creneaux/available') ||
+          url.includes('/temoignages') ||
+          url.includes('/contact');
+
+        // Avertir seulement si une route clairement protégée part sans token
+        const isProtectedEndpoint =
+          url.includes('/user') ||
+          url.includes('/appointments') ||
+          url.includes('/dossiers') ||
+          url.includes('/messages') ||
+          url.includes('/notifications') ||
+          url.includes('/tasks');
+
+        if (isProtectedEndpoint && !isPublicEndpoint) {
+          console.warn('⚠️ Aucun token trouvé pour une requête protégée :', config.url);
+        }
       }
       
       // Ajouter le header d'impersonation si on est en mode impersonation
@@ -507,6 +525,11 @@ export const tasksAPI = {
     commentaireEffectue?: string;
   }) => {
     return api.put(`/tasks/${id}`, data);
+  },
+  
+  // Ajouter une note/commentaire à une tâche
+  addNoteToTask: (id: string, data: { contenu: string }) => {
+    return api.post(`/tasks/${id}/notes`, data);
   },
   
   // Supprimer une tâche (Admin)

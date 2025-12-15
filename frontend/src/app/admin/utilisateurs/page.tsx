@@ -814,22 +814,6 @@ export default function AdminUtilisateursPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold text-primary">Paw Legal - Admin</Link>
-            <nav className="hidden md:flex items-center gap-6">
-              <Link href="/admin" className="hover:text-primary">Tableau de bord</Link>
-              <Link href="/admin/utilisateurs" className="text-primary font-medium">Utilisateurs</Link>
-              <Link href="/admin/dossiers" className="hover:text-primary">Dossiers</Link>
-              <Link href="/admin/documents" className="hover:text-primary">Documents</Link>
-              <Link href="/admin/rendez-vous" className="hover:text-primary">Rendez-vous</Link>
-            </nav>
-            <Button variant="ghost" onClick={() => signOut({ callbackUrl: '/' })}>Déconnexion</Button>
-          </div>
-        </div>
-      </header>
-
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Gestion des Utilisateurs</h1>

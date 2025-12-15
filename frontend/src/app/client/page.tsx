@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
-import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel } from '@/lib/dossierUtils';
 
@@ -38,6 +37,7 @@ function ClientDashboardContent() {
   const [unreadMessage, setUnreadMessage] = useState<any>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hasCheckedMessages, setHasCheckedMessages] = useState(false);
+  const [messagesPreview, setMessagesPreview] = useState<any[]>([]);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
   const [hasToken, setHasToken] = useState(false);
@@ -93,16 +93,13 @@ function ClientDashboardContent() {
       }
       
       // Si admin et pas en mode impersonation, rediriger vers l'espace admin
-      // MAIS seulement si l'admin accède directement à /client (pas s'il a cliqué sur "Vue Client")
+      // Les admins n'ont PAS accès à la vue client (seule l'impersonation permet l'accès)
       if (((session.user as any)?.role === 'admin' || (session.user as any)?.role === 'superadmin') && !isImpersonating) {
         // Ne pas rediriger si on est en mode impersonation
         if (!impersonateUserId) {
-          // Vérifier si l'admin a explicitement demandé la vue client (via localStorage)
-          const wantsClientView = typeof window !== 'undefined' && localStorage.getItem('adminWantsClientView') === 'true';
-          if (!wantsClientView) {
-            router.push('/admin');
-            return;
-          }
+          console.log('🚫 Admin tentant d\'accéder à la vue client sans impersonation - redirection vers /admin');
+          router.push('/admin');
+          return;
         }
       }
 
@@ -207,7 +204,11 @@ function ClientDashboardContent() {
         const latestMessage = response.data.messages[0];
         setUnreadMessage(latestMessage);
         setShowMessageModal(true);
+        // Garder un aperçu des 3 derniers messages pour le bloc messagerie du dashboard
+        setMessagesPreview(response.data.messages.slice(0, 3));
         setHasCheckedMessages(true);
+      } else {
+        setMessagesPreview([]);
       }
     } catch (error) {
       console.error('Erreur lors de la vérification des messages:', error);
@@ -408,15 +409,7 @@ function ClientDashboardContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
       <main className="container mx-auto px-4 py-8">
-        {/* Banner d'impersonation */}
         <div id="dashboard-top" className="scroll-mt-20"></div>
-        {isImpersonating && impersonatedUser && (
-          <ImpersonationBanner
-            userName={userName}
-            userEmail={userEmail}
-            onStopImpersonating={stopImpersonating}
-          />
-        )}
 
         {/* En-tête de bienvenue */}
         <div className="mb-8">
@@ -427,23 +420,6 @@ function ClientDashboardContent() {
               </h1>
               <p className="text-muted-foreground text-lg">Gérez vos dossiers et suivez l'avancement de vos démarches</p>
             </div>
-            
-            {/* Navigation rapide vers le dashboard admin si l'utilisateur est admin */}
-            {((session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'superadmin') && (
-              <Link href="/admin">
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border-2 border-orange-200 hover:border-orange-400 hover:shadow-lg transition-all duration-200 cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                      <span className="text-xl">⚙️</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-orange-900">Vue Admin</p>
-                      <p className="text-xs text-orange-700">Accéder au dashboard administrateur</p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            )}
             
             {/* Badge de renouvellement du titre de séjour */}
             {hasTitreInfoValue && daysRemainingValue !== null && (
@@ -638,6 +614,57 @@ function ClientDashboardContent() {
             </div>
           </Link>
 
+        </div>
+
+        {/* Bloc messagerie sur le dashboard client */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2" />
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <span>✉️ Messagerie</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Retrouvez vos échanges avec l&apos;équipe juridique.
+                  </p>
+                </div>
+                <Link href="/client/messages">
+                  <Button variant="outline" className="text-xs">
+                    Ouvrir la messagerie
+                  </Button>
+                </Link>
+              </div>
+              {messagesPreview.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Aucun message non lu pour le moment.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {messagesPreview.map((msg) => (
+                    <Link
+                      key={msg._id || msg.id}
+                      href={`/client/messages/${msg._id || msg.id}`}
+                      className="block rounded-lg border border-gray-100 px-3 py-2 hover:bg-primary/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate">{msg.sujet}</p>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2">
+                            {msg.contenu}
+                          </p>
+                        </div>
+                        <span className="ml-2 flex-shrink-0 rounded-full bg-primary text-white text-[10px] px-2 py-0.5">
+                          Voir
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Dernières activités */}

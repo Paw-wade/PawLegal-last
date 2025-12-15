@@ -39,15 +39,6 @@ export default function AdminDashboardPage() {
   const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
   const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
   const [weekTasks, setWeekTasks] = useState<any[]>([]);
-  // États pour les dossiers
-  const [dossiers, setDossiers] = useState<any[]>([]);
-  const [dossierFilter, setDossierFilter] = useState<'all' | 'recu' | 'en_cours_instruction' | 'decision_favorable' | 'decision_defavorable'>('all');
-  const [dossierPriorityFilter, setDossierPriorityFilter] = useState<'all' | 'urgente' | 'haute' | 'normale' | 'basse'>('all');
-  const [dossierCategorieFilter, setDossierCategorieFilter] = useState<string>('all');
-  // États pour les rendez-vous
-  const [allAppointments, setAllAppointments] = useState<any[]>([]);
-  const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'confirme' | 'en_attente' | 'annule' | 'termine'>('all');
-  const [appointmentDateFilter, setAppointmentDateFilter] = useState<'all' | 'today' | 'tomorrow' | 'week'>('all');
   // Fonction pour obtenir la date du jour au format YYYY-MM-DD
   const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -63,6 +54,7 @@ export default function AdminDashboardPage() {
   // État pour gérer l'index du document affiché pour chaque utilisateur
   const [documentIndices, setDocumentIndices] = useState<{ [userId: string]: number }>({});
   const [unreadMessage, setUnreadMessage] = useState<any>(null);
+  const [messagesPreview, setMessagesPreview] = useState<any[]>([]);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hasCheckedMessages, setHasCheckedMessages] = useState(false);
   const [showTasksNotificationModal, setShowTasksNotificationModal] = useState(false);
@@ -78,7 +70,13 @@ export default function AdminDashboardPage() {
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [isUpdatingTaskAssignment, setIsUpdatingTaskAssignment] = useState(false);
   const [newAssigneeId, setNewAssigneeId] = useState<string>('');
+  const [isDocumentsSectionCollapsed, setIsDocumentsSectionCollapsed] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const hasChecked = useRef(false);
+  const [newTaskNote, setNewTaskNote] = useState('');
+  const [isAddingTaskNote, setIsAddingTaskNote] = useState(false);
+  const [taskNotesError, setTaskNotesError] = useState<string | null>(null);
 
   useEffect(() => {
     // Empêcher les vérifications multiples
@@ -114,8 +112,6 @@ export default function AdminDashboardPage() {
     loadTeamMembers();
     checkUnreadMessages();
     loadNotifications();
-    loadDossiers();
-    loadAllAppointments();
   }, [session, status]);
 
   // Vérifier les messages non lus à la connexion
@@ -129,7 +125,11 @@ export default function AdminDashboardPage() {
         const latestMessage = response.data.messages[0];
         setUnreadMessage(latestMessage);
         setShowMessageModal(true);
+        // Garder un aperçu des 3 derniers messages pour le dashboard
+        setMessagesPreview(response.data.messages.slice(0, 3));
         setHasCheckedMessages(true);
+      } else {
+        setMessagesPreview([]);
       }
     } catch (error) {
       console.error('Erreur lors de la vérification des messages:', error);
@@ -262,29 +262,8 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const loadDossiers = async () => {
-    try {
-      const response = await dossiersAPI.getAllDossiers();
-      if (response.data.success) {
-        const allDossiers = response.data.dossiers || [];
-        setDossiers(allDossiers);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des dossiers:', error);
-    }
-  };
+  // Fonction loadDossiers supprimée car les dossiers ne sont plus affichés sur le dashboard
 
-  const loadAllAppointments = async () => {
-    try {
-      const response = await appointmentsAPI.getAllAppointments();
-      if (response.data.success) {
-        const appointments = response.data.data || response.data.appointments || [];
-        setAllAppointments(appointments);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des rendez-vous:', error);
-    }
-  };
 
   const loadTeamMembers = async () => {
     try {
@@ -381,6 +360,56 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleOpenTaskDetail = async (task: any) => {
+    try {
+      setTaskNotesError(null);
+      setNewTaskNote('');
+      // Recharger la tâche depuis l'API pour inclure l'historique des commentaires
+      const id = task._id || task.id;
+      const response = await tasksAPI.getTaskById(id);
+      if (response.data.success && response.data.task) {
+        setSelectedTaskDetail(response.data.task);
+      } else {
+        setSelectedTaskDetail(task);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement du détail de la tâche:', error);
+      // En cas d'erreur, afficher au moins les infos de base déjà chargées
+      setSelectedTaskDetail(task);
+    } finally {
+      setShowTaskDetailModal(true);
+    }
+  };
+
+  const handleAddTaskNote = async () => {
+    if (!selectedTaskDetail || !newTaskNote.trim()) return;
+    try {
+      setIsAddingTaskNote(true);
+      setTaskNotesError(null);
+      const id = selectedTaskDetail._id || selectedTaskDetail.id;
+      const response = await tasksAPI.addNoteToTask(id, { contenu: newTaskNote.trim() });
+      if (response.data.success && response.data.task) {
+        const updatedTask = response.data.task;
+        // Mettre à jour le détail
+        setSelectedTaskDetail(updatedTask);
+        // Mettre à jour la liste principale
+        setTasks(prev =>
+          prev.map((t: any) => (t._id === updatedTask._id ? { ...t, ...updatedTask } : t))
+        );
+        setNewTaskNote('');
+      } else {
+        setTaskNotesError(response.data.message || 'Erreur lors de l\'ajout de la note');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de l\'ajout de la note de tâche:', error);
+      setTaskNotesError(
+        error.response?.data?.message || 'Erreur lors de l\'ajout de la note de tâche'
+      );
+    } finally {
+      setIsAddingTaskNote(false);
+    }
+  };
+
   const handleUpdateTaskAssignment = async () => {
     if (!selectedTaskDetail || !newAssigneeId) {
       return;
@@ -470,14 +499,62 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleInlineStatusChange = async (task: any, newStatus: string) => {
+    if (!newStatus || task.statut === newStatus) return;
+    setUpdatingTaskId(task._id);
+    try {
+      const response = await tasksAPI.updateTask(task._id, { statut: newStatus });
+      if (response.data.success) {
+        const updatedTask = response.data.task;
+        setTasks(prev =>
+          prev.map((t: any) => (t._id === updatedTask._id ? updatedTask : t))
+        );
+        if (selectedTaskDetail && selectedTaskDetail._id === updatedTask._id) {
+          setSelectedTaskDetail(updatedTask);
+        }
+      } else {
+        alert(response.data.message || 'Erreur lors de la mise à jour du statut de la tâche');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour du statut de la tâche:', error);
+      alert(error.response?.data?.message || 'Erreur lors de la mise à jour du statut de la tâche');
+    } finally {
+      setUpdatingTaskId(null);
+    }
+  };
+
+  const handleInlinePriorityChange = async (task: any, newPriority: string) => {
+    if (!newPriority || task.priorite === newPriority) return;
+    setUpdatingTaskId(task._id);
+    try {
+      const response = await tasksAPI.updateTask(task._id, { priorite: newPriority });
+      if (response.data.success) {
+        const updatedTask = response.data.task;
+        setTasks(prev =>
+          prev.map((t: any) => (t._id === updatedTask._id ? updatedTask : t))
+        );
+        if (selectedTaskDetail && selectedTaskDetail._id === updatedTask._id) {
+          setSelectedTaskDetail(updatedTask);
+        }
+      } else {
+        alert(response.data.message || 'Erreur lors de la mise à jour de la priorité de la tâche');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de la mise à jour de la priorité de la tâche:', error);
+      alert(error.response?.data?.message || 'Erreur lors de la mise à jour de la priorité de la tâche');
+    } finally {
+      setUpdatingTaskId(null);
+    }
+  };
+
   const getStatutColor = (statut: string) => {
     switch (statut) {
       case 'termine':
         return 'bg-green-100 text-green-800';
       case 'en_cours':
-        return 'bg-blue-100 text-blue-800';
-      case 'en_attente':
         return 'bg-yellow-100 text-yellow-800';
+      case 'en_attente':
+        return 'bg-blue-100 text-blue-800';
       case 'annule':
         return 'bg-red-100 text-red-800';
       default:
@@ -490,7 +567,7 @@ export default function AdminDashboardPage() {
       'a_faire': 'À faire',
       'en_cours': 'En cours',
       'en_attente': 'En attente',
-      'termine': 'Terminé',
+      'termine': 'Terminée',
       'annule': 'Annulé',
     };
     return labels[statut] || statut;
@@ -723,7 +800,7 @@ export default function AdminDashboardPage() {
           </Link>
           </div>
 
-          {/* Navigation rapide vers le dashboard client */}
+          {/* Navigation rapide vers l'impersonation */}
           <Link href="/admin/impersonate" className="group">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 border-2 border-blue-200 hover:border-blue-400 hover:scale-105">
               <div className="flex items-center gap-4 mb-4">
@@ -731,8 +808,8 @@ export default function AdminDashboardPage() {
                   <span className="text-3xl">👤</span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-foreground group-hover:text-blue-600 transition-colors mb-1">Vue Client</h3>
-                  <p className="text-sm text-muted-foreground">Dashboard utilisateur</p>
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-blue-600 transition-colors mb-1">Impersonation</h3>
+                  <p className="text-sm text-muted-foreground">Consulter un compte client</p>
                 </div>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-blue-200">
@@ -743,6 +820,57 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </Link>
+        </div>
+
+        {/* Colonne droite : bloc messagerie intégré au dashboard */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2" />
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <span>✉️ Messagerie interne</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Accédez rapidement à vos échanges avec les clients et l&apos;équipe.
+                  </p>
+                </div>
+                <Link href="/admin/messages">
+                  <Button variant="outline" className="text-xs">
+                    Ouvrir la messagerie
+                  </Button>
+                </Link>
+              </div>
+              {messagesPreview.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Aucun message non lu pour le moment.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {messagesPreview.map((msg) => (
+                    <Link
+                      key={msg._id || msg.id}
+                      href={`/admin/messages/${msg._id || msg.id}`}
+                      className="block rounded-lg border border-gray-100 px-3 py-2 hover:bg-primary/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate">{msg.sujet}</p>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2">
+                            {msg.contenu}
+                          </p>
+                        </div>
+                        <span className="ml-2 flex-shrink-0 rounded-full bg-primary text-white text-[10px] px-2 py-0.5">
+                          Voir
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Section Gestion des Tâches */}
@@ -764,31 +892,63 @@ export default function AdminDashboardPage() {
             </Button>
           </div>
 
-          {/* Statistiques des tâches */}
+          {/* Statistiques des tâches (badges cliquables pour filtrer) */}
           {tasks.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <button
+                type="button"
+                onClick={() => setTaskFilter('all')}
+                className={`text-left bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm transition-all ${
+                  taskFilter === 'all'
+                    ? 'ring-2 ring-blue-500/60 shadow-md'
+                    : 'hover:shadow-md hover:-translate-y-0.5'
+                }`}
+              >
                 <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
                 <p className="text-2xl font-bold text-blue-900">{tasks.length}</p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFilter('a_faire')}
+                className={`text-left bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm transition-all ${
+                  taskFilter === 'a_faire' || taskFilter === 'en_attente'
+                    ? 'ring-2 ring-yellow-500/60 shadow-md'
+                    : 'hover:shadow-md hover:-translate-y-0.5'
+                }`}
+              >
                 <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">À faire</p>
                 <p className="text-2xl font-bold text-yellow-900">
                   {tasks.filter((t: any) => t.statut === 'a_faire' || t.statut === 'en_attente').length}
                 </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-lg p-4 shadow-sm">
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFilter('en_cours')}
+                className={`text-left bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-lg p-4 shadow-sm transition-all ${
+                  taskFilter === 'en_cours'
+                    ? 'ring-2 ring-purple-500/60 shadow-md'
+                    : 'hover:shadow-md hover:-translate-y-0.5'
+                }`}
+              >
                 <p className="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">En cours</p>
                 <p className="text-2xl font-bold text-purple-900">
                   {tasks.filter((t: any) => t.statut === 'en_cours').length}
                 </p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFilter('termine')}
+                className={`text-left bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm transition-all ${
+                  taskFilter === 'termine'
+                    ? 'ring-2 ring-green-500/60 shadow-md'
+                    : 'hover:shadow-md hover:-translate-y-0.5'
+                }`}
+              >
                 <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Terminées</p>
                 <p className="text-2xl font-bold text-green-900">
                   {tasks.filter((t: any) => t.statut === 'termine' || t.effectue).length}
                 </p>
-              </div>
+              </button>
             </div>
           )}
 
@@ -895,23 +1055,37 @@ export default function AdminDashboardPage() {
               );
             }
 
+            // Afficher sur 2 lignes (max 6 tâches) si plus de 6 tâches
+            const maxVisibleTasks = 6;
+            const tasksToShow = showAllTasks ? filteredTasks : filteredTasks.slice(0, maxVisibleTasks);
+            const hasMoreTasks = filteredTasks.length > maxVisibleTasks;
+
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredTasks.map((task: any) => {
+              <div className="space-y-4">
+                {/* Conteneur avec scroll horizontal si plus de 6 tâches */}
+                <div className={`${hasMoreTasks && !showAllTasks ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'}`}>
+                  {tasksToShow.map((task: any) => {
                   const isUrgent = task.dateEcheance && new Date(task.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
                   const isOverdue = task.dateEcheance && new Date(task.dateEcheance) < new Date();
                   
                   return (
                     <div 
                       key={task._id} 
-                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
-                        isOverdue && !task.effectue
-                          ? 'border-red-400 bg-red-50/50'
-                          : isUrgent && !task.effectue
-                          ? 'border-orange-400 bg-orange-50/50'
-                          : task.effectue
-                          ? 'border-green-300 bg-green-50/30'
-                          : 'border-orange-200 hover:border-orange-400'
+                      className={`rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
+                        // 1. Tâche terminée : vert
+                        (task.effectue || task.statut === 'termine')
+                          ? 'border-green-500 bg-green-50'
+                        // 2. Tâche dépassée (échéance passée et pas effectuée) : rouge
+                        : isOverdue
+                          ? 'border-red-500 bg-red-50'
+                        // 3. Tâche urgente (non terminée, non dépassée) : affichage dynamique, contrasté
+                        : task.priorite === 'urgente'
+                          ? 'border-red-500 bg-gradient-to-br from-red-50 via-yellow-50 to-red-100 animate-pulse'
+                        // 4. Tâche en cours : jaune
+                        : task.statut === 'en_cours'
+                          ? 'border-yellow-400 bg-yellow-50'
+                        // 5. Tâche en attente ou à faire : affichage normal
+                        : 'border-gray-200 bg-white'
                       }`}
                     >
                       {/* En-tête de la carte */}
@@ -921,13 +1095,39 @@ export default function AdminDashboardPage() {
                             {task.titre}
                           </h3>
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatutColor(task.statut)}`}>
-                              {getStatutLabel(task.statut)}
-                            </span>
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(task.priorite)}`}>
-                              {task.priorite === 'urgente' ? '🔴 ' : task.priorite === 'haute' ? '🟠 ' : ''}
-                              {task.priorite}
-                            </span>
+                            {/* Badge de statut interactif */}
+                            <div
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border ${getStatutColor(task.statut)} cursor-pointer bg-white`}
+                            >
+                              <span className="mr-1 text-[11px] text-gray-600">Statut :</span>
+                              <select
+                                value={task.statut}
+                                onChange={(e) => handleInlineStatusChange(task, e.target.value)}
+                                disabled={updatingTaskId === task._id}
+                                className="bg-transparent border-none text-xs font-semibold focus:outline-none focus:ring-0 cursor-pointer pr-4"
+                              >
+                                <option value="a_faire">À faire</option>
+                                <option value="en_cours">En cours</option>
+                                <option value="en_attente">En attente</option>
+                                <option value="termine">Terminée</option>
+                              </select>
+                            </div>
+                            <div
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border ${getPrioriteColor(task.priorite)} bg-white`}
+                            >
+                              <span className="mr-1 text-[11px] text-gray-600">Priorité :</span>
+                              <select
+                                value={task.priorite}
+                                onChange={(e) => handleInlinePriorityChange(task, e.target.value)}
+                                disabled={updatingTaskId === task._id}
+                                className="bg-transparent border-none text-xs font-semibold focus:outline-none focus:ring-0 cursor-pointer pr-4"
+                              >
+                                <option value="basse">Basse</option>
+                                <option value="normale">Normale</option>
+                                <option value="haute">Haute</option>
+                                <option value="urgente">Urgente</option>
+                              </select>
+                            </div>
                             {isOverdue && !task.effectue && (
                               <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
                                 ⚠️ En retard
@@ -982,542 +1182,117 @@ export default function AdminDashboardPage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2 flex-wrap">
                         <Button
-                          onClick={() => {
-                            setSelectedTaskDetail(task);
-                            setShowTaskDetailModal(true);
-                          }}
+                          onClick={() => handleOpenTaskDetail(task)}
                           variant="outline"
                           className="text-sm flex-1"
                         >
                           👁️ Voir détails
                         </Button>
-                        <Button
-                          onClick={() => {
-                            setSelectedTaskForStatus(task);
-                            setTaskStatusComment(task.commentaireEffectue || '');
-                            setShowTaskStatusModal(true);
-                          }}
-                          variant="outline"
-                          className="text-sm flex-1"
-                        >
-                          {task.effectue ? '✏️ Modifier' : '✅ Marquer effectuée'}
-                        </Button>
                       </div>
                     </div>
                   );
                 })}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Section Gestion des Dossiers */}
-        <div id="dossiers-management-section" className="bg-gradient-to-br from-white to-blue-50/30 rounded-2xl shadow-lg p-8 mb-8 border border-blue-200">
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-2xl">📁</span>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Gestion des Dossiers</h2>
-                  <p className="text-muted-foreground text-sm mt-1">Suivez et gérez tous les dossiers clients</p>
-                </div>
-              </div>
-            </div>
-            <Link href="/admin/dossiers">
-              <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md">
-                + Nouveau dossier
-              </Button>
-            </Link>
-          </div>
-
-          {/* Statistiques des dossiers */}
-          {dossiers.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
-                <p className="text-2xl font-bold text-blue-900">{dossiers.length}</p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
-                <p className="text-2xl font-bold text-yellow-900">
-                  {dossiers.filter((d: any) => d.statut === 'recu' || d.statut === 'en_attente_onboarding').length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">En cours</p>
-                <p className="text-2xl font-bold text-purple-900">
-                  {dossiers.filter((d: any) => d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet').length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Favorables</p>
-                <p className="text-2xl font-bold text-green-900">
-                  {dossiers.filter((d: any) => d.statut === 'decision_favorable' || d.statut === 'gain_cause').length}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Filtres */}
-          {dossiers.length > 0 && (
-            <div className="mb-6 flex flex-wrap gap-3 items-center bg-white rounded-lg p-4 border border-gray-200">
-              <span className="text-sm font-medium text-muted-foreground">Filtres:</span>
-              
-              {/* Filtre par statut */}
-              <select
-                value={dossierFilter}
-                onChange={(e) => setDossierFilter(e.target.value as any)}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">Tous les statuts</option>
-                <option value="recu">Reçu</option>
-                <option value="en_cours_instruction">En cours d'instruction</option>
-                <option value="decision_favorable">Décision favorable</option>
-                <option value="decision_defavorable">Décision défavorable</option>
-              </select>
-
-              {/* Filtre par priorité */}
-              <select
-                value={dossierPriorityFilter}
-                onChange={(e) => setDossierPriorityFilter(e.target.value as any)}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">Toutes les priorités</option>
-                <option value="urgente">Urgente</option>
-                <option value="haute">Haute</option>
-                <option value="normale">Normale</option>
-                <option value="basse">Basse</option>
-              </select>
-
-              {/* Bouton réinitialiser */}
-              {(dossierFilter !== 'all' || dossierPriorityFilter !== 'all' || dossierCategorieFilter !== 'all') && (
-                <button
-                  onClick={() => {
-                    setDossierFilter('all');
-                    setDossierPriorityFilter('all');
-                    setDossierCategorieFilter('all');
-                  }}
-                  className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                >
-                  Réinitialiser
-                </button>
-              )}
-            </div>
-          )}
-
-          {dossiers.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-4xl">📁</span>
-              </div>
-              <p className="text-muted-foreground mb-4 font-medium">Aucun dossier pour le moment</p>
-              <Link href="/admin/dossiers">
-                <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
-                  Créer le premier dossier
-                </Button>
-              </Link>
-            </div>
-          ) : (() => {
-            // Filtrer les dossiers
-            const filteredDossiers = dossiers.filter((dossier: any) => {
-              const matchStatut = dossierFilter === 'all' || dossier.statut === dossierFilter;
-              const matchPriority = dossierPriorityFilter === 'all' || dossier.priorite === dossierPriorityFilter;
-              const matchCategorie = dossierCategorieFilter === 'all' || dossier.categorie === dossierCategorieFilter;
-              return matchStatut && matchPriority && matchCategorie;
-            });
-
-            if (filteredDossiers.length === 0) {
-              return (
-                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                  <div className="text-4xl mb-4">🔍</div>
-                  <p className="text-muted-foreground mb-2 font-medium">Aucun dossier ne correspond aux filtres</p>
-                  <button
-                    onClick={() => {
-                      setDossierFilter('all');
-                      setDossierPriorityFilter('all');
-                      setDossierCategorieFilter('all');
-                    }}
-                    className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-                  >
-                    Réinitialiser les filtres
-                  </button>
-                </div>
-              );
-            }
-
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDossiers.slice(0, 9).map((dossier: any) => {
-                  const isUrgent = dossier.dateEcheance && new Date(dossier.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-                  const isOverdue = dossier.dateEcheance && new Date(dossier.dateEcheance) < new Date();
-                  
-                  return (
-                    <div 
-                      key={dossier._id} 
-                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
-                        isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule'
-                          ? 'border-red-400 bg-red-50/50'
-                          : isUrgent && dossier.priorite === 'urgente'
-                          ? 'border-orange-400 bg-orange-50/50'
-                          : dossier.statut === 'decision_favorable'
-                          ? 'border-green-300 bg-green-50/30'
-                          : 'border-blue-200 hover:border-blue-400'
-                      }`}
-                    >
-                      {/* En-tête de la carte */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-2 leading-tight">
-                            {dossier.titre || 'Sans titre'}
-                          </h3>
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
-                              {getStatutLabel(dossier.statut)}
-                            </span>
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPrioriteColor(dossier.priorite)}`}>
-                              {dossier.priorite === 'urgente' ? '🔴 ' : dossier.priorite === 'haute' ? '🟠 ' : ''}
-                              {dossier.priorite}
-                            </span>
-                            {isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' && (
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                                ⚠️ En retard
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      {dossier.description && (
-                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
-                          {dossier.description}
-                        </p>
-                      )}
-
-                      {/* Informations */}
-                      <div className="space-y-2 pt-3 border-t border-gray-100">
-                        {dossier.user && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-muted-foreground">👤</span>
-                            <span className="font-semibold text-foreground">
-                              {dossier.user.firstName ? `${dossier.user.firstName} ${dossier.user.lastName}` : dossier.clientNom ? `${dossier.clientPrenom} ${dossier.clientNom}` : 'Client'}
-                            </span>
-                          </div>
-                        )}
-                        {dossier.dateEcheance && (
-                          <div className={`flex items-center gap-2 text-xs ${isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' ? 'text-red-600 font-bold' : isUrgent && dossier.priorite === 'urgente' ? 'text-orange-600 font-semibold' : ''}`}>
-                            <span>⏰</span>
-                            <span>
-                              Échéance: {new Date(dossier.dateEcheance).toLocaleDateString('fr-FR', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </span>
-                            {isOverdue && dossier.statut !== 'decision_favorable' && dossier.statut !== 'annule' && <span className="text-red-600">⚠️</span>}
-                          </div>
-                        )}
-                        {dossier.categorie && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span>📋</span>
-                            <span className="font-semibold text-foreground truncate">{dossier.categorie.replace('_', ' ')}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
-                        <Link href={`/admin/dossiers/${dossier._id}`} className="flex-1">
-                          <Button variant="outline" className="text-sm w-full">
-                            👁️ Voir détails
-                          </Button>
-                        </Link>
-                        <Link href="/admin/dossiers" className="flex-1">
-                          <Button variant="outline" className="text-sm w-full">
-                            ✏️ Modifier
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Section Gestion des Rendez-vous */}
-        <div id="appointments-management-section" className="bg-gradient-to-br from-white to-green-50/30 rounded-2xl shadow-lg p-8 mb-8 border border-green-200">
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-2xl">📅</span>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Gestion des Rendez-vous</h2>
-                  <p className="text-muted-foreground text-sm mt-1">Gérez le calendrier et les rendez-vous clients</p>
-                </div>
-              </div>
-            </div>
-            <Link href="/admin/rendez-vous">
-              <Button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md">
-                + Nouveau rendez-vous
-              </Button>
-            </Link>
-          </div>
-
-          {/* Statistiques des rendez-vous */}
-          {allAppointments.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Total</p>
-                <p className="text-2xl font-bold text-green-900">{allAppointments.length}</p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Confirmés</p>
-                <p className="text-2xl font-bold text-blue-900">
-                  {allAppointments.filter((a: any) => a.statut === 'confirme').length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
-                <p className="text-2xl font-bold text-yellow-900">
-                  {allAppointments.filter((a: any) => a.statut === 'en_attente').length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-red-700 font-semibold mb-1 uppercase tracking-wide">Annulés</p>
-                <p className="text-2xl font-bold text-red-900">
-                  {allAppointments.filter((a: any) => a.statut === 'annule' || a.statut === 'annulé').length}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Filtres */}
-          {allAppointments.length > 0 && (
-            <div className="mb-6 flex flex-wrap gap-3 items-center bg-white rounded-lg p-4 border border-gray-200">
-              <span className="text-sm font-medium text-muted-foreground">Filtres:</span>
-              
-              {/* Filtre par statut */}
-              <select
-                value={appointmentFilter}
-                onChange={(e) => setAppointmentFilter(e.target.value as any)}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              >
-                <option value="all">Tous les statuts</option>
-                <option value="confirme">Confirmés</option>
-                <option value="en_attente">En attente</option>
-                <option value="termine">Terminés</option>
-                <option value="annule">Annulés</option>
-              </select>
-
-              {/* Filtre par date */}
-              <select
-                value={appointmentDateFilter}
-                onChange={(e) => setAppointmentDateFilter(e.target.value as any)}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              >
-                <option value="all">Toutes les dates</option>
-                <option value="today">Aujourd'hui</option>
-                <option value="tomorrow">Demain</option>
-                <option value="week">Cette semaine</option>
-              </select>
-
-              {/* Bouton réinitialiser */}
-              {(appointmentFilter !== 'all' || appointmentDateFilter !== 'all') && (
-                <button
-                  onClick={() => {
-                    setAppointmentFilter('all');
-                    setAppointmentDateFilter('all');
-                  }}
-                  className="px-3 py-1.5 text-sm text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
-                >
-                  Réinitialiser
-                </button>
-              )}
-            </div>
-          )}
-
-          {allAppointments.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-4xl">📅</span>
-              </div>
-              <p className="text-muted-foreground mb-4 font-medium">Aucun rendez-vous pour le moment</p>
-              <Link href="/admin/rendez-vous">
-                <Button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700">
-                  Créer le premier rendez-vous
-                </Button>
-              </Link>
-            </div>
-          ) : (() => {
-            // Filtrer les rendez-vous
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-            const filteredAppointments = allAppointments.filter((apt: any) => {
-              const matchStatut = appointmentFilter === 'all' || apt.statut === appointmentFilter;
-              
-              let matchDate = true;
-              if (appointmentDateFilter !== 'all' && apt.date) {
-                const aptDate = new Date(apt.date);
-                aptDate.setHours(0, 0, 0, 0);
                 
-                if (appointmentDateFilter === 'today') {
-                  matchDate = aptDate.getTime() === today.getTime();
-                } else if (appointmentDateFilter === 'tomorrow') {
-                  matchDate = aptDate.getTime() === tomorrow.getTime();
-                } else if (appointmentDateFilter === 'week') {
-                  matchDate = aptDate >= today && aptDate <= weekFromNow;
-                }
-              }
-              
-              return matchStatut && matchDate;
-            });
-
-            if (filteredAppointments.length === 0) {
-              return (
-                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                  <div className="text-4xl mb-4">🔍</div>
-                  <p className="text-muted-foreground mb-2 font-medium">Aucun rendez-vous ne correspond aux filtres</p>
-                  <button
-                    onClick={() => {
-                      setAppointmentFilter('all');
-                      setAppointmentDateFilter('all');
-                    }}
-                    className="text-sm text-green-600 hover:text-green-700 hover:underline"
-                  >
-                    Réinitialiser les filtres
-                  </button>
-                </div>
-              );
-            }
-
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredAppointments.slice(0, 9).map((apt: any) => {
-                  const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
-                  const isPast = apt.date && apt.heure ? (() => {
-                    const dateObj = new Date(apt.date);
-                    const [hours, minutes] = apt.heure.split(':').map(Number);
-                    const appointmentDateTime = new Date(dateObj);
-                    appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
-                    return appointmentDateTime < new Date();
-                  })() : false;
-                  
-                  return (
-                    <div 
-                      key={apt._id || apt.id} 
-                      className={`bg-white rounded-xl border-2 p-5 hover:shadow-xl transition-all duration-200 ${
-                        apt.statut === 'annule' || apt.statut === 'annulé'
-                          ? 'border-red-300 bg-red-50/30'
-                          : isPast && !apt.effectue
-                          ? 'border-red-400 bg-red-50/50'
-                          : apt.statut === 'termine' || apt.effectue
-                          ? 'border-green-300 bg-green-50/30'
-                          : apt.statut === 'confirme'
-                          ? 'border-green-200 hover:border-green-400'
-                          : 'border-yellow-200 hover:border-yellow-400'
-                      }`}
-                    >
-                      {/* En-tête de la carte */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-2 leading-tight">
-                            {apt.motif || 'Rendez-vous'}
-                          </h3>
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              apt.statut === 'confirme' ? 'bg-green-100 text-green-800' :
-                              apt.statut === 'en_attente' ? 'bg-yellow-100 text-yellow-800' :
-                              apt.statut === 'annule' || apt.statut === 'annulé' ? 'bg-red-100 text-red-800' :
-                              apt.statut === 'termine' ? 'bg-gray-100 text-gray-800' :
-                              'bg-blue-100 text-blue-800'
-                            }`}>
-                              {apt.statut === 'confirme' ? 'Confirmé' :
-                               apt.statut === 'en_attente' ? 'En attente' :
-                               apt.statut === 'annule' || apt.statut === 'annulé' ? 'Annulé' :
-                               apt.statut === 'termine' ? 'Terminé' :
-                               apt.statut?.replace('_', ' ') || 'En attente'}
-                            </span>
-                            {isPast && !apt.effectue && (
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                                ⚠️ Dépassé
-                              </span>
-                            )}
-                            {apt.effectue && (
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                                ✅ Effectué
-                              </span>
-                            )}
+                {/* Bouton pour afficher toutes les tâches ou scroll horizontal */}
+                {hasMoreTasks && (
+                  <div className="flex flex-col items-center gap-4 pt-4">
+                    {!showAllTasks ? (
+                      <>
+                        {/* Barre de défilement horizontal avec flèches */}
+                        <div className="w-full max-w-4xl">
+                          <div className="relative flex items-center gap-2">
+                            {/* Flèche gauche */}
+                            <button
+                              onClick={(e) => {
+                                const container = e.currentTarget.nextElementSibling?.querySelector('.tasks-scroll-container') as HTMLElement;
+                                if (container) {
+                                  container.scrollBy({ left: -300, behavior: 'smooth' });
+                                }
+                              }}
+                              className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-primary transition-colors shadow-sm"
+                              aria-label="Défiler vers la gauche"
+                            >
+                              <span className="text-xl">←</span>
+                            </button>
+                            
+                            {/* Conteneur avec scroll horizontal */}
+                            <div className="flex-1 relative">
+                              <div className="overflow-x-auto scrollbar-hide tasks-scroll-container" style={{ scrollbarWidth: 'thin' }}>
+                                <div className="flex gap-4 pb-2" style={{ width: 'max-content' }}>
+                                  {filteredTasks.slice(maxVisibleTasks).map((task: any, index: number) => {
+                                    const isUrgent = task.dateEcheance && new Date(task.dateEcheance) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+                                    const isOverdue = task.dateEcheance && new Date(task.dateEcheance) < new Date();
+                                    
+                                    return (
+                                      <div key={task._id} className="flex-shrink-0 w-64">
+                                        <div className={`bg-white rounded-lg p-3 border-2 ${
+                                          isOverdue && !task.effectue
+                                            ? 'border-red-300 bg-red-50/50'
+                                            : isUrgent && !task.effectue
+                                            ? 'border-orange-300 bg-orange-50/50'
+                                            : task.effectue
+                                            ? 'border-green-300 bg-green-50/30'
+                                            : 'border-gray-200'
+                                        }`}>
+                                          <p className="text-xs font-semibold text-foreground truncate mb-1">{task.titre}</p>
+                                          <p className="text-xs text-muted-foreground truncate">
+                                            {task.assignedTo?.firstName ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}` : 'Non assigné'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Gradient à droite */}
+                              <div className="absolute top-0 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
+                            </div>
+                            
+                            {/* Flèche droite */}
+                            <button
+                              onClick={(e) => {
+                                const container = e.currentTarget.previousElementSibling?.querySelector('.tasks-scroll-container') as HTMLElement;
+                                if (container) {
+                                  container.scrollBy({ left: 300, behavior: 'smooth' });
+                                }
+                              }}
+                              className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-primary transition-colors shadow-sm"
+                              aria-label="Défiler vers la droite"
+                            >
+                              <span className="text-xl">→</span>
+                            </button>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Description */}
-                      {apt.description && (
-                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
-                          {apt.description}
-                        </p>
-                      )}
-
-                      {/* Informations */}
-                      <div className="space-y-2 pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">👤</span>
-                          <span className="font-semibold text-foreground">{clientName}</span>
-                        </div>
-                        {apt.date && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span>📅</span>
-                            <span>
-                              {new Date(apt.date).toLocaleDateString('fr-FR', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </span>
-                          </div>
-                        )}
-                        {apt.heure && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span>⏰</span>
-                            <span>{apt.heure.substring(0, 5)}</span>
-                          </div>
-                        )}
-                        {apt.email && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span>✉️</span>
-                            <span className="truncate">{apt.email}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2">
-                        <Link href="/admin/rendez-vous" className="flex-1">
-                          <Button variant="outline" className="text-sm w-full">
-                            👁️ Voir détails
-                          </Button>
-                        </Link>
-                        <Link href="/admin/rendez-vous" className="flex-1">
-                          <Button variant="outline" className="text-sm w-full">
-                            ✏️ Modifier
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
+                        
+                        <Button
+                          onClick={() => setShowAllTasks(true)}
+                          variant="outline"
+                          className="flex items-center gap-2 whitespace-nowrap"
+                        >
+                          <span>Voir toutes les tâches ({filteredTasks.length})</span>
+                          <span className="text-lg">↓</span>
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          setShowAllTasks(false);
+                          // Scroll vers le haut de la section des tâches
+                          const tasksSection = document.getElementById('tasks-section');
+                          tasksSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        variant="outline"
+                        className="flex items-center gap-2"
+                      >
+                        <span>↑</span>
+                        <span>Voir moins (afficher 6 tâches)</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1625,16 +1400,28 @@ export default function AdminDashboardPage() {
                   </p>
                 </div>
               </div>
-              <Link 
-                href="/admin/documents" 
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg font-medium text-sm"
-              >
-                Voir tous les documents
-                <span className="text-lg">→</span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIsDocumentsSectionCollapsed(!isDocumentsSectionCollapsed)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white/80 hover:bg-white rounded-lg transition-colors shadow-sm hover:shadow-md"
+                  aria-label={isDocumentsSectionCollapsed ? "Déplier la section" : "Replier la section"}
+                >
+                  <span className={`text-lg transition-transform duration-200 ${isDocumentsSectionCollapsed ? 'rotate-0' : 'rotate-90'}`}>
+                    ▶
+                  </span>
+                </button>
+                <Link 
+                  href="/admin/documents" 
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg font-medium text-sm"
+                >
+                  Voir tous les documents
+                  <span className="text-lg">→</span>
                 </Link>
+              </div>
               </div>
 
             {/* Liste de documents */}
+            {!isDocumentsSectionCollapsed && (
             <div className="space-y-3">
               {recentDocuments.map((doc, index) => {
                 const userName = doc.user 
@@ -1710,7 +1497,8 @@ export default function AdminDashboardPage() {
                   );
                 })}
               </div>
-            </div>
+            )}
+          </div>
         )}
 
         {/* Modal de création de tâche */}
@@ -1986,6 +1774,79 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
+                {/* Historique des notes / commentaires sur la tâche */}
+                {Array.isArray(selectedTaskDetail.commentaires) && selectedTaskDetail.commentaires.length > 0 && (
+                  <div className="mt-6">
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">
+                      Notes / commentaires sur la tâche
+                    </label>
+                    <div className="space-y-3 max-h-60 overflow-y-auto bg-gray-50 rounded-md p-3 border border-gray-200">
+                      {selectedTaskDetail.commentaires
+                        .slice()
+                        .sort(
+                          (a: any, b: any) =>
+                            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                        )
+                        .map((comment: any, index: number) => (
+                          <div
+                            key={comment._id || index}
+                            className="rounded-md bg-white p-2.5 border border-gray-200 text-sm"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-foreground">
+                                {comment.utilisateur?.firstName || comment.utilisateur?.lastName
+                                  ? `${comment.utilisateur.firstName || ''} ${
+                                      comment.utilisateur.lastName || ''
+                                    }`.trim()
+                                  : comment.utilisateur?.email || 'Utilisateur'}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {comment.createdAt
+                                  ? new Date(comment.createdAt).toLocaleString('fr-FR', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : ''}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground whitespace-pre-wrap">
+                              {comment.contenu}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ajouter une note */}
+                <div className="mt-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
+                    Ajouter une note / commentaire
+                  </label>
+                  <textarea
+                    value={newTaskNote}
+                    onChange={(e) => setNewTaskNote(e.target.value)}
+                    placeholder="Renseignez un suivi, une décision, ou un échange interne lié à cette tâche..."
+                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                  {taskNotesError && (
+                    <p className="text-xs text-red-600 mt-1">{taskNotesError}</p>
+                  )}
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={handleAddTaskNote}
+                      disabled={isAddingTaskNote || !newTaskNote.trim()}
+                      className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                    >
+                      {isAddingTaskNote ? 'Enregistrement...' : 'Enregistrer la note'}
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Informations de création */}
                 <div className="pt-4 border-t border-gray-200">
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -2027,6 +1888,7 @@ export default function AdminDashboardPage() {
                   >
                     Fermer
                   </Button>
+                  {/* Bouton pour ouvrir la modale de commentaire de statut, sans mention de “Marquer comme effectuée” */}
                   <Button
                     onClick={() => {
                       setSelectedTaskForStatus(selectedTaskDetail);
@@ -2036,7 +1898,7 @@ export default function AdminDashboardPage() {
                     }}
                     className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
                   >
-                    {selectedTaskDetail.effectue ? 'Modifier le statut' : 'Marquer comme effectuée'}
+                    Commenter le statut
                   </Button>
                 </div>
               </div>
@@ -2172,13 +2034,13 @@ export default function AdminDashboardPage() {
           message={unreadMessage}
         />
 
-        {/* Modal pour marquer une tâche comme effectuée/non effectuée */}
+        {/* Modal de commentaire sur le statut de la tâche */}
         {showTaskStatusModal && selectedTaskForStatus && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-xl">
                 <h2 className="text-2xl font-bold">
-                  {selectedTaskForStatus.effectue ? 'Modifier le statut de la tâche' : 'Marquer la tâche comme effectuée'}
+                  Commentaire sur la tâche
                 </h2>
                 <button
                   onClick={() => {
@@ -2201,7 +2063,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <label htmlFor="taskStatusComment" className="block text-sm font-medium mb-2">
-                    Commentaire (optionnel)
+                    Commentaire
                   </label>
                   <textarea
                     id="taskStatusComment"
@@ -2224,33 +2086,13 @@ export default function AdminDashboardPage() {
                   >
                     Annuler
                   </Button>
-                  {!selectedTaskForStatus.effectue && (
-                    <Button
-                      onClick={() => handleUpdateTaskStatus(true)}
-                      disabled={isUpdatingTaskStatus}
-                      className="bg-green-500 hover:bg-green-600 text-white"
-                    >
-                      {isUpdatingTaskStatus ? 'Enregistrement...' : 'Marquer comme effectuée'}
-                    </Button>
-                  )}
-                  {selectedTaskForStatus.effectue && (
-                    <>
-                      <Button
-                        onClick={() => handleUpdateTaskStatus(false)}
-                        disabled={isUpdatingTaskStatus}
-                        className="bg-orange-500 hover:bg-orange-600 text-white"
-                      >
-                        {isUpdatingTaskStatus ? 'Enregistrement...' : 'Marquer comme non effectuée'}
-                      </Button>
-                      <Button
-                        onClick={() => handleUpdateTaskStatus(true)}
-                        disabled={isUpdatingTaskStatus}
-                        className="bg-green-500 hover:bg-green-600 text-white"
-                      >
-                        {isUpdatingTaskStatus ? 'Enregistrement...' : 'Mettre à jour'}
-                      </Button>
-                    </>
-                  )}
+                  <Button
+                    onClick={() => handleUpdateTaskStatus(selectedTaskForStatus.effectue)}
+                    disabled={isUpdatingTaskStatus}
+                    className="bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    {isUpdatingTaskStatus ? 'Enregistrement...' : 'Enregistrer le commentaire'}
+                  </Button>
                 </div>
               </div>
             </div>

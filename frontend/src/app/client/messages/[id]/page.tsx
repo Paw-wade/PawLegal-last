@@ -137,11 +137,20 @@ export default function ClientMessageDetailPage() {
     setError(null);
 
     try {
-      // Pour les clients, le message va automatiquement à tous les admins
+      if (!message?.dossierId) {
+        setError('Ce message n\'est rattaché à aucun dossier. La réponse ne peut pas être envoyée.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Pour les clients, le message va automatiquement à tous les admins mais doit garder le même dossier
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', replyData.sujet);
       formDataToSend.append('contenu', replyData.contenu);
-      // Pas de destinataires pour les clients - le backend gère automatiquement
+      // Lier au message parent / fil existant
+      const messageParentId = message.messageParent?._id || message.messageParent || message._id || message.id;
+      formDataToSend.append('messageParent', messageParentId);
+      formDataToSend.append('dossierId', message.dossierId);
 
       attachments.forEach((file) => {
         formDataToSend.append('piecesJointes', file);

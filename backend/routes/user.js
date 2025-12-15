@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
+const { handleImpersonation, getEffectiveUserId } = require('../middleware/impersonation');
 
 const router = express.Router();
 
@@ -13,13 +14,16 @@ router.use((req, res, next) => {
 
 // Toutes les routes nécessitent une authentification
 router.use(protect);
+// Activer l'impersonation pour permettre aux admins d'agir au nom d'un utilisateur
+router.use(handleImpersonation);
 
 // @route   GET /api/user/profile
-// @desc    Récupérer le profil de l'utilisateur connecté
+// @desc    Récupérer le profil de l'utilisateur effectif
 // @access  Private
 router.get('/profile', async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const effectiveUserId = getEffectiveUserId(req);
+    const user = await User.findById(effectiveUserId);
     
     if (!user) {
       return res.status(404).json({
@@ -66,7 +70,7 @@ router.get('/profile', async (req, res) => {
 });
 
 // @route   PUT /api/user/profile
-// @desc    Mettre à jour le profil de l'utilisateur connecté
+// @desc    Mettre à jour le profil de l'utilisateur effectif
 // @access  Private
 router.put(
   '/profile',
@@ -106,7 +110,8 @@ router.put(
         profilComplete
       } = req.body;
       
-      const user = await User.findById(req.user.id);
+      const effectiveUserId = getEffectiveUserId(req);
+      const user = await User.findById(effectiveUserId);
       
       if (!user) {
         return res.status(404).json({

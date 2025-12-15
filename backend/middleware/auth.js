@@ -14,6 +14,13 @@ const protect = async (req, res, next) => {
       console.warn('⚠️ Aucun token dans les headers pour:', req.method, req.path); // Debug log
     }
 
+    // ⚠️ Cas particulier pour les prévisualisations de documents (iframe, nouvel onglet, etc.)
+    // On accepte aussi un token passé en query string (?token=...)
+    if (!token && req.query && req.query.token) {
+      token = req.query.token;
+      console.log('🔑 Token récupéré depuis query parameter pour:', req.method, req.path);
+    }
+
     if (!token) {
       return res.status(401).json({
         success: false,

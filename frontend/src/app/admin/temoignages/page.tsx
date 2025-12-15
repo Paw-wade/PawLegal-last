@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
-import { Header } from '@/components/layout/Header';
 import { temoignagesAPI } from '@/lib/api';
 
 function Button({ children, variant = 'default', size = 'default', className = '', disabled = false, ...props }: any) {
@@ -114,52 +113,6 @@ export default function AdminTemoignagesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">PL</span>
-              </div>
-              <div>
-                <Link href="/" className="text-xl font-bold text-foreground">Paw Legal - Admin</Link>
-                <p className="text-xs text-muted-foreground">Administration</p>
-              </div>
-            </div>
-            <nav className="hidden md:flex items-center gap-1">
-              <Link href="/admin" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Tableau de bord
-              </Link>
-              <Link href="/admin/utilisateurs" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Utilisateurs
-              </Link>
-              <Link href="/admin/dossiers" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Dossiers
-              </Link>
-              <Link href="/admin/documents" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Documents
-              </Link>
-              <Link href="/admin/rendez-vous" className="px-4 py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                Rendez-vous
-              </Link>
-              <Link href="/admin/temoignages" className="px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground">
-                Témoignages
-              </Link>
-            </nav>
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                className="text-sm"
-                onClick={() => signOut({ callbackUrl: '/' })}
-              >
-                Déconnexion
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Gestion des témoignages</h1>

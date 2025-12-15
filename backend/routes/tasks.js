@@ -82,7 +82,8 @@ router.get('/:id', protect, async (req, res) => {
     const task = await Task.findById(req.params.id)
       .populate('assignedTo', 'firstName lastName email role')
       .populate('createdBy', 'firstName lastName email role')
-      .populate('dossier', 'titre numero statut');
+      .populate('dossier', 'titre numero statut')
+      .populate('commentaires.utilisateur', 'firstName lastName email role');
 
     if (!task) {
       return res.status(404).json({
@@ -163,8 +164,9 @@ router.post(
       }
 
       // Vérifier que le dossier existe si fourni
+      let dossierExists = null;
       if (dossier) {
-        const dossierExists = await Dossier.findById(dossier);
+        dossierExists = await Dossier.findById(dossier);
         if (!dossierExists) {
           return res.status(404).json({
             success: false,
@@ -190,6 +192,73 @@ router.post(
         .populate('assignedTo', 'firstName lastName email role')
         .populate('createdBy', 'firstName lastName email role')
         .populate('dossier', 'titre numero statut');
+
+      // Notifier l'utilisateur assigné à la nouvelle tâche
+      try {
+        const creator = req.user;
+        const creatorName = `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.email;
+
+        await Notification.create({
+          user: assignedUser._id,
+          type: 'other',
+          titre: 'Nouvelle tâche assignée',
+          message: `${creatorName} vous a assigné une nouvelle tâche : "${task.titre}".`,
+          lien: '/admin?section=tasks',
+          metadata: {
+            taskId: task._id.toString(),
+            dossierId: dossier || null,
+            createdBy: creator._id.toString()
+          }
+        });
+      } catch (notifError) {
+        console.error('Erreur lors de la notification de l\'utilisateur assigné à la tâche:', notifError);
+      }
+
+      // Si la tâche est liée à un dossier, notifier les autres membres de l'équipe du dossier
+      if (dossierExists && Array.isArray(dossierExists.teamMembers) && dossierExists.teamMembers.length > 0) {
+        try {
+          const uniqueMembers = new Set(
+            dossierExists.teamMembers
+              .map((m) => m.toString())
+          );
+
+          // Ajouter le chef d'équipe si défini
+          if (dossierExists.teamLeader) {
+            uniqueMembers.add(dossierExists.teamLeader.toString());
+          }
+
+          // Retirer le créateur et l'utilisateur déjà notifié (assignedTo)
+          uniqueMembers.delete(req.user.id.toString());
+          uniqueMembers.delete(assignedTo.toString());
+
+          const memberIds = Array.from(uniqueMembers);
+
+          if (memberIds.length > 0) {
+            const teamUsers = await User.find({ _id: { $in: memberIds } });
+
+            for (const member of teamUsers) {
+              try {
+                await Notification.create({
+                  user: member._id,
+                  type: 'other',
+                  titre: 'Nouvelle tâche sur un dossier',
+                  message: `Une nouvelle tâche "${task.titre}" a été créée sur le dossier "${dossierExists.titre || dossierExists.numero}".`,
+                  lien: '/admin?section=tasks',
+                  metadata: {
+                    taskId: task._id.toString(),
+                    dossierId: dossierExists._id.toString(),
+                    type: 'task_created_on_dossier'
+                  }
+                });
+              } catch (memberNotifError) {
+                console.error('Erreur lors de la notification d\'un membre de l\'équipe pour la tâche:', memberNotifError);
+              }
+            }
+          }
+        } catch (teamNotifError) {
+          console.error('Erreur lors de la notification des membres de l\'équipe pour la tâche:', teamNotifError);
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -388,6 +457,132 @@ router.put(
         success: false,
         message: 'Erreur serveur',
         error: process.env.NODE_ENV === 'development' ? error.message : 'Une erreur est survenue lors de la mise à jour de la tâche'
+      });
+    }
+  }
+);
+
+// @route   POST /api/tasks/:id/notes
+// @desc    Ajouter une note/commentaire lié à une tâche
+// @access  Private (créateur, assigné ou admin)
+router.post(
+  '/:id/notes',
+  protect,
+  [
+    body('contenu').trim().notEmpty().withMessage('Le contenu de la note est requis'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation',
+          errors: errors.array(),
+        });
+      }
+
+      const task = await Task.findById(req.params.id);
+      if (!task) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tâche non trouvée',
+        });
+      }
+
+      const isCreator = task.createdBy && task.createdBy.toString() === req.user.id;
+      const isAssigned = task.assignedTo && task.assignedTo.toString() === req.user.id;
+      const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+
+      if (!isCreator && !isAssigned && !isAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'avez pas la permission d\'ajouter une note à cette tâche',
+        });
+      }
+
+      const { contenu } = req.body;
+
+      // Ajouter la note dans l'historique des commentaires
+      task.commentaires = task.commentaires || [];
+      task.commentaires.push({
+        utilisateur: req.user.id,
+        contenu,
+        createdAt: new Date(),
+      });
+
+      await task.save();
+
+      // Recharger la tâche avec les relations
+      const taskPopulated = await Task.findById(task._id)
+        .populate('assignedTo', 'firstName lastName email role')
+        .populate('createdBy', 'firstName lastName email role')
+        .populate('dossier', 'titre numero statut')
+        .populate('commentaires.utilisateur', 'firstName lastName email role');
+
+      const auteur = req.user;
+      const auteurName = `${auteur.firstName || ''} ${auteur.lastName || ''}`.trim() || auteur.email;
+
+      // Notification au créateur de la tâche (s'il existe)
+      if (task.createdBy) {
+        try {
+          await Notification.create({
+            user: task.createdBy,
+            type: 'other',
+            titre: 'Nouvelle note sur une tâche',
+            message: `${auteurName} a ajouté une note sur la tâche "${task.titre}".`,
+            lien: `/admin?section=tasks`,
+            metadata: {
+              taskId: task._id.toString(),
+              auteurId: auteur._id.toString(),
+              type: 'task_note',
+            },
+          });
+        } catch (notifError) {
+          console.error('Erreur lors de la notification du créateur de la tâche:', notifError);
+        }
+      }
+
+      // Notification à tous les administrateurs (y compris superadmin)
+      try {
+        const admins = await User.find({
+          role: { $in: ['admin', 'superadmin'] },
+          isActive: { $ne: false },
+        });
+
+        for (const admin of admins) {
+          try {
+            await Notification.create({
+              user: admin._id,
+              type: 'other',
+              titre: 'Nouvelle note sur une tâche',
+              message: `${auteurName} a ajouté une note sur la tâche "${task.titre}".`,
+              lien: `/admin?section=tasks`,
+              metadata: {
+                taskId: task._id.toString(),
+                auteurId: auteur._id.toString(),
+                type: 'task_note_admin',
+              },
+            });
+          } catch (adminNotifError) {
+            console.error('Erreur lors de la notification admin pour la note de tâche:', adminNotifError);
+          }
+        }
+      } catch (adminsError) {
+        console.error('Erreur lors de la récupération des administrateurs pour la note de tâche:', adminsError);
+      }
+
+      res.status(201).json({
+        success: true,
+        message: 'Note ajoutée avec succès',
+        task: taskPopulated,
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'ajout d\'une note à la tâche:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de l\'ajout de la note',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   }
