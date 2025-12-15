@@ -341,6 +341,7 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
             <Label htmlFor="nom">Nom *</Label>
             <Input
               id="nom"
+              name="family-name"
               type="text"
               value={formData.nom}
               onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
@@ -353,6 +354,7 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
             <Label htmlFor="prenom">Prénom *</Label>
             <Input
               id="prenom"
+              name="given-name"
               type="text"
               value={formData.prenom}
               onChange={(e) => setFormData({ ...formData, prenom: e.target.value })}
@@ -367,7 +369,9 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
           <Label htmlFor="email">Email *</Label>
           <Input
             id="email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
@@ -380,7 +384,9 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
           <Label htmlFor="telephone">Téléphone *</Label>
           <Input
             id="telephone"
+            name="tel"
             type="tel"
+            autoComplete="tel"
             value={formData.telephone}
             onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
             required

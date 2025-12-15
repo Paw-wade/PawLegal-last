@@ -3037,10 +3037,6 @@ video {
   background-color: rgb(255 247 237 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-orange-500\/20:hover {
-  background-color: rgb(249 115 22 / 0.2);
-}
-
 .hover\:bg-orange-600:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(234 88 12 / var(--tw-bg-opacity, 1));
@@ -3398,6 +3394,10 @@ video {
   background-color: rgb(199 210 254 / var(--tw-bg-opacity, 1));
 }
 
+.group:hover .group-hover\:bg-orange-500\/20 {
+  background-color: rgb(249 115 22 / 0.2);
+}
+
 .group:hover .group-hover\:bg-primary {
   background-color: hsl(var(--primary));
 }
@@ -3415,10 +3415,6 @@ video {
   background-color: rgb(168 85 247 / 0.2);
 }
 
-.group:hover .group-hover\:bg-orange-500\/20 {
-  background-color: rgb(249 115 22 / 0.2);
-}
-
 .group:hover .group-hover\:text-blue-600 {
   --tw-text-opacity: 1;
   color: rgb(37 99 235 / var(--tw-text-opacity, 1));
@@ -3432,6 +3428,11 @@ video {
 .group:hover .group-hover\:text-indigo-600 {
   --tw-text-opacity: 1;
   color: rgb(79 70 229 / var(--tw-text-opacity, 1));
+}
+
+.group:hover .group-hover\:text-orange-600 {
+  --tw-text-opacity: 1;
+  color: rgb(234 88 12 / var(--tw-text-opacity, 1));
 }
 
 .group:hover .group-hover\:text-primary {
@@ -3450,11 +3451,6 @@ video {
 .group:hover .group-hover\:text-white {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
-}
-
-.group:hover .group-hover\:text-orange-600 {
-  --tw-text-opacity: 1;
-  color: rgb(234 88 12 / var(--tw-text-opacity, 1));
 }
 
 .group:hover .group-hover\:opacity-100 {
