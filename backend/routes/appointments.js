@@ -13,9 +13,11 @@ router.post(
   '/',
   [
     body('nom').trim().notEmpty().withMessage('Le nom est requis'),
-    body('prenom').trim().notEmpty().withMessage('Le prénom est requis'),
+    // Le prénom est recommandé mais n'est plus bloquant
+    body('prenom').optional().trim(),
     body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
-    body('telephone').trim().notEmpty().withMessage('Le téléphone est requis'),
+    // Le téléphone est recommandé mais n'est plus bloquant
+    body('telephone').optional().trim(),
     body('date').notEmpty().withMessage('La date est requise'),
     body('heure').trim().notEmpty().withMessage('L\'heure est requise'),
     body('motif').trim().notEmpty().withMessage('Le motif est requis'),

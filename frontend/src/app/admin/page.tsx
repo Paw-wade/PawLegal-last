@@ -707,31 +707,27 @@ export default function AdminDashboardPage() {
           </Link>
           </div>
 
-          {/* Badge Tâches - scroll vers la section */}
-          <div 
-            onClick={() => {
-              const tasksSection = document.getElementById('tasks-section');
-              tasksSection?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500 hover:shadow-lg hover:border-orange-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center hover:bg-orange-500/20 transition-colors">
-                <span className="text-2xl">✅</span>
+          {/* Badge Tâches - lien vers la page dédiée */}
+          <Link href="/admin/taches" className="group">
+            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500 hover:shadow-lg hover:border-orange-600 transition-all duration-200 hover:-translate-y-1 cursor-pointer">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
+                  <span className="text-2xl">✅</span>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-foreground mb-0 group-hover:text-orange-600 transition-colors">{stats.tasks}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-foreground mb-0 hover:text-orange-600 transition-colors">{stats.tasks}</p>
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Tâches</h3>
+              <p className="text-xs text-muted-foreground mb-3">Gestion complète des tâches</p>
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <span className="inline-flex items-center px-2 py-1 rounded-md bg-orange-500/10 text-orange-600 text-xs font-semibold">
+                  {stats.tasksEnCours} en cours
+                </span>
+                <span className="text-orange-600 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Accéder →</span>
               </div>
             </div>
-            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-1">Tâches</h3>
-            <p className="text-xs text-muted-foreground mb-3">Total des tâches</p>
-            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <span className="inline-flex items-center px-2 py-1 rounded-md bg-orange-500/10 text-orange-600 text-xs font-semibold">
-                {stats.tasksEnCours} en cours
-              </span>
-              <span className="text-orange-600 text-xs font-medium opacity-70">Voir ci-dessous ↓</span>
-            </div>
-          </div>
+          </Link>
         </div>
 
         {/* Actions rapides - Seulement les sections sans doublons */}

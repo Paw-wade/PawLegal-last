@@ -239,9 +239,9 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
     setError(null);
     setSuccess(null);
 
-    // Validation
-    if (!formData.nom || !formData.prenom || !formData.email || !formData.telephone || !formData.date || !formData.heure) {
-      setError('Veuillez remplir tous les champs obligatoires');
+    // Validation : seuls nom, email, date et heure sont obligatoires pour ne pas bloquer les utilisateurs non connectés
+    if (!formData.nom || !formData.email || !formData.date || !formData.heure) {
+      setError('Veuillez renseigner au minimum votre nom, votre email, la date et l\'heure du rendez-vous.');
       setIsSubmitting(false);
       return;
     }

@@ -245,8 +245,6 @@ router.post(
   [
     body('sujet').trim().notEmpty().withMessage('Le sujet est requis'),
     body('contenu').trim().notEmpty().withMessage('Le contenu est requis'),
-    body('destinataires').optional().isArray().withMessage('Les destinataires doivent être un tableau'),
-    body('dossierId').notEmpty().withMessage('Le dossier lié au message est requis')
   ],
   async (req, res) => {
     try {
@@ -275,7 +273,7 @@ router.post(
       const userRole = effectiveUser?.role || req.user.role;
       const { sujet, contenu, destinataire, copie, destinataires, messageParent, dossierId } = req.body; // messageParent pour les fils de discussion
       
-      console.log('📨 Données extraites:', { sujet, contenu, destinataire, copie, destinataires, dossierId, userRole });
+      console.log('📨 Données extraites:', { sujet, contenu, destinataire, copie, destinataires, dossierId, messageParent, userRole });
 
       // Convertir userId en ObjectId si nécessaire
       const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
@@ -286,32 +284,10 @@ router.post(
         destinataire, 
         copie, 
         dossierId,
+        messageParent,
         userRole,
         userId: userIdObj.toString() 
       });
-
-      // Vérifier et charger le dossier lié
-      if (!dossierId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Vous devez sélectionner un dossier pour envoyer un message'
-        });
-      }
-
-      if (!mongoose.Types.ObjectId.isValid(dossierId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Identifiant de dossier invalide'
-        });
-      }
-
-      const dossier = await Dossier.findById(dossierId);
-      if (!dossier) {
-        return res.status(404).json({
-          success: false,
-          message: 'Dossier non trouvé'
-        });
-      }
 
       let destinatairesIds = [];
       let copieIds = [];
@@ -475,7 +451,7 @@ router.post(
         sujet: sujet.trim(),
         contenu: contenu.trim(),
         typeMessage: typeMessage,
-        dossierId: dossier._id
+        // dossierId sera fixé plus bas : soit celui fourni, soit hérité du parent
       };
       
       // Ajouter le message parent si c'est une réponse
@@ -483,19 +459,28 @@ router.post(
         // Vérifier que le message parent existe
         const parentMessage = await MessageInterne.findById(messageParent);
         if (parentMessage) {
-          // Vérifier que le parent est bien rattaché au même dossier
-          if (parentMessage.dossierId.toString() !== dossier._id.toString()) {
-            return res.status(400).json({
-              success: false,
-              message: 'Le message parent appartient à un autre dossier'
-            });
-          }
           messageData.messageParent = new mongoose.Types.ObjectId(messageParent);
+          // Hériter du threadId du parent si disponible
           threadId = parentMessage.threadId || parentMessage._id.toString();
-          console.log('📎 Message parent trouvé:', messageParent, 'threadId:', threadId);
+          // Hériter du dossier si non fourni (pour compatibilité et éviter de bloquer l'envoi)
+          if (!messageData.dossierId && parentMessage.dossierId) {
+            messageData.dossierId = parentMessage.dossierId;
+          }
+          console.log('📎 Message parent trouvé:', messageParent, 'threadId:', threadId, 'dossierId hérité:', messageData.dossierId?.toString());
         } else {
           console.warn('⚠️ Message parent non trouvé:', messageParent);
         }
+      }
+
+      // Si aucun dossierId n'a encore été défini, utiliser celui fourni dans le body si présent
+      if (!messageData.dossierId && dossierId && mongoose.Types.ObjectId.isValid(dossierId)) {
+        messageData.dossierId = new mongoose.Types.ObjectId(dossierId);
+      }
+
+      // En dernier recours, si aucun dossierId disponible, ne pas bloquer l'envoi
+      // (mais consigner un avertissement pour suivi)
+      if (!messageData.dossierId) {
+        console.warn('⚠️ Aucun dossierId fourni ou hérité pour ce message. Le message sera créé sans dossier lié.');
       }
 
       // Générer un threadId si nécessaire (nouveau fil)

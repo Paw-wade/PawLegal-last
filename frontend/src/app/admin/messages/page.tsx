@@ -267,7 +267,25 @@ export default function AdminMessagesPage() {
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
+    // Un message est considéré comme lu si l'utilisateur figure dans le tableau "lu"
     return message.lu?.some((l: any) => l.user?.toString() === userId?.toString());
+  };
+
+  const canCurrentUserMarkAsRead = (message: any) => {
+    const userId = (session?.user as any)?.id;
+    if (!userId) return false;
+    // Seuls les destinataires (ou en copie) peuvent marquer un message comme lu
+    const isDestinataire = message.destinataires?.some(
+      (d: any) =>
+        d?._id?.toString() === userId.toString() ||
+        d?.toString?.() === userId.toString()
+    );
+    const isEnCopie = message.copie?.some(
+      (c: any) =>
+        c?._id?.toString() === userId.toString() ||
+        c?.toString?.() === userId.toString()
+    );
+    return !!(isDestinataire || isEnCopie);
   };
 
   if (status === 'loading') {
@@ -446,26 +464,27 @@ export default function AdminMessagesPage() {
                           Répondre
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            if (isRead) {
-                              // Marquer comme non lu - on doit supprimer l'entrée dans le tableau lu
-                              // Pour l'instant, on recharge juste le message
-                              await loadMessages();
-                            } else {
-                              await messagesAPI.markAsRead(message._id || message.id);
-                              await loadMessages();
+                      {canCurrentUserMarkAsRead(message) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              if (isRead) {
+                                // Pour l'instant, on ne gère pas le "marquer non lu" côté backend, on recharge simplement
+                                await loadMessages();
+                              } else {
+                                await messagesAPI.markAsRead(message._id || message.id);
+                                await loadMessages();
+                              }
+                            } catch (err) {
+                              console.error('Erreur lors du changement de statut:', err);
                             }
-                          } catch (err) {
-                            console.error('Erreur lors du changement de statut:', err);
-                          }
-                        }}
-                      >
-                        {isRead ? 'Marquer non lu' : 'Marquer lu'}
-                      </Button>
+                          }}
+                        >
+                          {isRead ? 'Marquer non lu' : 'Marquer lu'}
+                        </Button>
+                      )}
                       <Link href={`/admin/messages/${message._id || message.id}`}>
                         <Button variant="outline" size="sm">
                           Voir détails
