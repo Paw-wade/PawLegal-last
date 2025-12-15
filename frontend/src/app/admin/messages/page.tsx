@@ -921,6 +921,15 @@ export default function AdminMessagesPage() {
                   return;
                 }
 
+                // Le backend exige désormais un dossierId pour tout message
+                const dossierIdFromMessage = (replyToMessage as any)?.dossierId;
+                const dossierId = dossierIdFromMessage || selectedDossierId;
+                if (!dossierId) {
+                  setError('Ce message n\'est rattaché à aucun dossier. La réponse ne peut pas être envoyée.');
+                  setIsSubmitting(false);
+                  return;
+                }
+
                 try {
                   const formDataToSend = new FormData();
                   formDataToSend.append('sujet', replyData.sujet);
@@ -929,6 +938,17 @@ export default function AdminMessagesPage() {
                   replyData.copie.forEach(cc => {
                     formDataToSend.append('copie', cc);
                   });
+
+                  // Rattacher la réponse au même fil (message parent) et au même dossier
+                  const messageParentId =
+                    (replyToMessage as any)?.messageParent?._id ||
+                    (replyToMessage as any)?.messageParent ||
+                    (replyToMessage as any)?._id ||
+                    (replyToMessage as any)?.id;
+                  if (messageParentId) {
+                    formDataToSend.append('messageParent', messageParentId.toString());
+                  }
+                  formDataToSend.append('dossierId', dossierId.toString());
 
                   replyAttachments.forEach((file) => {
                     formDataToSend.append('piecesJointes', file);
