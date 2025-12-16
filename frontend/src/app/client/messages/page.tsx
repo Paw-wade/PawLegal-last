@@ -80,15 +80,19 @@ export default function MessagesPage() {
   const [isReplying, setIsReplying] = useState(false);
   const [dossiers, setDossiers] = useState<any[]>([]);
   const [selectedDossierId, setSelectedDossierId] = useState<string>('');
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedExpediteurId, setSelectedExpediteurId] = useState<string>('');
+  const [selectedDestinataireId, setSelectedDestinataireId] = useState<string>('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
     } else if (status === 'authenticated') {
       loadDossiers();
+      loadUsers();
       loadMessages();
     }
-  }, [session, status, router, filter, selectedDossierId]);
+  }, [session, status, router, filter, selectedDossierId, selectedExpediteurId, selectedDestinataireId]);
 
   const loadMessages = async () => {
     setIsLoading(true);
@@ -97,6 +101,12 @@ export default function MessagesPage() {
       const params: any = { type: filter };
       if (selectedDossierId) {
         params.dossierId = selectedDossierId;
+      }
+      if (selectedExpediteurId) {
+        params.expediteurId = selectedExpediteurId;
+      }
+      if (selectedDestinataireId) {
+        params.destinataireId = selectedDestinataireId;
       }
       const response = await messagesAPI.getMessages(params);
       if (response.data.success) {
@@ -123,6 +133,17 @@ export default function MessagesPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des dossiers pour la messagerie:', err);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const response = await messagesAPI.getUsers();
+      if (response.data.success) {
+        setUsers(response.data.users || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des utilisateurs:', err);
     }
   };
 
@@ -367,41 +388,105 @@ export default function MessagesPage() {
           </div>
 
           {/* Filtres */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant={filter === 'all' ? 'default' : 'outline'}
-              onClick={() => setFilter('all')}
-              size="sm"
-            >
-              Tous ({messages.length})
-            </Button>
-            <Button
-              variant={filter === 'received' ? 'default' : 'outline'}
-              onClick={() => setFilter('received')}
-              size="sm"
-            >
-              Reçus
-            </Button>
-            <Button
-              variant={filter === 'sent' ? 'default' : 'outline'}
-              onClick={() => setFilter('sent')}
-              size="sm"
-            >
-              Envoyés
-            </Button>
-            <Button
-              variant={filter === 'unread' ? 'default' : 'outline'}
-              onClick={() => setFilter('unread')}
-              size="sm"
-              className={unreadCount > 0 ? 'relative' : ''}
-            >
-              Non lus
-              {unreadCount > 0 && (
-                <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-                  {unreadCount}
-                </span>
+          <div className="space-y-4">
+            {/* Filtres de type */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant={filter === 'all' ? 'default' : 'outline'}
+                onClick={() => setFilter('all')}
+                size="sm"
+              >
+                Tous ({messages.length})
+              </Button>
+              <Button
+                variant={filter === 'received' ? 'default' : 'outline'}
+                onClick={() => setFilter('received')}
+                size="sm"
+              >
+                Reçus
+              </Button>
+              <Button
+                variant={filter === 'sent' ? 'default' : 'outline'}
+                onClick={() => setFilter('sent')}
+                size="sm"
+              >
+                Envoyés
+              </Button>
+              <Button
+                variant={filter === 'unread' ? 'default' : 'outline'}
+                onClick={() => setFilter('unread')}
+                size="sm"
+                className={unreadCount > 0 ? 'relative' : ''}
+              >
+                Non lus
+                {unreadCount > 0 && (
+                  <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            {/* Filtres par utilisateur */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="filter-expediteur" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                  Expéditeur :
+                </Label>
+                <select
+                  id="filter-expediteur"
+                  value={selectedExpediteurId}
+                  onChange={(e) => setSelectedExpediteurId(e.target.value)}
+                  className="px-3 py-1.5 border border-input rounded-md text-sm bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[200px]"
+                >
+                  <option value="">Tous les expéditeurs</option>
+                  {users.map((user) => {
+                    const userId = user._id || user.id;
+                    return (
+                      <option key={userId} value={userId}>
+                        {user.firstName} {user.lastName} ({user.email})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label htmlFor="filter-destinataire" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                  Destinataire :
+                </Label>
+                <select
+                  id="filter-destinataire"
+                  value={selectedDestinataireId}
+                  onChange={(e) => setSelectedDestinataireId(e.target.value)}
+                  className="px-3 py-1.5 border border-input rounded-md text-sm bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[200px]"
+                >
+                  <option value="">Tous les destinataires</option>
+                  {users.map((user) => {
+                    const userId = user._id || user.id;
+                    return (
+                      <option key={userId} value={userId}>
+                        {user.firstName} {user.lastName} ({user.email})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {(selectedExpediteurId || selectedDestinataireId) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedExpediteurId('');
+                    setSelectedDestinataireId('');
+                  }}
+                  className="text-xs"
+                >
+                  Réinitialiser les filtres
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         </div>
 

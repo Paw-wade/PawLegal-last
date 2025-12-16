@@ -33,7 +33,6 @@ export default function AdminDashboardPage() {
     tasks: 0,
     tasksEnCours: 0,
   });
-  const [recentDocuments, setRecentDocuments] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -71,7 +70,6 @@ export default function AdminDashboardPage() {
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [isUpdatingTaskAssignment, setIsUpdatingTaskAssignment] = useState(false);
   const [newAssigneeId, setNewAssigneeId] = useState<string>('');
-  const [isDocumentsSectionCollapsed, setIsDocumentsSectionCollapsed] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const hasChecked = useRef(false);
@@ -192,8 +190,6 @@ export default function AdminDashboardPage() {
             ...prev,
             documents: documents.length,
           }));
-          // Garder les 5 documents les plus récents
-          setRecentDocuments(documents.slice(0, 5));
         } else {
           console.error('❌ Erreur dans la réponse getAllDocuments:', documentsResponse.data.message);
           // Mettre à jour avec 0 si erreur
@@ -217,23 +213,6 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error('Erreur lors du chargement des statistiques:', error);
-    }
-  };
-
-  const handleDownloadDocument = async (documentId: string, nom: string) => {
-    try {
-      const response = await documentsAPI.downloadDocument(documentId);
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', nom);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error('Erreur lors du téléchargement:', err);
-      alert('Erreur lors du téléchargement du document');
     }
   };
 
@@ -625,7 +604,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="w-full px-4 py-8">
+      <main className="w-full px-4 py-8 max-w-full">
         {/* En-tête avec navigation rapide */}
         <div id="dashboard-top" className="mb-8 scroll-mt-20">
           <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
@@ -967,122 +946,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Documents récents */}
-        {recentDocuments.length > 0 && (
-          <div className="mt-8 bg-gradient-to-br from-white to-primary/5 rounded-2xl shadow-lg p-8 border border-primary/10">
-            {/* En-tête amélioré */}
-              <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-white text-xl">📄</span>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Documents récents</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {recentDocuments.length} document{recentDocuments.length > 1 ? 's' : ''} récemment ajouté{recentDocuments.length > 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsDocumentsSectionCollapsed(!isDocumentsSectionCollapsed)}
-                  className="flex items-center gap-2 px-3 py-2 bg-white/80 hover:bg-white rounded-lg transition-colors shadow-sm hover:shadow-md"
-                  aria-label={isDocumentsSectionCollapsed ? "Déplier la section" : "Replier la section"}
-                >
-                  <span className={`text-lg transition-transform duration-200 ${isDocumentsSectionCollapsed ? 'rotate-0' : 'rotate-90'}`}>
-                    ▶
-                  </span>
-                </button>
-                <Link 
-                  href="/admin/documents" 
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg font-medium text-sm"
-                >
-                  Voir tous les documents
-                  <span className="text-lg">→</span>
-                </Link>
-              </div>
-              </div>
-
-            {/* Liste de documents */}
-            {!isDocumentsSectionCollapsed && (
-            <div className="space-y-3">
-              {recentDocuments.map((doc, index) => {
-                const userName = doc.user 
-                  ? `${doc.user.firstName || ''} ${doc.user.lastName || ''}`.trim() || 'Utilisateur inconnu'
-                  : 'Utilisateur inconnu';
-                const userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-
-                  return (
-                  <div
-                    key={doc._id || doc.id || index}
-                    className="group bg-white rounded-xl border-2 border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300 p-5"
-                            >
-                    <div className="flex items-center gap-4">
-                      {/* Icône du fichier */}
-                      <div className="w-12 h-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                        <span className="text-2xl">{getFileIcon(doc.typeMime)}</span>
-                          </div>
-
-                      {/* Informations du document */}
-                        <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-base text-foreground mb-2 group-hover:text-primary transition-colors">
-                          {doc.nom}
-                        </h3>
-                        <div className="flex items-center gap-4 flex-wrap">
-                          {/* Utilisateur */}
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-white text-xs font-bold">
-                                {userInitials}
-                              </span>
-                        </div>
-                            <span className="text-sm font-medium text-muted-foreground">
-                              {userName}
-                            </span>
-                      </div>
-
-                          {/* Taille */}
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <span>📊</span>
-                            <span className="font-medium">{formatFileSize(doc.taille)}</span>
-                          </div>
-
-                          {/* Date */}
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <span>📅</span>
-                            <span className="font-medium">
-                              {new Date(doc.createdAt).toLocaleDateString('fr-FR', { 
-                                day: '2-digit', 
-                                month: '2-digit', 
-                                year: 'numeric' 
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Bouton de téléchargement */}
-                      <div className="flex-shrink-0">
-                      <Button
-                          variant="default"
-                        size="sm"
-                          className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200 px-4"
-                          onClick={() => handleDownloadDocument(doc._id || doc.id, doc.nom)}
-                      >
-                          <span className="flex items-center gap-2">
-                            <span className="text-base">📥</span>
-                            <span>Télécharger</span>
-                          </span>
-                      </Button>
-                      </div>
-                    </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Modals de tâches - DÉPLACÉS vers /admin/taches */}
         {false && showTaskModal && (

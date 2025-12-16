@@ -131,10 +131,20 @@ try {
 }
 
 try {
-  if (require.resolve('./routes/content')) {
-    app.use('/api/content', require('./routes/content'));
-  }
-} catch (e) {}
+  const contentRouter = require('./routes/content');
+  app.use('/api/content', contentRouter);
+  console.log('✅ Route /api/content enregistrée');
+  console.log('📋 Routes content disponibles:');
+  contentRouter.stack.forEach((r) => {
+    if (r.route) {
+      const methods = Object.keys(r.route.methods).join(', ').toUpperCase();
+      console.log(`   ${methods} ${r.route.path}`);
+    }
+  });
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route content:', error.message);
+  console.error(error.stack);
+}
 
 // Route appointments
 try {

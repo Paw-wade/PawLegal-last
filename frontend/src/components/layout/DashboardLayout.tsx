@@ -170,7 +170,7 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
       )}
 
       {/* Contenu principal */}
-      <div className={`flex-1 flex flex-col ${showAdminSidebar ? 'lg:ml-64' : ''} transition-all duration-300 w-full`}>
+      <div className={`flex-1 flex flex-col ${showAdminSidebar ? 'lg:ml-64' : ''} transition-all duration-300`}>
         {/* Header simplifié (sans navigation) */}
         <Header 
           variant={variant} 
@@ -190,7 +190,7 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
         )}
 
         {/* Contenu */}
-        <main className="flex-1 overflow-x-hidden w-full">
+        <main className="flex-1 overflow-x-hidden">
           {children}
         </main>
       </div>

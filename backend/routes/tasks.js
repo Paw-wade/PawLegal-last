@@ -285,9 +285,12 @@ router.post(
             uniqueMembers.add(dossierExists.teamLeader.toString());
           }
 
-          // Retirer le créateur et l'utilisateur déjà notifié (assignedTo)
+          // Retirer le créateur et les utilisateurs déjà notifiés (assignedTo)
           uniqueMembers.delete(req.user.id.toString());
-          uniqueMembers.delete(assignedTo.toString());
+          // Retirer tous les utilisateurs assignés de la liste des membres à notifier
+          assignedToArray.forEach(userId => {
+            uniqueMembers.delete(userId.toString());
+          });
 
           const memberIds = Array.from(uniqueMembers);
 
@@ -386,8 +389,8 @@ router.put(
 
       // Vérifier les permissions
       const isCreator = task.createdBy && task.createdBy.toString() === req.user.id;
-      const assignedToArray = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
-      const isAssigned = assignedToArray.some(id => id.toString() === req.user.id);
+      const currentAssignedToArray = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
+      const isAssigned = currentAssignedToArray.some(id => id.toString() === req.user.id);
       const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
 
       if (!isCreator && !isAssigned && !isAdmin) {
@@ -528,8 +531,15 @@ router.put(
       }
 
       // Notifications pour changements de statut ou priorité
-      const currentAssignedTo = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
-      const allRecipients = new Set([...currentAssignedTo.map(id => id.toString())]);
+      // Utiliser les nouvelles assignations si elles ont été mises à jour, sinon les actuelles
+      const finalAssignedTo = assignedToArray !== null && isAdmin ? assignedToArray : currentAssignedToArray;
+      const allRecipients = new Set();
+      
+      // Ajouter les assignés (utiliser les IDs directement)
+      finalAssignedTo.forEach(id => {
+        const idStr = (id && id.toString) ? id.toString() : (id && id._id ? id._id.toString() : String(id));
+        if (idStr) allRecipients.add(idStr);
+      });
       
       // Ajouter tous les admins
       try {

@@ -56,8 +56,8 @@ router.get('/unread-count', async (req, res) => {
         { destinataires: userId },
         { copie: userId }
       ],
-      'lu.user': { $ne: userId },
-      'archive.user': { $ne: userId }
+      lu: { $not: { $elemMatch: { user: userId } } },
+      archive: { $not: { $elemMatch: { user: userId } } }
     });
 
     res.json({
@@ -111,7 +111,12 @@ router.get('/', async (req, res) => {
     });
     
     const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
-    const { type = 'all', dossierId } = req.query; // 'all', 'received', 'sent', 'unread', filtrage éventuel par dossier
+    const { 
+      type = 'all', 
+      dossierId, 
+      expediteurId, 
+      destinataireId 
+    } = req.query; // Filtres disponibles
 
     let query = {};
     
@@ -132,7 +137,7 @@ router.get('/', async (req, res) => {
           { destinataires: userId },
           { copie: userId }
         ],
-        'lu.user': { $ne: userId }
+        lu: { $not: { $elemMatch: { user: userId } } }
       };
     } else {
       // 'all' - messages reçus (destinataire ou copie) ou envoyés
@@ -146,7 +151,7 @@ router.get('/', async (req, res) => {
     }
 
     // Exclure les messages archivés par l'utilisateur
-    query['archive.user'] = { $ne: userId };
+    query.archive = { $not: { $elemMatch: { user: userId } } };
     
     // Filtrer par dossier si fourni
     if (dossierId) {
@@ -155,6 +160,49 @@ router.get('/', async (req, res) => {
         ? new mongoose.Types.ObjectId(dossierId)
         : dossierId;
       query.dossierId = dossierIdObj;
+    }
+
+    // Filtrer par expéditeur si fourni
+    if (expediteurId) {
+      const mongoose = require('mongoose');
+      const expediteurIdObj = typeof expediteurId === 'string' && mongoose.Types.ObjectId.isValid(expediteurId)
+        ? new mongoose.Types.ObjectId(expediteurId)
+        : expediteurId;
+      query.expediteur = expediteurIdObj;
+    }
+
+    // Filtrer par destinataire si fourni
+    if (destinataireId) {
+      const mongoose = require('mongoose');
+      const destinataireIdObj = typeof destinataireId === 'string' && mongoose.Types.ObjectId.isValid(destinataireId)
+        ? new mongoose.Types.ObjectId(destinataireId)
+        : destinataireId;
+      // Le destinataire peut être dans destinataires ou copie
+      // Si query a déjà un $or, on doit combiner avec $and pour préserver toutes les conditions
+      if (query.$or) {
+        const existingConditions = { ...query };
+        delete existingConditions.$or;
+        query = {
+          $and: [
+            { $or: query.$or },
+            {
+              $or: [
+                { destinataires: destinataireIdObj },
+                { copie: destinataireIdObj }
+              ]
+            },
+            ...Object.keys(existingConditions).map(key => ({ [key]: existingConditions[key] }))
+          ]
+        };
+      } else {
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { destinataires: destinataireIdObj },
+            { copie: destinataireIdObj }
+          ]
+        });
+      }
     }
 
     const messages = await MessageInterne.find(query)

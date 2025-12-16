@@ -342,25 +342,29 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                 </svg>
               </button>
             )}
-            {/* Logo - toujours visible, redirige toujours vers la page d'accueil */}
-            <>
-              <Link
-                href="/"
-                className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
-                  variant === 'home' ? 'text-xl' : 'text-lg'
-                }`}
-              >
-                Paw Legal
-              </Link>
-              <div className="h-4 w-px bg-gray-300"></div>
+            {/* Logo - visible sauf sur les pages admin (déjà présent dans la sidebar) */}
+            {variant !== 'admin' && (
+              <>
+                <Link
+                  href="/"
+                  className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
+                    variant === 'home' ? 'text-xl' : 'text-lg'
+                  }`}
+                >
+                  Paw Legal
+                </Link>
+                <div className="h-4 w-px bg-gray-300"></div>
+                <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
+                  {variant === 'client' ? subtitleClient : subtitleHome}
+                </p>
+              </>
+            )}
+            {/* Sur les pages admin, afficher uniquement le sous-titre */}
+            {variant === 'admin' && (
               <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
-                {variant === 'admin'
-                  ? subtitleAdmin
-                  : variant === 'client'
-                  ? subtitleClient
-                  : subtitleHome}
+                {subtitleAdmin}
               </p>
-            </>
+            )}
           </div>
 
           {/* Navigation - Liens permanents (Domaines, Services, FAQ, Contact, Calculateur, Dashboard) */}

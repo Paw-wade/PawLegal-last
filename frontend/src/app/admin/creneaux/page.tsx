@@ -125,10 +125,13 @@ export default function AdminCreneauxPage() {
           }
           
           try {
-            const creneauDate = new Date(c.date).toISOString().split('T')[0];
-            const selectedDateStr = new Date(selectedDate).toISOString().split('T')[0];
+            if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
+              return false;
+            }
+            const creneauDate = formatDateToString(c.date);
+            const selectedDateStr = formatDateToString(selectedDate);
             
-            if (creneauDate !== selectedDateStr) {
+            if (!creneauDate || !selectedDateStr || creneauDate !== selectedDateStr) {
               console.log(`⚠️ Créneau ${c.heure} ignoré: date ne correspond pas (${creneauDate} vs ${selectedDateStr})`);
               return false;
             }
@@ -278,6 +281,10 @@ export default function AdminCreneauxPage() {
     
     try {
       const creneauDate = new Date(c.date);
+      if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
+        return false;
+      }
+      
       const selectedDateObj = new Date(selectedDate);
       
       // Normaliser les dates pour la comparaison (année, mois, jour uniquement)
@@ -305,8 +312,23 @@ export default function AdminCreneauxPage() {
 
   // Pour le modal de fermeture, on doit charger tous les créneaux (fermés et non fermés) pour savoir lesquels sont déjà fermés
   const [allCreneauxForDate, setAllCreneauxForDate] = useState<any[]>([]);
-  
+
+  // Helper pour convertir une date en chaîne YYYY-MM-DD de manière sécurisée
+  const formatDateToString = (date: string | Date): string | null => {
+    if (!date) return null;
+    try {
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
+      if (isNaN(dateObj.getTime())) return null;
+      return dateObj.toISOString().split('T')[0];
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
+    if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
+      return;
+    }
     const loadAllCreneaux = async () => {
       try {
         const response = await creneauxAPI.getAllCreneaux({ date: selectedDate });
@@ -322,9 +344,10 @@ export default function AdminCreneauxPage() {
 
   const heuresFermees = allCreneauxForDate
     .filter(c => {
-      if (!c.date) return false;
-      const creneauDate = new Date(c.date).toISOString().split('T')[0];
-      const selectedDateStr = new Date(selectedDate).toISOString().split('T')[0];
+      if (!c.date || !selectedDate) return false;
+      const creneauDate = formatDateToString(c.date);
+      const selectedDateStr = formatDateToString(selectedDate);
+      if (!creneauDate || !selectedDateStr) return false;
       return creneauDate === selectedDateStr && (c.ferme === true || c.ferme === 'true');
     })
     .map(c => c.heure);
@@ -420,12 +443,14 @@ export default function AdminCreneauxPage() {
                 Créneaux fermés
               </h2>
               <p className="text-muted-foreground">
-                {new Date(selectedDate).toLocaleDateString('fr-FR', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
+                {selectedDate && !isNaN(new Date(selectedDate).getTime()) 
+                  ? new Date(selectedDate).toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })
+                  : 'Date invalide'}
               </p>
             </div>
             {creneauxFermesPourDate.length > 0 && (
@@ -479,12 +504,14 @@ export default function AdminCreneauxPage() {
               </div>
               <p className="text-muted-foreground mb-2 font-medium">Aucun créneau fermé pour cette date</p>
               <p className="text-sm text-muted-foreground">
-                Tous les créneaux sont disponibles pour le {new Date(selectedDate).toLocaleDateString('fr-FR', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
+                Tous les créneaux sont disponibles pour le {selectedDate && !isNaN(new Date(selectedDate).getTime())
+                  ? new Date(selectedDate).toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })
+                  : 'date invalide'}
               </p>
             </div>
           ) : (

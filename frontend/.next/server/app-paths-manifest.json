@@ -1,6 +1,4 @@
 {
-  "/icon.svg/route": "app/icon.svg/route.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/admin/taches/page": "app/admin/taches/page.js",
-  "/admin/corbeille/page": "app/admin/corbeille/page.js"
+  "/admin/page": "app/admin/page.js",
+  "/admin/utilisateurs/page": "app/admin/utilisateurs/page.js"
 }
