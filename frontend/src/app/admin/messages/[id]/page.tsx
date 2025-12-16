@@ -312,20 +312,26 @@ export default function AdminMessageDetailPage() {
                 )}
               </div>
             </div>
-            {isReceived && !isMessageRead(message) && (
+            {isReceived && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={async () => {
                   try {
-                    await messagesAPI.markAsRead(message._id || message.id);
+                    const isRead = isMessageRead(message);
+                    if (isRead) {
+                      await messagesAPI.markAsUnread(message._id || message.id);
+                    } else {
+                      await messagesAPI.markAsRead(message._id || message.id);
+                    }
                     await loadMessage();
+                    await loadMessageNotifications(message._id || message.id);
                   } catch (err) {
-                    console.error('Erreur lors du marquage comme lu:', err);
+                    console.error('Erreur lors du changement de statut:', err);
                   }
                 }}
               >
-                Marquer comme lu
+                {isMessageRead(message) ? 'Marquer comme non lu' : 'Marquer comme lu'}
               </Button>
             )}
           </div>
@@ -372,19 +378,19 @@ export default function AdminMessageDetailPage() {
           )}
         </div>
 
-        {/* Notifications liées */}
-        {messageNotifications.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Notifications liées</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => loadMessageNotifications(message._id || message.id)}
-              >
-                Actualiser
-              </Button>
-            </div>
+        {/* Notifications liées - Toujours affichée */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Notifications liées</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadMessageNotifications(message._id || message.id)}
+            >
+              Actualiser
+            </Button>
+          </div>
+          {messageNotifications.length > 0 ? (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {messageNotifications.map((notif: any) => (
                 <div key={notif._id || notif.id} className="p-3 bg-gray-50 rounded-md border-l-4 border-blue-500">
@@ -400,8 +406,12 @@ export default function AdminMessageDetailPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Aucune notification liée à ce message pour le moment.
+            </p>
+          )}
+        </div>
 
         {/* Modal de réponse */}
         {showReplyModal && (
@@ -506,6 +516,7 @@ export default function AdminMessageDetailPage() {
     </div>
   );
 }
+
 
 
 

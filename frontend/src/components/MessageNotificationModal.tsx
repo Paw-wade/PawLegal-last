@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { messagesAPI } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { messagesAPI, dossiersAPI } from '@/lib/api';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface MessageNotificationModalProps {
   isOpen: boolean;
@@ -12,24 +13,62 @@ interface MessageNotificationModalProps {
 
 export function MessageNotificationModal({ isOpen, onClose, message }: MessageNotificationModalProps) {
   const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
+  const [isLoadingDossier, setIsLoadingDossier] = useState(false);
+  const [dossier, setDossier] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    if (isOpen && message) {
-      // Marquer automatiquement comme lu après 2 secondes
-      const timer = setTimeout(async () => {
-        try {
-          setIsMarkingAsRead(true);
-          await messagesAPI.markAsRead(message._id || message.id);
-        } catch (error) {
-          console.error('Erreur lors du marquage du message:', error);
-        } finally {
-          setIsMarkingAsRead(false);
-        }
-      }, 2000);
-
-      return () => clearTimeout(timer);
+    // Charger le dossier si le message a un dossierId
+    if (isOpen && message?.dossierId) {
+      setIsLoadingDossier(true);
+      dossiersAPI.getDossierById(message.dossierId)
+        .then((response) => {
+          if (response.data.success) {
+            setDossier(response.data.dossier);
+          }
+        })
+        .catch((error) => {
+          console.error('Erreur lors du chargement du dossier:', error);
+        })
+        .finally(() => {
+          setIsLoadingDossier(false);
+        });
+    } else {
+      setDossier(null);
     }
-  }, [isOpen, message]);
+  }, [isOpen, message?.dossierId]);
+
+  const handleMarkAsRead = async () => {
+    if (!message || isMarkingAsRead) return;
+    
+    try {
+      setIsMarkingAsRead(true);
+      await messagesAPI.markAsRead(message._id || message.id);
+      onClose();
+    } catch (error) {
+      console.error('Erreur lors du marquage du message:', error);
+    } finally {
+      setIsMarkingAsRead(false);
+    }
+  };
+
+  const handleReply = () => {
+    const messageId = message._id || message.id;
+    const basePath = typeof window !== 'undefined' && window.location.pathname.includes('/admin') 
+      ? '/admin' 
+      : '/client';
+    router.push(`${basePath}/messages/${messageId}`);
+    onClose();
+  };
+
+  const handleOpenDossier = () => {
+    if (!message?.dossierId) return;
+    const basePath = typeof window !== 'undefined' && window.location.pathname.includes('/admin') 
+      ? '/admin' 
+      : '/client';
+    router.push(`${basePath}/dossiers/${message.dossierId}`);
+    onClose();
+  };
 
   if (!isOpen || !message) return null;
 
@@ -38,67 +77,133 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     ? `${expediteur.firstName || ''} ${expediteur.lastName || ''}`.trim() || expediteur.email
     : 'Expéditeur inconnu';
 
+  const isRead = message.lu?.some((reader: any) => {
+    const readerId = reader?._id?.toString() || reader?.toString();
+    const currentUserId = typeof window !== 'undefined' 
+      ? localStorage.getItem('userId') || sessionStorage.getItem('userId')
+      : null;
+    return readerId === currentUserId;
+  });
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={onClose}>
       <div 
-        className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 animate-in fade-in zoom-in duration-200"
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-8 animate-in fade-in zoom-in duration-300"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <span className="text-2xl">✉️</span>
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-500/20 to-orange-600/20 rounded-full flex items-center justify-center">
+              <span className="text-3xl">✉️</span>
             </div>
             <div>
-              <h3 className="text-lg font-bold text-foreground">Nouveau message</h3>
-              <p className="text-sm text-muted-foreground">Vous avez reçu un nouveau message</p>
+              <h3 className="text-2xl font-bold text-gray-900">Nouveau message</h3>
+              <p className="text-sm text-gray-500 mt-1">Vous avez reçu un nouveau message</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-2xl leading-none transition-colors"
+            className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+            aria-label="Fermer"
           >
             ×
           </button>
         </div>
 
-        <div className="space-y-3 mb-4">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">De</p>
-            <p className="text-sm font-semibold text-foreground">{expediteurName}</p>
+        {/* Content */}
+        <div className="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expéditeur</p>
+            <p className="text-base font-semibold text-gray-900">{expediteurName}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">Sujet</p>
-            <p className="text-sm font-semibold text-foreground">{message.sujet}</p>
+
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sujet</p>
+            <p className="text-base font-semibold text-gray-900">{message.sujet}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">Message</p>
-            <p className="text-sm text-foreground line-clamp-3">{message.contenu}</p>
+
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message</p>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{message.contenu}</p>
           </div>
+
           {message.piecesJointes && message.piecesJointes.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Pièces jointes</p>
-              <p className="text-sm text-foreground">{message.piecesJointes.length} fichier(s)</p>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pièces jointes</p>
+              <p className="text-sm text-gray-700">
+                📎 {message.piecesJointes.length} fichier(s) attaché(s)
+              </p>
+            </div>
+          )}
+
+          {message.dossierId && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">Dossier associé</p>
+              {isLoadingDossier ? (
+                <p className="text-sm text-orange-600">Chargement du dossier...</p>
+              ) : dossier ? (
+                <div>
+                  <p className="text-base font-semibold text-orange-900 mb-1">
+                    {dossier.titre || 'Dossier sans titre'}
+                  </p>
+                  {dossier.categorie && (
+                    <p className="text-xs text-orange-600">{dossier.categorie}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-orange-600">Dossier ID: {message.dossierId}</p>
+              )}
             </div>
           )}
         </div>
 
-        <div className="flex gap-2 pt-4 border-t">
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-1 px-6 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             Fermer
           </button>
-          <Link
-            href={typeof window !== 'undefined' && ((window as any).location?.pathname?.includes('/admin') || (window as any).location?.pathname?.includes('/client')) 
-              ? `${(window as any).location.pathname.includes('/admin') ? '/admin' : '/client'}/messages/${message._id || message.id}`
-              : `/client/messages/${message._id || message.id}`}
-            onClick={onClose}
-            className="flex-1 px-4 py-2 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors text-center"
+          
+          {message.dossierId && (
+            <button
+              onClick={handleOpenDossier}
+              className="flex-1 px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <span>📁</span>
+              Ouvrir le dossier
+            </button>
+          )}
+
+          <button
+            onClick={handleReply}
+            className="flex-1 px-6 py-3 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
           >
-            Voir le message
-          </Link>
+            <span>↩️</span>
+            Répondre
+          </button>
+
+          {!isRead && (
+            <button
+              onClick={handleMarkAsRead}
+              disabled={isMarkingAsRead}
+              className="flex-1 px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isMarkingAsRead ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Marquage...
+                </>
+              ) : (
+                <>
+                  <span>✓</span>
+                  Marquer comme lu
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { ReservationBadge } from '@/components/ReservationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel } from '@/lib/dossierUtils';
+import { useCmsText } from '@/lib/contentClient';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -41,6 +42,16 @@ function ClientDashboardContent() {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
   const [hasToken, setHasToken] = useState(false);
+
+  // Textes CMS pour le header du dashboard client
+  const dashboardTitleClient = useCmsText(
+    'client.dashboard.title',
+    'Bienvenue'
+  );
+  const dashboardSubtitleClient = useCmsText(
+    'client.dashboard.subtitle',
+    "Gérez vos dossiers et suivez l'avancement de vos démarches"
+  );
 
   // Vérifier si on a un token dans localStorage
   useEffect(() => {
@@ -416,9 +427,11 @@ function ClientDashboardContent() {
           <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Bienvenue, {userName.split(' ')[0]}
+                {dashboardTitleClient}, {userName.split(' ')[0]}
               </h1>
-              <p className="text-muted-foreground text-lg">Gérez vos dossiers et suivez l'avancement de vos démarches</p>
+              <p className="text-muted-foreground text-lg">
+                {dashboardSubtitleClient}
+              </p>
             </div>
             
             {/* Badge de renouvellement du titre de séjour */}

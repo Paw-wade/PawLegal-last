@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { contactAPI } from '@/lib/api';
+import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
 function Button({ children, variant = 'default', className = '', disabled = false, type = 'button', ...props }: any) {
@@ -155,25 +156,7 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/10">
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold text-primary">Paw Legal</Link>
-            <nav className="hidden md:flex items-center gap-6">
-              <Link href="/" className="hover:text-primary transition-colors">Accueil</Link>
-              <Link href="/domaines" className="hover:text-primary transition-colors">Domaines</Link>
-              <Link href="/services" className="hover:text-primary transition-colors">Services</Link>
-              <Link href="/calculateur" className="bg-orange-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-600 transition-colors shadow-md">Calculateur</Link>
-              <Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link>
-              <Link href="/contact" className="text-primary font-medium">Contact</Link>
-            </nav>
-            <div className="flex items-center gap-4">
-              <Link href="/auth/signin"><Button variant="ghost">Connexion</Button></Link>
-              <Link href="/auth/signup"><Button>Créer un compte</Button></Link>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header variant="home" />
 
       {/* Hero Section */}
       <section className="relative py-16 bg-gradient-to-br from-primary/10 via-primary/5 to-background overflow-hidden">

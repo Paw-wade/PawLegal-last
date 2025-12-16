@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI, dossiersAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
+import { useCmsText } from '@/lib/contentClient';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
@@ -77,6 +78,16 @@ export default function AdminDashboardPage() {
   const [newTaskNote, setNewTaskNote] = useState('');
   const [isAddingTaskNote, setIsAddingTaskNote] = useState(false);
   const [taskNotesError, setTaskNotesError] = useState<string | null>(null);
+
+  // Textes CMS pour le header du dashboard admin
+  const dashboardTitle = useCmsText(
+    'admin.dashboard.title',
+    'Tableau de bord Administrateur'
+  );
+  const dashboardSubtitle = useCmsText(
+    'admin.dashboard.subtitle',
+    "Vue d'ensemble de votre cabinet juridique"
+  );
 
   useEffect(() => {
     // Empêcher les vérifications multiples
@@ -620,9 +631,9 @@ export default function AdminDashboardPage() {
           <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Tableau de bord Administrateur
+                {dashboardTitle}
               </h1>
-              <p className="text-muted-foreground text-lg">Vue d'ensemble de votre cabinet juridique</p>
+              <p className="text-muted-foreground text-lg">{dashboardSubtitle}</p>
             </div>
           </div>
         </div>

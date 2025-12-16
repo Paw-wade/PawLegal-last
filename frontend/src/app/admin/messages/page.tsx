@@ -6,14 +6,27 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { messagesAPI, notificationsAPI, dossiersAPI } from '@/lib/api';
 
-function Button({ children, variant = 'default', className = '', ...props }: any) {
-  const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors';
+function Button({ children, variant = 'default', size = 'default', className = '', ...props }: any) {
+  const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
   const variantClasses = {
-    default: 'bg-primary text-white hover:bg-primary/90',
+    default: 'bg-primary text-white hover:bg-primary/90 shadow-sm hover:shadow',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
+    danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm hover:shadow',
   };
-  return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>{children}</button>;
+  const sizeClasses = {
+    default: 'px-4 py-2 text-sm',
+    sm: 'px-3 py-1.5 text-xs',
+    lg: 'px-6 py-3 text-base',
+  };
+  return (
+    <button 
+      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`} 
+      {...props}
+    >
+      {children}
+    </button>
+  );
 }
 
 function Input({ className = '', ...props }: any) {
@@ -36,7 +49,7 @@ function Label({ htmlFor, children, className = '' }: any) {
 function Textarea({ className = '', ...props }: any) {
   return (
     <textarea
-      className={`flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none ${className}`}
       {...props}
     />
   );
@@ -51,12 +64,13 @@ export default function AdminMessagesPage() {
   const [filter, setFilter] = useState<'all' | 'received' | 'sent' | 'unread'>('all');
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [users, setUsers] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     sujet: '',
     contenu: '',
-    destinataire: '' as string, // Destinataire unique (obligatoire)
-    copie: [] as string[], // Copie (optionnelle)
+    destinataire: '' as string,
+    copie: [] as string[],
   });
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,7 +102,6 @@ export default function AdminMessagesPage() {
     }
   }, [session, status, router, filter, selectedDossierId]);
 
-  // Charger automatiquement les notifications quand un message est sélectionné
   useEffect(() => {
     if (selectedMessage) {
       const messageId = selectedMessage._id || selectedMessage.id;
@@ -111,6 +124,7 @@ export default function AdminMessagesPage() {
       const response = await messagesAPI.getMessages(params);
       if (response.data.success) {
         setMessages(response.data.messages || []);
+        setSelectedMessages(new Set()); // Réinitialiser la sélection
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des messages:', err);
@@ -157,7 +171,6 @@ export default function AdminMessagesPage() {
     }
   };
 
-  // Organiser les utilisateurs par catégories
   const getUsersByCategory = () => {
     const admins = users.filter(user => user.role === 'admin' || user.role === 'superadmin');
     const clients = users.filter(user => user.role === 'client');
@@ -170,7 +183,6 @@ export default function AdminMessagesPage() {
       if (isSelected) {
         return { ...prev, copie: prev.copie.filter(id => id !== userId) };
       } else {
-        // Ne pas ajouter si c'est déjà le destinataire principal
         if (prev.destinataire === userId) {
           return prev;
         }
@@ -181,7 +193,6 @@ export default function AdminMessagesPage() {
 
   const handleDestinataireChange = (userId: string) => {
     setFormData(prev => {
-      // Retirer de la copie si c'était en copie
       const newCopie = prev.copie.filter(id => id !== userId);
       return { ...prev, destinataire: userId, copie: newCopie };
     });
@@ -207,15 +218,13 @@ export default function AdminMessagesPage() {
       const formDataToSend = new FormData();
       formDataToSend.append('sujet', formData.sujet);
       formDataToSend.append('contenu', formData.contenu);
-      formDataToSend.append('destinataire', formData.destinataire); // Destinataire unique
+      formDataToSend.append('destinataire', formData.destinataire);
       formDataToSend.append('dossierId', selectedDossierId);
       
-      // Ajouter les destinataires en copie
       formData.copie.forEach(copieId => {
         formDataToSend.append('copie', copieId);
       });
 
-      // Ajouter les pièces jointes
       attachments.forEach((file) => {
         formDataToSend.append('piecesJointes', file);
       });
@@ -259,22 +268,27 @@ export default function AdminMessagesPage() {
     const diffTime = Math.abs(now.getTime() - d.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return "Aujourd'hui";
+    if (diffDays === 0) {
+      const hours = Math.floor(diffTime / (1000 * 60 * 60));
+      if (hours === 0) {
+        const minutes = Math.floor(diffTime / (1000 * 60));
+        return `Il y a ${minutes} min`;
+      }
+      return `Il y a ${hours}h`;
+    }
     if (diffDays === 1) return "Hier";
     if (diffDays < 7) return `Il y a ${diffDays} jours`;
-    return d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
-    // Un message est considéré comme lu si l'utilisateur figure dans le tableau "lu"
     return message.lu?.some((l: any) => l.user?.toString() === userId?.toString());
   };
 
   const canCurrentUserMarkAsRead = (message: any) => {
     const userId = (session?.user as any)?.id;
     if (!userId) return false;
-    // Seuls les destinataires (ou en copie) peuvent marquer un message comme lu
     const isDestinataire = message.destinataires?.some(
       (d: any) =>
         d?._id?.toString() === userId.toString() ||
@@ -286,6 +300,77 @@ export default function AdminMessagesPage() {
         c?.toString?.() === userId.toString()
     );
     return !!(isDestinataire || isEnCopie);
+  };
+
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedMessages.size === messages.length) {
+      setSelectedMessages(new Set());
+    } else {
+      setSelectedMessages(new Set(messages.map(m => m._id || m.id)));
+    }
+  };
+
+  const handleBatchRead = async () => {
+    if (selectedMessages.size === 0) return;
+    try {
+      await messagesAPI.markBatchAsRead(Array.from(selectedMessages));
+      await loadMessages();
+      setSelectedMessages(new Set());
+    } catch (err: any) {
+      console.error('Erreur lors du marquage batch:', err);
+      alert('Erreur lors du marquage des messages');
+    }
+  };
+
+  const handleBatchUnread = async () => {
+    if (selectedMessages.size === 0) return;
+    try {
+      await messagesAPI.markBatchAsUnread(Array.from(selectedMessages));
+      await loadMessages();
+      setSelectedMessages(new Set());
+    } catch (err: any) {
+      console.error('Erreur lors du marquage batch:', err);
+      alert('Erreur lors du marquage des messages');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedMessages.size === 0) return;
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${selectedMessages.size} message(s) ?`)) return;
+    try {
+      await messagesAPI.deleteBatch(Array.from(selectedMessages));
+      await loadMessages();
+      setSelectedMessages(new Set());
+    } catch (err: any) {
+      console.error('Erreur lors de la suppression batch:', err);
+      alert('Erreur lors de la suppression des messages');
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
+    try {
+      await messagesAPI.deleteMessage(messageId);
+      await loadMessages();
+      if (selectedMessage && (selectedMessage._id || selectedMessage.id) === messageId) {
+        setSelectedMessage(null);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors de la suppression:', err);
+      alert('Erreur lors de la suppression du message');
+    }
   };
 
   if (status === 'loading') {
@@ -303,193 +388,304 @@ export default function AdminMessagesPage() {
     return null;
   }
 
-  return (
-    <div className="min-h-screen bg-background">
+  const unreadCount = messages.filter(m => !isMessageRead(m)).length;
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Messagerie Interne</h1>
-            <p className="text-muted-foreground">Communiquez avec les utilisateurs</p>
-          </div>
-          <div className="flex flex-col gap-2 items-end">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Dossier :</span>
-              <select
-                value={selectedDossierId}
-                onChange={(e) => setSelectedDossierId(e.target.value)}
-                className="px-3 py-2 border border-input rounded-md text-sm bg-background max-w-xs"
-              >
-                <option value="">Sélectionnez un dossier</option>
-                {dossiers.map((dossier) => (
-                  <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
-                    {dossier.titre || dossier.numero || 'Dossier'} – {dossier.numero}
-                  </option>
-                ))}
-              </select>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+            <div>
+              <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                Messagerie Interne
+              </h1>
+              <p className="text-muted-foreground">Communiquez avec les utilisateurs</p>
             </div>
-            <Button onClick={() => setShowComposeModal(true)} disabled={!selectedDossierId}>
-              + Nouveau message
+            <div className="flex flex-col gap-2 items-end">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground font-medium">Dossier :</span>
+                <select
+                  value={selectedDossierId}
+                  onChange={(e) => setSelectedDossierId(e.target.value)}
+                  className="px-4 py-2 border border-input rounded-lg text-sm bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 max-w-xs"
+                >
+                  <option value="">Tous les dossiers</option>
+                  {dossiers.map((dossier) => (
+                    <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
+                      {dossier.titre || dossier.numero || 'Dossier'} – {dossier.numero}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={() => setShowComposeModal(true)} disabled={!selectedDossierId} className="shadow-md">
+                <span className="mr-2">✉️</span>
+                Nouveau message
+              </Button>
+              {!selectedDossierId && (
+                <p className="text-xs text-amber-600 max-w-xs text-right">
+                  Sélectionnez un dossier pour envoyer un message
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Filtres */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant={filter === 'all' ? 'default' : 'outline'}
+              onClick={() => setFilter('all')}
+              size="sm"
+            >
+              Tous ({messages.length})
             </Button>
-            {!selectedDossierId && (
-              <p className="text-xs text-red-600 max-w-xs text-right">
-                Vous devez sélectionner un dossier pour envoyer un message.
-              </p>
-            )}
+            <Button
+              variant={filter === 'received' ? 'default' : 'outline'}
+              onClick={() => setFilter('received')}
+              size="sm"
+            >
+              Reçus
+            </Button>
+            <Button
+              variant={filter === 'sent' ? 'default' : 'outline'}
+              onClick={() => setFilter('sent')}
+              size="sm"
+            >
+              Envoyés
+            </Button>
+            <Button
+              variant={filter === 'unread' ? 'default' : 'outline'}
+              onClick={() => setFilter('unread')}
+              size="sm"
+              className={unreadCount > 0 ? 'relative' : ''}
+            >
+              Non lus
+              {unreadCount > 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </Button>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
             <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
-        {/* Filtres */}
-        <div className="mb-6 flex gap-2">
-          <Button
-            variant={filter === 'all' ? 'default' : 'outline'}
-            onClick={() => setFilter('all')}
-          >
-            Tous
-          </Button>
-          <Button
-            variant={filter === 'received' ? 'default' : 'outline'}
-            onClick={() => setFilter('received')}
-          >
-            Reçus
-          </Button>
-          <Button
-            variant={filter === 'sent' ? 'default' : 'outline'}
-            onClick={() => setFilter('sent')}
-          >
-            Envoyés
-          </Button>
-          <Button
-            variant={filter === 'unread' ? 'default' : 'outline'}
-            onClick={() => setFilter('unread')}
-          >
-            Non lus
-          </Button>
-        </div>
+        {/* Actions batch */}
+        {selectedMessages.size > 0 && (
+          <div className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg shadow-sm flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-primary">
+                {selectedMessages.size} message(s) sélectionné(s)
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={handleBatchRead}>
+                Marquer comme lu
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleBatchUnread}>
+                Marquer comme non lu
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleBatchDelete}>
+                Supprimer
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedMessages(new Set())}>
+                Annuler
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Liste des messages */}
         {isLoading ? (
-          <div className="text-center py-12">
+          <div className="text-center py-16">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Chargement des messages...</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-md p-12 text-center">
-            <div className="text-6xl mb-4">✉️</div>
-            <p className="text-muted-foreground mb-4">Aucun message {filter !== 'all' ? `(${filter})` : ''}</p>
+          <div className="bg-white rounded-xl shadow-lg p-16 text-center border border-border">
+            <div className="text-6xl mb-6">📭</div>
+            <p className="text-muted-foreground mb-6 text-lg">
+              Aucun message {filter !== 'all' ? `(${filter})` : ''}
+            </p>
             <Button onClick={() => setShowComposeModal(true)}>Envoyer un message</Button>
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Checkbox pour sélectionner tous */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-lg border border-border">
+              <input
+                type="checkbox"
+                checked={selectedMessages.size === messages.length && messages.length > 0}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+              />
+              <span className="text-sm font-medium text-muted-foreground">
+                Sélectionner tout
+              </span>
+            </div>
+
             {messages.map((message) => {
               const expediteur = message.expediteur;
+              const userId = (session?.user as any)?.id;
               const isReceived = message.destinataires?.some((d: any) => 
-                d._id?.toString() === (session?.user as any)?.id?.toString() || 
-                d.toString() === (session?.user as any)?.id?.toString()
+                d._id?.toString() === userId?.toString() || 
+                d.toString() === userId?.toString()
+              ) || message.copie?.some((c: any) => 
+                c._id?.toString() === userId?.toString() || 
+                c.toString() === userId?.toString()
               );
               const isRead = isMessageRead(message);
+              const messageId = message._id || message.id;
+              const isSelected = selectedMessages.has(messageId);
               
               return (
                 <div
-                  key={message._id || message.id}
-                  className={`bg-white rounded-xl shadow-md p-6 border-l-4 hover:shadow-lg transition-all ${
-                    isRead ? 'border-gray-300' : 'border-primary'
-                  } ${!isRead ? 'bg-primary/5' : ''}`}
+                  key={messageId}
+                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-lg ${
+                    isRead 
+                      ? 'border-gray-300 bg-white' 
+                      : 'border-primary bg-gradient-to-r from-primary/5 to-white'
+                  } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div 
-                      className="flex-1 cursor-pointer"
-                      onClick={() => setSelectedMessage(message)}
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-lg">{message.sujet}</h3>
-                        {!isRead && (
-                          <span className="px-2 py-1 rounded-full bg-primary text-white text-xs font-semibold">
-                            Nouveau
-                          </span>
-                        )}
+                  <div className="p-5">
+                    <div className="flex items-start gap-4">
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleMessageSelection(messageId)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                      />
+
+                      {/* Avatar/Initiale */}
+                      <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
+                        isRead ? 'bg-gray-400' : 'bg-primary'
+                      }`}>
+                        {expediteur?.firstName?.[0]?.toUpperCase() || expediteur?.email?.[0]?.toUpperCase() || '?'}
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                        {message.contenu}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span>
-                          {isReceived ? 'De' : 'À'}: {isReceived 
-                            ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
-                            : message.typeMessage === 'user_to_admins'
-                            ? 'Tous les administrateurs'
-                            : message.destinataires?.map((d: any) => 
-                                `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
-                              ).join(', ')
+
+                      {/* Contenu */}
+                      <div 
+                        className="flex-1 cursor-pointer min-w-0"
+                        onClick={() => {
+                          setSelectedMessage(message);
+                          if (!isRead && canCurrentUserMarkAsRead(message)) {
+                            messagesAPI.markAsRead(messageId).then(() => loadMessages());
                           }
-                          {message.copie && message.copie.length > 0 && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              (CC: {message.copie.length})
-                            </span>
-                          )}
-                        </span>
-                        <span>•</span>
-                        <span>{formatDate(message.createdAt)}</span>
-                        {message.piecesJointes && message.piecesJointes.length > 0 && (
-                          <>
-                            <span>•</span>
-                            <span>📎 {message.piecesJointes.length} pièce(s) jointe(s)</span>
-                          </>
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-4 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className={`font-semibold text-lg truncate ${
+                                isRead ? 'text-gray-700' : 'text-gray-900'
+                              }`}>
+                                {message.sujet}
+                              </h3>
+                              {!isRead && (
+                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-primary text-white text-xs font-semibold">
+                                  Nouveau
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                              {message.contenu}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                              <span className="font-medium">
+                                {isReceived ? 'De' : 'À'}:{' '}
+                                <span className="text-foreground">
+                                  {isReceived 
+                                    ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
+                                    : message.typeMessage === 'user_to_admins'
+                                    ? 'Tous les administrateurs'
+                                    : message.destinataires?.map((d: any) => 
+                                        `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
+                                      ).join(', ')
+                                  }
+                                </span>
+                              </span>
+                              <span>•</span>
+                              <span>{formatDate(message.createdAt)}</span>
+                              {message.piecesJointes && message.piecesJointes.length > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <span>📎</span>
+                                    <span>{message.piecesJointes.length} pièce(s) jointe(s)</span>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {isReceived && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setReplyToMessage(message);
+                              const expediteur = message.expediteur;
+                              const expediteurId = expediteur?._id || expediteur?.id;
+                              setReplyData({
+                                sujet: `Re: ${message.sujet}`,
+                                contenu: '',
+                                destinataire: expediteurId?.toString() || '',
+                                copie: [],
+                              });
+                              setShowReplyModal(true);
+                            }}
+                          >
+                            Répondre
+                          </Button>
+                        )}
+                        {canCurrentUserMarkAsRead(message) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                if (isRead) {
+                                  await messagesAPI.markAsUnread(messageId);
+                                } else {
+                                  await messagesAPI.markAsRead(messageId);
+                                }
+                                await loadMessages();
+                              } catch (err) {
+                                console.error('Erreur lors du changement de statut:', err);
+                              }
+                            }}
+                          >
+                            {isRead ? 'Non lu' : 'Marquer lu'}
+                          </Button>
+                        )}
+                        <Link href={`/admin/messages/${messageId}`}>
+                          <Button variant="outline" size="sm" className="w-full">
+                            Détails
+                          </Button>
+                        </Link>
+                        {(message.expediteur?._id?.toString() === userId?.toString() || 
+                          (session?.user as any)?.role === 'admin' || 
+                          (session?.user as any)?.role === 'superadmin') && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteMessage(messageId)}
+                          >
+                            Supprimer
+                          </Button>
                         )}
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-                      {isReceived && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setReplyToMessage(message);
-                            const expediteur = message.expediteur;
-                            const expediteurId = expediteur?._id || expediteur?.id;
-                            setReplyData({
-                              sujet: `Re: ${message.sujet}`,
-                              contenu: '',
-                              destinataire: expediteurId?.toString() || '',
-                              copie: [],
-                            });
-                            setShowReplyModal(true);
-                          }}
-                        >
-                          Répondre
-                        </Button>
-                      )}
-                      {canCurrentUserMarkAsRead(message) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              if (isRead) {
-                                // Pour l'instant, on ne gère pas le "marquer non lu" côté backend, on recharge simplement
-                                await loadMessages();
-                              } else {
-                                await messagesAPI.markAsRead(message._id || message.id);
-                                await loadMessages();
-                              }
-                            } catch (err) {
-                              console.error('Erreur lors du changement de statut:', err);
-                            }
-                          }}
-                        >
-                          {isRead ? 'Marquer non lu' : 'Marquer lu'}
-                        </Button>
-                      )}
-                      <Link href={`/admin/messages/${message._id || message.id}`}>
-                        <Button variant="outline" size="sm">
-                          Voir détails
-                        </Button>
-                      </Link>
                     </div>
                   </div>
                 </div>
@@ -498,27 +694,26 @@ export default function AdminMessagesPage() {
           </div>
         )}
 
-        {/* Modal de composition */}
+        {/* Modal de composition - reste identique mais avec meilleur style */}
         {showComposeModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl">
                 <h2 className="text-2xl font-bold">Nouveau message</h2>
-                <button onClick={() => setShowComposeModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
+                <button onClick={() => setShowComposeModal(false)} className="text-muted-foreground hover:text-foreground text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">×</button>
               </div>
-              <form onSubmit={handleSendMessage} className="p-6 space-y-4">
-                {/* Destinataire principal (choix unique) */}
+              <form onSubmit={handleSendMessage} className="p-6 space-y-5">
+                {/* Destinataire principal */}
                 <div>
                   <Label htmlFor="destinataire">Destinataire principal *</Label>
-                  <p className="text-xs text-muted-foreground mb-2">Sélectionnez un seul destinataire</p>
-                  <div className="mt-2 border border-input rounded-md p-4 max-h-64 overflow-y-auto bg-background">
+                  <p className="text-xs text-muted-foreground mb-3">Sélectionnez un seul destinataire</p>
+                  <div className="mt-2 border border-input rounded-lg p-4 max-h-64 overflow-y-auto bg-background">
                     {(() => {
                       const { admins, clients } = getUsersByCategory();
                       const currentUserId = (session?.user as any)?.id;
                       
                       return (
                         <div className="space-y-4">
-                          {/* Catégorie Utilisateurs */}
                           {clients.length > 0 && (
                             <div>
                               <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
@@ -531,7 +726,7 @@ export default function AdminMessagesPage() {
                                   return (
                                     <label
                                       key={userId}
-                                      className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-accent transition-colors ${
                                         isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
                                       }`}
                                     >
@@ -559,7 +754,6 @@ export default function AdminMessagesPage() {
                             </div>
                           )}
 
-                          {/* Catégorie Administrateurs */}
                           {admins.length > 0 && (
                             <div>
                               <h3 className="font-semibold text-sm text-foreground mb-2 pb-2 border-b border-border">
@@ -574,7 +768,7 @@ export default function AdminMessagesPage() {
                                     return (
                                       <label
                                         key={userId}
-                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-accent transition-colors ${
                                           isSelected ? 'bg-primary/10 border-2 border-primary' : 'border border-transparent'
                                         }`}
                                       >
@@ -611,18 +805,13 @@ export default function AdminMessagesPage() {
                       );
                     })()}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {formData.destinataire 
-                      ? 'Destinataire sélectionné'
-                      : 'Sélectionnez un destinataire'}
-                  </p>
                 </div>
 
-                {/* Copie (CC) - optionnelle */}
+                {/* Copie (CC) */}
                 <div>
                   <Label htmlFor="copie">Copie (CC) - Optionnel</Label>
-                  <p className="text-xs text-muted-foreground mb-2">Vous pouvez mettre d'autres personnes en copie</p>
-                  <div className="mt-2 border border-input rounded-md p-4 max-h-64 overflow-y-auto bg-background">
+                  <p className="text-xs text-muted-foreground mb-3">Vous pouvez mettre d'autres personnes en copie</p>
+                  <div className="mt-2 border border-input rounded-lg p-4 max-h-64 overflow-y-auto bg-background">
                     {(() => {
                       const { admins, clients } = getUsersByCategory();
                       const currentUserId = (session?.user as any)?.id;
@@ -648,7 +837,7 @@ export default function AdminMessagesPage() {
                             return (
                               <label
                                 key={userId}
-                                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-accent transition-colors ${
                                   isInCopie ? 'bg-blue-50 border-2 border-blue-300' : 'border border-transparent'
                                 }`}
                               >
@@ -676,12 +865,8 @@ export default function AdminMessagesPage() {
                       );
                     })()}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {formData.copie.length > 0 
-                      ? `${formData.copie.length} personne(s) en copie`
-                      : 'Aucune copie'}
-                  </p>
                 </div>
+
                 <div>
                   <Label htmlFor="sujet">Sujet *</Label>
                   <Input
@@ -702,6 +887,7 @@ export default function AdminMessagesPage() {
                     required
                     className="mt-1"
                     placeholder="Votre message..."
+                    rows={6}
                   />
                 </div>
                 <div>
@@ -723,12 +909,12 @@ export default function AdminMessagesPage() {
                   {attachments.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {attachments.map((file, index) => (
-                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between">
+                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-gray-50 rounded">
                           <span>📎 {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
                           <button
                             type="button"
                             onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}
-                            className="text-red-500 hover:text-red-700"
+                            className="text-red-500 hover:text-red-700 font-bold"
                           >
                             ×
                           </button>
@@ -750,42 +936,41 @@ export default function AdminMessagesPage() {
           </div>
         )}
 
-        {/* Modal de détail du message */}
+        {/* Modal de détail du message - reste identique mais avec meilleur style */}
         {selectedMessage && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl">
                 <h2 className="text-2xl font-bold">{selectedMessage.sujet}</h2>
                 <button onClick={() => {
                   setSelectedMessage(null);
                   setMessageNotifications([]);
-                }} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
+                }} className="text-muted-foreground hover:text-foreground text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">×</button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-5">
                 <div className="flex items-center justify-between mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        if (isMessageRead(selectedMessage)) {
-                          // Marquer comme non lu - recharger le message
+                  {canCurrentUserMarkAsRead(selectedMessage) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          if (isMessageRead(selectedMessage)) {
+                            await messagesAPI.markAsUnread(selectedMessage._id || selectedMessage.id);
+                          } else {
+                            await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
+                          }
                           await loadMessages();
                           const updatedMessage = await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message);
                           setSelectedMessage(updatedMessage);
-                        } else {
-                          await messagesAPI.markAsRead(selectedMessage._id || selectedMessage.id);
-                          await loadMessages();
-                          const updatedMessage = await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message);
-                          setSelectedMessage(updatedMessage);
+                        } catch (err) {
+                          console.error('Erreur lors du changement de statut:', err);
                         }
-                      } catch (err) {
-                        console.error('Erreur lors du changement de statut:', err);
-                      }
-                    }}
-                  >
-                    {isMessageRead(selectedMessage) ? 'Marquer comme non lu' : 'Marquer comme lu'}
-                  </Button>
+                      }}
+                    >
+                      {isMessageRead(selectedMessage) ? 'Marquer comme non lu' : 'Marquer comme lu'}
+                    </Button>
+                  )}
                   {selectedMessage.destinataires?.some((d: any) => 
                     d._id?.toString() === (session?.user as any)?.id?.toString() || 
                     d.toString() === (session?.user as any)?.id?.toString()
@@ -841,15 +1026,15 @@ export default function AdminMessagesPage() {
                   </div>
                 </div>
                 <div className="pt-4 border-t">
-                  <p className="text-muted-foreground mb-2">Message</p>
-                  <p className="whitespace-pre-wrap">{selectedMessage.contenu}</p>
+                  <p className="text-muted-foreground mb-2 font-medium">Message</p>
+                  <p className="whitespace-pre-wrap text-gray-700 leading-relaxed">{selectedMessage.contenu}</p>
                 </div>
                 {selectedMessage.piecesJointes && selectedMessage.piecesJointes.length > 0 && (
                   <div className="pt-4 border-t">
-                    <p className="text-muted-foreground mb-2">Pièces jointes</p>
+                    <p className="text-muted-foreground mb-2 font-medium">Pièces jointes</p>
                     <div className="space-y-2">
                       {selectedMessage.piecesJointes.map((pj: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
                           <div className="flex items-center gap-2">
                             <span>📎</span>
                             <span className="text-sm">{pj.originalName}</span>
@@ -870,7 +1055,7 @@ export default function AdminMessagesPage() {
                   </div>
                 )}
 
-                {/* Notifications liées au message */}
+                {/* Notifications liées */}
                 <div className="pt-4 border-t">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-muted-foreground font-semibold">Notifications liées</p>
@@ -888,7 +1073,7 @@ export default function AdminMessagesPage() {
                   {messageNotifications.length > 0 ? (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {messageNotifications.map((notif: any) => (
-                        <div key={notif._id || notif.id} className="p-3 bg-gray-50 rounded-md border-l-4 border-blue-500">
+                        <div key={notif._id || notif.id} className="p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <p className="text-sm font-semibold text-foreground mb-1">{notif.titre}</p>
@@ -916,18 +1101,18 @@ export default function AdminMessagesPage() {
           </div>
         )}
 
-        {/* Modal de réponse */}
+        {/* Modal de réponse - reste identique mais avec meilleur style */}
         {showReplyModal && replyToMessage && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl">
                 <h2 className="text-2xl font-bold">Répondre</h2>
                 <button onClick={() => {
                   setShowReplyModal(false);
                   setReplyToMessage(null);
                   setReplyData({ sujet: '', contenu: '', destinataire: '', copie: [] });
                   setReplyAttachments([]);
-                }} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
+                }} className="text-muted-foreground hover:text-foreground text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">×</button>
               </div>
               <form onSubmit={async (e) => {
                 e.preventDefault();
@@ -940,7 +1125,6 @@ export default function AdminMessagesPage() {
                   return;
                 }
 
-                // Le backend exige désormais un dossierId pour tout message
                 const dossierIdFromMessage = (replyToMessage as any)?.dossierId;
                 const dossierId = dossierIdFromMessage || selectedDossierId;
                 if (!dossierId) {
@@ -958,7 +1142,6 @@ export default function AdminMessagesPage() {
                     formDataToSend.append('copie', cc);
                   });
 
-                  // Rattacher la réponse au même fil (message parent) et au même dossier
                   const messageParentId =
                     (replyToMessage as any)?.messageParent?._id ||
                     (replyToMessage as any)?.messageParent ||
@@ -988,9 +1171,9 @@ export default function AdminMessagesPage() {
                 } finally {
                   setIsSubmitting(false);
                 }
-              }} className="p-6 space-y-4">
+              }} className="p-6 space-y-5">
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                     <p className="text-sm text-red-600">{error}</p>
                   </div>
                 )}
@@ -1002,7 +1185,7 @@ export default function AdminMessagesPage() {
                     value={replyData.destinataire}
                     onChange={(e) => setReplyData({ ...replyData, destinataire: e.target.value })}
                     required
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
                   >
                     <option value="">Sélectionner un destinataire</option>
                     {replyToMessage?.expediteur && (
@@ -1020,6 +1203,7 @@ export default function AdminMessagesPage() {
                     value={replyData.sujet}
                     onChange={(e) => setReplyData({ ...replyData, sujet: e.target.value })}
                     required
+                    className="mt-1"
                   />
                 </div>
 
@@ -1031,6 +1215,8 @@ export default function AdminMessagesPage() {
                     onChange={(e) => setReplyData({ ...replyData, contenu: e.target.value })}
                     required
                     placeholder="Votre réponse..."
+                    rows={6}
+                    className="mt-1"
                   />
                 </div>
 
@@ -1048,16 +1234,17 @@ export default function AdminMessagesPage() {
                       }
                       setReplyAttachments(files);
                     }}
+                    className="mt-1"
                   />
                   {replyAttachments.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {replyAttachments.map((file, index) => (
-                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between">
+                        <div key={index} className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-gray-50 rounded">
                           <span>📎 {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
                           <button
                             type="button"
                             onClick={() => setReplyAttachments(replyAttachments.filter((_, i) => i !== index))}
-                            className="text-red-500 hover:text-red-700"
+                            className="text-red-500 hover:text-red-700 font-bold"
                           >
                             ×
                           </button>

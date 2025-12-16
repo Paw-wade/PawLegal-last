@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { userAPI } from '@/lib/api';
 import { NotificationBadge } from '@/components/NotificationBadge';
+import { useCmsText } from '@/lib/contentClient';
 
 // Composant Button simplifié
 function Button({ 
@@ -74,6 +75,20 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
   const [mounted, setMounted] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // Textes CMS pour le sous-titre du header
+  const subtitleHome = useCmsText(
+    'layout.header.subtitle_home',
+    "Service d'accompagnement juridique"
+  );
+  const subtitleAdmin = useCmsText(
+    'layout.header.subtitle_admin',
+    "Panneau d'Administration"
+  );
+  const subtitleClient = useCmsText(
+    'layout.header.subtitle_client',
+    'Espace Client'
+  );
+
   // Éviter les problèmes d'hydratation
   useEffect(() => {
     setMounted(true);
@@ -118,7 +133,8 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
       }
 
       // Si pas de session mais on a un token, récupérer depuis l'API
-      if (status === 'unauthenticated' && typeof window !== 'undefined') {
+      // Vérifier aussi si status est 'loading' pour éviter d'afficher "déconnecté" pendant le chargement
+      if ((status === 'unauthenticated' || status === 'loading') && typeof window !== 'undefined') {
         const token = localStorage.getItem('token') || sessionStorage.getItem('token');
         if (token) {
           try {
@@ -147,10 +163,11 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
               }
             }
           }
-        } else {
+        } else if (status === 'unauthenticated') {
+          // Seulement mettre userInfo à null si on est vraiment non authentifié ET qu'on n'a pas de token
           setUserInfo(null);
         }
-      } else if (status === 'unauthenticated') {
+      } else if (status === 'unauthenticated' && !session) {
         setUserInfo(null);
       }
     };
@@ -338,15 +355,15 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
               <div className="h-4 w-px bg-gray-300"></div>
               <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
                 {variant === 'admin'
-                  ? "Panneau d'Administration"
+                  ? subtitleAdmin
                   : variant === 'client'
-                  ? 'Espace Client'
-                  : "Service d'accompagnement juridique"}
+                  ? subtitleClient
+                  : subtitleHome}
               </p>
             </>
           </div>
 
-          {/* Navigation - Liens permanents (Domaines, Services, FAQ, Contact, Calculateur, Dashboard sur l'accueil) */}
+          {/* Navigation - Liens permanents (Domaines, Services, FAQ, Contact, Calculateur, Dashboard) */}
           <nav className="hidden md:flex items-center gap-0.5">
             <Link
               href="/domaines"
@@ -378,14 +395,33 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
             >
               Calculateur
             </Link>
-            {variant === 'home' && (
-              <button
-                type="button"
-                onClick={handleDashboardClick}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-              >
-                Dashboard
-              </button>
+            {/* Afficher le bouton Dashboard si l'utilisateur est connecté et n'est pas déjà sur son dashboard */}
+            {isAuthenticated && (
+              (userRole === 'admin' || userRole === 'superadmin') && pathname !== '/admin' ? (
+                <button
+                  type="button"
+                  onClick={handleDashboardClick}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                >
+                  Dashboard
+                </button>
+              ) : (userRole === 'client' || !userRole || userRole === 'visiteur') && pathname !== '/client' ? (
+                <button
+                  type="button"
+                  onClick={handleDashboardClick}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                >
+                  Dashboard
+                </button>
+              ) : variant === 'home' ? (
+                <button
+                  type="button"
+                  onClick={handleDashboardClick}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                >
+                  Dashboard
+                </button>
+              ) : null
             )}
           </nav>
 
@@ -433,16 +469,25 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                   Logs
                 </Link>
               )}
-              {/* Afficher le bouton Dashboard si l'utilisateur est connecté en tant que client et n'est pas sur la page dashboard */}
-              {isAuthenticated && 
-               ((session?.user as any)?.role === 'client' || userInfo?.role === 'client') && 
-               pathname !== '/client' && (
-                <Link
-                  href="/client"
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  Dashboard
-                </Link>
+              {/* Afficher le bouton Dashboard si l'utilisateur est connecté et n'est pas déjà sur son dashboard */}
+              {isAuthenticated && (
+                (userRole === 'admin' || userRole === 'superadmin') && pathname !== '/admin' ? (
+                  <button
+                    type="button"
+                    onClick={handleDashboardClick}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    Dashboard
+                  </button>
+                ) : (userRole === 'client' || !userRole || userRole === 'visiteur') && pathname !== '/client' ? (
+                  <button
+                    type="button"
+                    onClick={handleDashboardClick}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    Dashboard
+                  </button>
+                ) : null
               )}
             </nav>
           )}

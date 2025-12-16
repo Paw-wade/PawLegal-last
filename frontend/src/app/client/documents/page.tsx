@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { documentsAPI } from '@/lib/api';
+import { documentsAPI, dossiersAPI } from '@/lib/api';
 import { DocumentPreview } from '@/components/DocumentPreview';
 
 function Button({ children, variant = 'default', className = '', disabled, ...props }: any) {
@@ -48,8 +48,11 @@ export default function DocumentsPage() {
   const [uploadData, setUploadData] = useState({
     nom: '',
     description: '',
-    categorie: 'autre'
+    categorie: 'autre',
+    dossierId: ''
   });
+  const [dossiers, setDossiers] = useState<any[]>([]);
+  const [isLoadingDossiers, setIsLoadingDossiers] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<any | null>(null);
 
   useEffect(() => {
@@ -65,8 +68,23 @@ export default function DocumentsPage() {
         }
       }
       loadDocuments();
+      loadDossiers();
     }
   }, [session, status, router]);
+
+  const loadDossiers = async () => {
+    setIsLoadingDossiers(true);
+    try {
+      const response = await dossiersAPI.getMyDossiers();
+      if (response.data.success) {
+        setDossiers(response.data.dossiers || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des dossiers:', err);
+    } finally {
+      setIsLoadingDossiers(false);
+    }
+  };
 
   const loadDocuments = async () => {
     setIsLoading(true);
@@ -149,11 +167,14 @@ export default function DocumentsPage() {
       formData.append('nom', uploadData.nom.trim());
       formData.append('description', uploadData.description.trim());
       formData.append('categorie', uploadData.categorie);
+      if (uploadData.dossierId && uploadData.dossierId.trim() !== '') {
+        formData.append('dossierId', uploadData.dossierId);
+      }
 
       const response = await documentsAPI.uploadDocument(formData);
       if (response.data.success) {
         setSuccess('Document téléversé avec succès !');
-        setUploadData({ nom: '', description: '', categorie: 'autre' });
+        setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
         setSelectedFile(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -247,7 +268,7 @@ export default function DocumentsPage() {
             if (showUploadForm) {
               // Réinitialiser le formulaire si on ferme
               setSelectedFile(null);
-              setUploadData({ nom: '', description: '', categorie: 'autre' });
+              setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
@@ -330,11 +351,31 @@ export default function DocumentsPage() {
                   <option value="autre">Autre</option>
                 </select>
               </div>
+              <div>
+                <Label htmlFor="dossierId">Dossier associé (optionnel)</Label>
+                <select
+                  id="dossierId"
+                  value={uploadData.dossierId}
+                  onChange={(e) => setUploadData({ ...uploadData, dossierId: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
+                  disabled={isLoadingDossiers}
+                >
+                  <option value="">Aucun dossier</option>
+                  {dossiers.map((dossier) => (
+                    <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
+                      {dossier.titre || 'Dossier sans titre'} {dossier.categorie ? `(${dossier.categorie})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {isLoadingDossiers && (
+                  <p className="text-xs text-muted-foreground mt-1">Chargement des dossiers...</p>
+                )}
+              </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => {
                   setShowUploadForm(false);
                   setSelectedFile(null);
-                  setUploadData({ nom: '', description: '', categorie: 'autre' });
+                  setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
                   if (fileInputRef.current) {
                     fileInputRef.current.value = '';
                   }

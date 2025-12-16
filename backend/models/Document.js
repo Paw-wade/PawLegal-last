@@ -37,6 +37,11 @@ const documentSchema = new mongoose.Schema({
     enum: ['identite', 'titre_sejour', 'contrat', 'facture', 'autre'],
     default: 'autre'
   },
+  dossierId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Dossier',
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -56,6 +61,7 @@ documentSchema.pre('save', function(next) {
 // Index pour améliorer les performances
 documentSchema.index({ user: 1, createdAt: -1 });
 documentSchema.index({ categorie: 1 });
+documentSchema.index({ dossierId: 1 });
 
 module.exports = mongoose.model('Document', documentSchema);
 

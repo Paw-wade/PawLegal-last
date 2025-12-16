@@ -152,9 +152,9 @@ router.post('/', upload.single('document'), async (req, res) => {
       });
     }
 
-    const { nom, description, categorie } = req.body;
+    const { nom, description, categorie, dossierId } = req.body;
 
-    const document = await Document.create({
+    const documentData = {
       user: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
       nom: nom || req.file.originalname,
       nomFichier: req.file.filename,
@@ -163,7 +163,14 @@ router.post('/', upload.single('document'), async (req, res) => {
       taille: req.file.size,
       description: description || '',
       categorie: categorie || 'autre'
-    });
+    };
+
+    // Ajouter dossierId seulement s'il est fourni et valide
+    if (dossierId && dossierId.trim() !== '') {
+      documentData.dossierId = dossierId;
+    }
+
+    const document = await Document.create(documentData);
 
     // Logger l'action
     try {

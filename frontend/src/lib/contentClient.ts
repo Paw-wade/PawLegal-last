@@ -1,0 +1,40 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { cmsAPI } from './api';
+
+/**
+ * Hook client pour récupérer un texte CMS avec une valeur de secours.
+ * - Utilise la clé CMS (ex: "home.hero.title")
+ * - Si la clé n'existe pas encore côté backend, on garde le fallback passé en argument
+ */
+export function useCmsText(key: string, fallback: string): string {
+  const [text, setText] = useState<string>(fallback);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const load = async () => {
+      try {
+        const value = await cmsAPI.getText(key);
+        if (isMounted && typeof value === 'string' && value.trim() !== '') {
+          setText(value);
+        }
+      } catch (error) {
+        // En cas d'erreur, on garde simplement le fallback
+        console.error(`Erreur CMS pour la clé "${key}":`, error);
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [key, fallback]);
+
+  return text;
+}
+
+
+

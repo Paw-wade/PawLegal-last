@@ -634,6 +634,10 @@ export const messagesAPI = {
   markAsRead: (id: string) =>
     api.put(`/messages/${id}/read`),
   
+  // Marquer un message comme non lu
+  markAsUnread: (id: string) =>
+    api.put(`/messages/${id}/unread`),
+  
   // Archiver un message
   archiveMessage: (id: string) =>
     api.put(`/messages/${id}/archive`),
@@ -644,9 +648,19 @@ export const messagesAPI = {
       responseType: 'blob',
     }),
   
-  // Supprimer un message (seul l'expéditeur peut supprimer)
+  // Supprimer un message (l'expéditeur peut supprimer, les admins peuvent supprimer n'importe quel message)
   deleteMessage: (id: string) =>
     api.delete(`/messages/${id}`),
+  
+  // Actions batch
+  markBatchAsRead: (messageIds: string[]) =>
+    api.post('/messages/batch/read', { messageIds }),
+  
+  markBatchAsUnread: (messageIds: string[]) =>
+    api.post('/messages/batch/unread', { messageIds }),
+  
+  deleteBatch: (messageIds: string[]) =>
+    api.post('/messages/batch/delete', { messageIds }),
 };
 
 export const documentsAPI = {
@@ -728,4 +742,71 @@ export const creneauxAPI = {
   reopenSlot: (id: string) =>
     api.delete(`/creneaux/${id}`),
 };
+
+// CMS - Gestion des contenus texte
+export const cmsAPI = {
+  // Public/Front - récupérer une valeur par clé
+  getText: async (key: string, locale: string = 'fr-FR'): Promise<string | null> => {
+    try {
+      const response = await api.get('/content/value', {
+        params: { key, locale },
+      });
+      if (response.data?.success) {
+        return response.data.value as string;
+      }
+      return null;
+    } catch (error: any) {
+      // Si la clé n'existe pas, on renvoie null pour laisser le fallback côté composant
+      if (error?.response?.status === 404) {
+        return null;
+      }
+      console.error('❌ Erreur lors de la récupération du texte CMS:', error);
+      return null;
+    }
+  },
+
+  // Admin - lister les entrées CMS
+  listEntries: (params?: {
+    page?: string;
+    section?: string;
+    search?: string;
+    locale?: string;
+    limit?: number;
+    skip?: number;
+  }) => {
+    return api.get('/content', { params });
+  },
+
+  // Admin - créer une entrée
+  createEntry: (data: {
+    key: string;
+    value: string;
+    locale?: string;
+    page?: string;
+    section?: string;
+    description?: string;
+  }) => {
+    return api.post('/content', data);
+  },
+
+  // Admin - mettre à jour une entrée
+  updateEntry: (
+    id: string,
+    data: {
+      value: string;
+      description?: string;
+      page?: string;
+      section?: string;
+      isActive?: boolean;
+    }
+  ) => {
+    return api.put(`/content/${id}`, data);
+  },
+
+  // Admin - désactiver une entrée
+  deleteEntry: (id: string) => {
+    return api.delete(`/content/${id}`);
+  },
+};
+
 

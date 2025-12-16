@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { temoignagesAPI } from '@/lib/api';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
+import { useCmsText } from '@/lib/contentClient';
 
 // Composant Button simplifié temporairement
 function Button({ 
@@ -61,6 +62,42 @@ export default function HomePage() {
     return true;
   });
 
+  // Textes pilotés par le CMS (avec fallback actuels)
+  const heroBadge = useCmsText('home.hero.badge', 'Expertise juridique reconnue');
+  const heroTitle = useCmsText(
+    'home.hero.title',
+    'Votre partenaire juridique de confiance'
+  );
+  const heroTitleHighlight = useCmsText(
+    'home.hero.title_highlight',
+    'juridique de confiance'
+  );
+  const heroSubtitle = useCmsText(
+    'home.hero.subtitle',
+    "Spécialisés en droit des étrangers et droit du travail, nous vous accompagnons dans toutes vos démarches administratives avec expertise et professionnalisme."
+  );
+  const heroCtaPrimary = useCmsText(
+    'home.hero.cta_primary',
+    'Créer mon compte gratuit'
+  );
+  const heroCtaSecondary = useCmsText(
+    'home.hero.cta_secondary',
+    'Consultation rapide'
+  );
+  const heroSmallText = useCmsText(
+    'home.hero.small_text',
+    "Suivez en temps réel l'évolution de votre dossier"
+  );
+
+  const domainsTitle = useCmsText(
+    'home.domains.title',
+    "Nos Domaines d'Intervention"
+  );
+  const domainsSubtitle = useCmsText(
+    'home.domains.subtitle',
+    'Une expertise reconnue dans trois domaines essentiels du droit'
+  );
+
   useEffect(() => {
     const loadTemoignages = async () => {
       try {
@@ -112,28 +149,29 @@ export default function HomePage() {
             {/* Contenu à gauche */}
             <div className="max-w-2xl pr-4 lg:pr-80">
               <div className="inline-block mb-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
-                <span className="text-xs font-medium text-primary">Expertise juridique reconnue</span>
+                <span className="text-xs font-medium text-primary">{heroBadge}</span>
               </div>
               <h1 className="text-4xl font-bold mb-3 text-foreground leading-tight text-left">
-                Votre partenaire <span className="text-primary">juridique de confiance</span>
+                {heroTitle.replace(heroTitleHighlight, '').trim() || heroTitle}{' '}
+                <span className="text-primary">{heroTitleHighlight}</span>
               </h1>
               <p className="text-base text-muted-foreground mb-4 text-left">
-                Spécialisés en droit des étrangers et droit du travail, nous vous accompagnons dans toutes vos démarches administratives avec expertise et professionnalisme.
+                {heroSubtitle}
               </p>
               <div className="flex items-center gap-4 mt-6">
                 <Link href="/auth/signup">
                   <Button size="default" className="shadow-md whitespace-nowrap">
-                    Créer mon compte gratuit
+                    {heroCtaPrimary}
                   </Button>
                 </Link>
                 <Link href="/contact">
                   <Button size="default" variant="outline" className="shadow-md whitespace-nowrap">
-                    Consultation rapide
+                    {heroCtaSecondary}
                   </Button>
                 </Link>
               </div>
               <p className="text-xs text-muted-foreground mt-2 text-left">
-                Suivez en temps réel l'évolution de votre dossier
+                {heroSmallText}
               </p>
               <div className="mt-5 flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
@@ -165,9 +203,9 @@ export default function HomePage() {
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-primary">Nos Domaines d'Intervention</h2>
+            <h2 className="text-4xl font-bold mb-4 text-primary">{domainsTitle}</h2>
             <p className="text-lg text-primary max-w-2xl mx-auto">
-              Une expertise reconnue dans trois domaines essentiels du droit
+              {domainsSubtitle}
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">

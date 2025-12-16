@@ -162,10 +162,27 @@ router.get('/', async (req, res) => {
       .populate('destinataires', 'firstName lastName email role')
       .populate('copie', 'firstName lastName email role')
       .populate('messageParent', 'sujet expediteur')
-      .sort({ createdAt: -1 })
       .limit(100);
 
     console.log('✅ Messages trouvés:', messages.length);
+
+    // Trier les messages : non lus en premier, puis lus, chaque groupe par date décroissante
+    messages.sort((a, b) => {
+      // Vérifier si le message est lu par l'utilisateur
+      const aIsRead = a.lu?.some((l: any) => 
+        (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
+      );
+      const bIsRead = b.lu?.some((l: any) => 
+        (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
+      );
+
+      // Priorité aux messages non lus
+      if (!aIsRead && bIsRead) return -1;
+      if (aIsRead && !bIsRead) return 1;
+
+      // Dans le même groupe (lus ou non lus), trier par date décroissante (plus récents en premier)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     // Par défaut, ne pas casser l'API si la logique de threads pose problème
     let threads = [];
@@ -686,6 +703,192 @@ router.post(
   }
 );
 
+// IMPORTANT: Les routes batch doivent être définies AVANT les routes paramétrées (/:id)
+// pour éviter que Express ne les intercepte avec le paramètre :id
+
+// @route   POST /api/messages/batch/read
+// @desc    Marquer plusieurs messages comme lus
+// @access  Private
+router.post('/batch/read', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Récupérer les messages où l'utilisateur est destinataire ou en copie
+    const messages = await MessageInterne.find({
+      _id: { $in: messageIdsObj },
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    });
+
+    let updatedCount = 0;
+    for (const message of messages) {
+      const dejaLu = message.lu.some(l => l.user && l.user.toString() === userIdObj.toString());
+      if (!dejaLu) {
+        message.lu.push({
+          user: userIdObj,
+          luAt: new Date()
+        });
+        await message.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${updatedCount} message(s) marqué(s) comme lu`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors du marquage batch des messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/messages/batch/unread
+// @desc    Marquer plusieurs messages comme non lus
+// @access  Private
+router.post('/batch/unread', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Récupérer les messages où l'utilisateur est destinataire ou en copie
+    const messages = await MessageInterne.find({
+      _id: { $in: messageIdsObj },
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    });
+
+    let updatedCount = 0;
+    for (const message of messages) {
+      const wasRead = message.lu.some(l => l.user && l.user.toString() === userIdObj.toString());
+      if (wasRead) {
+        message.lu = message.lu.filter(l => 
+          l.user && l.user.toString() !== userIdObj.toString()
+        );
+        await message.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${updatedCount} message(s) marqué(s) comme non lu`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors du marquage batch des messages comme non lus:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/messages/batch/delete
+// @desc    Supprimer plusieurs messages
+// @access  Private
+router.post('/batch/delete', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const effectiveUser = getEffectiveUser(req);
+    const userRole = effectiveUser?.role || req.user.role;
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Les admins peuvent supprimer n'importe quel message, les autres seulement ceux qu'ils ont envoyés
+    let query;
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      query = { _id: { $in: messageIdsObj } };
+    } else {
+      query = {
+        _id: { $in: messageIdsObj },
+        expediteur: userIdObj
+      };
+    }
+
+    const messages = await MessageInterne.find(query);
+
+    // Supprimer les fichiers associés
+    for (const message of messages) {
+      if (message.piecesJointes && message.piecesJointes.length > 0) {
+        message.piecesJointes.forEach((pieceJointe) => {
+          if (fs.existsSync(pieceJointe.path)) {
+            try {
+              fs.unlinkSync(pieceJointe.path);
+            } catch (unlinkError) {
+              console.error('Erreur lors de la suppression du fichier:', unlinkError);
+            }
+          }
+        });
+      }
+    }
+
+    const result = await MessageInterne.deleteMany(query);
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount} message(s) supprimé(s)`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors de la suppression batch des messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   GET /api/messages/:id
 // @desc    Récupérer un message spécifique
 // @access  Private
@@ -779,59 +982,143 @@ router.put('/:id/read', async (req, res) => {
       });
       await message.save();
 
-      // Si c'est un message d'utilisateur vers admins et qu'un admin le lit
-      // Notifier tous les autres admins
-      if (message.typeMessage === 'user_to_admins' && (userRole === 'admin' || userRole === 'superadmin')) {
-        try {
-          const adminQuiALu = req.user;
-          const adminName = `${adminQuiALu.firstName || ''} ${adminQuiALu.lastName || ''}`.trim() || adminQuiALu.email;
-          
-          const expediteurUser = message.expediteur;
-          const expediteurName = expediteurUser 
-            ? `${expediteurUser.firstName || ''} ${expediteurUser.lastName || ''}`.trim() || expediteurUser.email
-            : 'Utilisateur inconnu';
+      // Créer une notification pour l'expéditeur et les autres destinataires
+      try {
+        const lecteur = effectiveUser || req.user;
+        const lecteurName = `${lecteur.firstName || ''} ${lecteur.lastName || ''}`.trim() || lecteur.email;
+        const lecteurRole = lecteur.role || userRole;
+        
+        const expediteurUser = message.expediteur;
+        const expediteurId = expediteurUser?._id || expediteurUser?.id || expediteurUser;
+        const expediteurName = expediteurUser 
+          ? `${expediteurUser.firstName || ''} ${expediteurUser.lastName || ''}`.trim() || expediteurUser.email
+          : 'Utilisateur inconnu';
 
-          // Récupérer tous les autres administrateurs
+        // Notifier l'expéditeur si ce n'est pas lui qui lit
+        if (expediteurId && expediteurId.toString() !== userIdObj.toString()) {
+          await Notification.create({
+            user: expediteurId.toString(),
+            type: 'message_read',
+            titre: 'Message lu',
+            message: `Votre message "${message.sujet}" a été lu par ${lecteurName}`,
+            lien: lecteurRole === 'admin' || lecteurRole === 'superadmin' 
+              ? `/admin/messages/${messageId}` 
+              : `/client/messages/${messageId}`,
+            metadata: {
+              messageId: messageId,
+              luParId: userIdObj.toString(),
+              luParName: lecteurName,
+              luParRole: lecteurRole
+            }
+          });
+          console.log(`✅ Notification de lecture envoyée à l'expéditeur: ${expediteurId.toString()}`);
+        }
+
+        // Si c'est un message d'utilisateur vers admins et qu'un admin le lit
+        // Notifier tous les autres admins
+        if (message.typeMessage === 'user_to_admins' && (lecteurRole === 'admin' || lecteurRole === 'superadmin')) {
           const autresAdmins = await User.find({
             role: { $in: ['admin', 'superadmin'] },
             _id: { $ne: userIdObj },
             isActive: { $ne: false }
           });
 
-          // Notifier tous les autres admins
           for (const admin of autresAdmins) {
-            // Vérifier que l'admin n'a pas déjà lu le message
             const adminALu = message.lu.some(l => l.user && l.user.toString() === admin._id.toString());
             if (!adminALu) {
               await Notification.create({
                 user: admin._id.toString(),
                 type: 'message_read',
                 titre: 'Message lu par un administrateur',
-                message: `Le message de ${expediteurName} a été lu par ${adminName}`,
+                message: `Le message de ${expediteurName} a été lu par ${lecteurName}`,
                 lien: `/admin/messages/${messageId}`,
                 metadata: {
                   messageId: messageId,
-                  expediteurId: message.expediteur._id ? message.expediteur._id.toString() : message.expediteur.toString(),
+                  expediteurId: expediteurId.toString(),
                   luParId: userIdObj.toString(),
-                  luParName: adminName
+                  luParName: lecteurName
                 }
               });
               console.log(`✅ Notification de lecture envoyée à admin: ${admin._id.toString()}`);
             }
           }
-        } catch (notifError) {
-          console.error('❌ Erreur lors de la création des notifications de lecture:', notifError);
-          // Ne pas bloquer le marquage comme lu si la notification échoue
         }
+
+        // Si c'est un admin qui envoie à un client et que le client lit
+        // Notifier l'admin
+        if (message.typeMessage === 'admin_to_user' && lecteurRole === 'client') {
+          if (expediteurId && expediteurId.toString() !== userIdObj.toString()) {
+            // La notification à l'expéditeur a déjà été créée ci-dessus
+            console.log(`✅ Notification de lecture envoyée à l'admin expéditeur: ${expediteurId.toString()}`);
+          }
+        }
+      } catch (notifError) {
+        console.error('❌ Erreur lors de la création des notifications de lecture:', notifError);
+        // Ne pas bloquer le marquage comme lu si la notification échoue
       }
     }
 
+    const updatedMessage = await MessageInterne.findById(messageId)
+      .populate('expediteur', 'firstName lastName email role')
+      .populate('destinataires', 'firstName lastName email role');
+
     res.json({
       success: true,
-      message: 'Message marqué comme lu'
+      message: 'Message marqué comme lu',
+      data: updatedMessage
     });
   } catch (error) {
     console.error('Erreur lors du marquage du message:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   PUT /api/messages/:id/unread
+// @desc    Marquer un message comme non lu (retirer de la liste des lus)
+// @access  Private
+router.put('/:id/unread', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const messageId = req.params.id;
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+
+    // Récupérer le message
+    const message = await MessageInterne.findOne({
+      _id: messageId,
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    })
+      .populate('expediteur', 'firstName lastName email role')
+      .populate('destinataires', 'firstName lastName email role');
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message non trouvé'
+      });
+    }
+
+    // Retirer l'utilisateur de la liste des lus
+    message.lu = message.lu.filter(l => 
+      l.user && l.user.toString() !== userIdObj.toString()
+    );
+    await message.save();
+
+    res.json({
+      success: true,
+      message: 'Message marqué comme non lu',
+      message: message
+    });
+  } catch (error) {
+    console.error('Erreur lors du marquage du message comme non lu:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',
@@ -886,18 +1173,209 @@ router.put('/:id/archive', async (req, res) => {
   }
 });
 
+// @route   POST /api/messages/batch/read
+// @desc    Marquer plusieurs messages comme lus
+// @access  Private
+router.post('/batch/read', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Récupérer les messages où l'utilisateur est destinataire ou en copie
+    const messages = await MessageInterne.find({
+      _id: { $in: messageIdsObj },
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    });
+
+    let updatedCount = 0;
+    for (const message of messages) {
+      const dejaLu = message.lu.some(l => l.user && l.user.toString() === userIdObj.toString());
+      if (!dejaLu) {
+        message.lu.push({
+          user: userIdObj,
+          luAt: new Date()
+        });
+        await message.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${updatedCount} message(s) marqué(s) comme lu`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors du marquage batch des messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/messages/batch/unread
+// @desc    Marquer plusieurs messages comme non lus
+// @access  Private
+router.post('/batch/unread', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Récupérer les messages où l'utilisateur est destinataire ou en copie
+    const messages = await MessageInterne.find({
+      _id: { $in: messageIdsObj },
+      $or: [
+        { destinataires: userIdObj },
+        { copie: userIdObj }
+      ]
+    });
+
+    let updatedCount = 0;
+    for (const message of messages) {
+      const wasRead = message.lu.some(l => l.user && l.user.toString() === userIdObj.toString());
+      if (wasRead) {
+        message.lu = message.lu.filter(l => 
+          l.user && l.user.toString() !== userIdObj.toString()
+        );
+        await message.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${updatedCount} message(s) marqué(s) comme non lu`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors du marquage batch des messages comme non lus:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/messages/batch/delete
+// @desc    Supprimer plusieurs messages
+// @access  Private
+router.post('/batch/delete', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const userId = getEffectiveUserId(req);
+    const effectiveUser = getEffectiveUser(req);
+    const userRole = effectiveUser?.role || req.user.role;
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veuillez fournir un tableau de IDs de messages'
+      });
+    }
+
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const messageIdsObj = messageIds.map(id => 
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
+
+    // Les admins peuvent supprimer n'importe quel message, les autres seulement ceux qu'ils ont envoyés
+    let query;
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      query = { _id: { $in: messageIdsObj } };
+    } else {
+      query = {
+        _id: { $in: messageIdsObj },
+        expediteur: userIdObj
+      };
+    }
+
+    const messages = await MessageInterne.find(query);
+
+    // Supprimer les fichiers associés
+    for (const message of messages) {
+      if (message.piecesJointes && message.piecesJointes.length > 0) {
+        message.piecesJointes.forEach((pieceJointe) => {
+          if (fs.existsSync(pieceJointe.path)) {
+            try {
+              fs.unlinkSync(pieceJointe.path);
+            } catch (unlinkError) {
+              console.error('Erreur lors de la suppression du fichier:', unlinkError);
+            }
+          }
+        });
+      }
+    }
+
+    const result = await MessageInterne.deleteMany(query);
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount} message(s) supprimé(s)`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Erreur lors de la suppression batch des messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   DELETE /api/messages/:id
-// @desc    Supprimer un message (seul l'expéditeur peut supprimer)
+// @desc    Supprimer un message (l'expéditeur peut supprimer, les admins peuvent supprimer n'importe quel message)
 // @access  Private
 router.delete('/:id', async (req, res) => {
   try {
     const userId = getEffectiveUserId(req); // Utilise l'ID impersonné si en impersonation
     const messageId = req.params.id;
 
-    const message = await MessageInterne.findOne({
-      _id: messageId,
-      expediteur: userId // Seul l'expéditeur peut supprimer
-    });
+    const effectiveUser = getEffectiveUser(req);
+    const userRole = effectiveUser?.role || req.user.role;
+    
+    // Les admins peuvent supprimer n'importe quel message, les autres seulement ceux qu'ils ont envoyés
+    let query;
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      query = { _id: messageId };
+    } else {
+      query = { _id: messageId, expediteur: userId };
+    }
+
+    const message = await MessageInterne.findOne(query);
 
     if (!message) {
       return res.status(404).json({
