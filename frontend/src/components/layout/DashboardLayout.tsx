@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { AdminSidebar } from './AdminSidebar';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { Toast } from '@/components/Toast';
 import { userAPI } from '@/lib/api';
@@ -137,13 +138,14 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
     return '';
   };
 
-  // Les admins n'ont PAS de sidebar par défaut
-  // Le sidebar n'apparaît que pour les clients OU pour les admins en impersonation
-  const showSidebar = variant === 'client' && (!isAdmin || isImpersonating);
+  // Les admins ont maintenant un menu latéral fixe
+  // Le sidebar client n'apparaît que pour les clients OU pour les admins en impersonation
+  const showClientSidebar = variant === 'client' && (!isAdmin || isImpersonating);
+  const showAdminSidebar = variant === 'admin' && isAdmin && !isImpersonating;
 
-  // Fermer la sidebar sur desktop (large screens)
+  // Fermer la sidebar client sur desktop (large screens)
   useEffect(() => {
-    if (!showSidebar) return;
+    if (!showClientSidebar) return;
     
     const handleResize = () => {
       if (window.innerWidth >= 1024) {
@@ -153,22 +155,27 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [showSidebar]);
+  }, [showClientSidebar]);
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Sidebar - uniquement pour les clients ou les admins en impersonation */}
-      {showSidebar && (
+      {/* Sidebar client - uniquement pour les clients ou les admins en impersonation */}
+      {showClientSidebar && (
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       )}
 
+      {/* Sidebar admin - fixe pour tous les admins */}
+      {showAdminSidebar && (
+        <AdminSidebar isOpen={true} onClose={() => setSidebarOpen(false)} />
+      )}
+
       {/* Contenu principal */}
-      <div className={`flex-1 flex flex-col ${showSidebar ? 'lg:ml-0' : ''}`}>
+      <div className={`flex-1 flex flex-col ${showAdminSidebar ? 'lg:ml-64' : ''} transition-all duration-300 w-full`}>
         {/* Header simplifié (sans navigation) */}
         <Header 
           variant={variant} 
           showNav={false}
-          onMenuClick={showSidebar ? () => setSidebarOpen(!sidebarOpen) : undefined}
+          onMenuClick={showClientSidebar ? () => setSidebarOpen(!sidebarOpen) : undefined}
         />
 
         {/* Banner d'impersonation - toujours visible en mode impersonation */}
@@ -183,7 +190,7 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
         )}
 
         {/* Contenu */}
-        <main className="flex-1 overflow-x-hidden">
+        <main className="flex-1 overflow-x-hidden w-full">
           {children}
         </main>
       </div>

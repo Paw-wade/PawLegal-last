@@ -791,7 +791,24 @@ export default function AdminUtilisateursPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors de la création de l\'utilisateur:', err);
-      setError(err.response?.data?.message || 'Erreur lors de la création de l\'utilisateur');
+      console.error('Détails de l\'erreur:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        errors: err.response?.data?.errors
+      });
+      
+      // Afficher les détails de l'erreur
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        // Erreurs de validation express-validator
+        const errorMessages = err.response.data.errors.map((e: any) => 
+          `${e.param || e.field || 'Champ'}: ${e.msg || e.message || 'Erreur de validation'}`
+        ).join(', ');
+        setError(`Erreurs de validation: ${errorMessages}`);
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Erreur lors de la création de l\'utilisateur. Vérifiez que tous les champs sont remplis correctement.');
+      }
     } finally {
       setIsLoading(false);
     }

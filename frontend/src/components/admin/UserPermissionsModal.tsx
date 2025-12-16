@@ -257,7 +257,24 @@ export function UserPermissionsModal({ isOpen, onClose, userId, onSuccess }: Use
       resetForm();
     } catch (err: any) {
       console.error('Erreur lors de la sauvegarde:', err);
-      setError(err.response?.data?.message || err.message || 'Erreur lors de la sauvegarde');
+      console.error('Détails de l\'erreur:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        errors: err.response?.data?.errors
+      });
+      
+      // Afficher les détails de l'erreur
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        // Erreurs de validation express-validator
+        const errorMessages = err.response.data.errors.map((e: any) => 
+          `${e.param || e.field || 'Champ'}: ${e.msg || e.message || 'Erreur de validation'}`
+        ).join(', ');
+        setError(`Erreurs de validation: ${errorMessages}`);
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError(err.message || 'Erreur lors de la sauvegarde');
+      }
     } finally {
       setIsLoading(false);
     }

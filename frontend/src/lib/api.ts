@@ -500,7 +500,7 @@ export const tasksAPI = {
     description?: string;
     statut?: string;
     priorite?: string;
-    assignedTo: string;
+    assignedTo: string | string[];
     dateEcheance?: string;
     dateDebut?: string;
     dossier?: string;
@@ -515,7 +515,7 @@ export const tasksAPI = {
     description?: string;
     statut?: string;
     priorite?: string;
-    assignedTo?: string;
+    assignedTo?: string | string[];
     dateEcheance?: string;
     dateDebut?: string;
     dateFin?: string;
@@ -744,6 +744,28 @@ export const creneauxAPI = {
 };
 
 // CMS - Gestion des contenus texte
+export const trashAPI = {
+  // Récupérer tous les éléments de la corbeille
+  getTrashItems: (params?: { itemType?: string; origin?: string; page?: number; limit?: number }) =>
+    api.get('/trash', { params }),
+  
+  // Récupérer les statistiques de la corbeille
+  getStats: () =>
+    api.get('/trash/stats'),
+  
+  // Restaurer un élément
+  restoreItem: (id: string) =>
+    api.post(`/trash/restore/${id}`),
+  
+  // Supprimer définitivement un élément
+  deletePermanently: (id: string) =>
+    api.delete(`/trash/${id}`),
+  
+  // Vider la corbeille (admin seulement)
+  emptyTrash: () =>
+    api.post('/trash/empty'),
+};
+
 export const cmsAPI = {
   // Public/Front - récupérer une valeur par clé
   getText: async (key: string, locale: string = 'fr-FR'): Promise<string | null> => {

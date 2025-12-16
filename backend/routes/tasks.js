@@ -49,6 +49,7 @@ router.get('/my', protect, async (req, res) => {
   try {
     const { statut, priorite } = req.query;
     
+    // Filtrer les tâches où l'utilisateur est dans le tableau assignedTo
     const filter = { assignedTo: req.user.id };
     if (statut) filter.statut = statut;
     if (priorite) filter.priorite = priorite;
@@ -127,14 +128,36 @@ router.post(
   authorize('admin', 'superadmin'),
   [
     body('titre').trim().notEmpty().withMessage('Le titre est requis'),
-    body('assignedTo').notEmpty().withMessage('L\'assignation est requise'),
+    body('assignedTo').custom((value) => {
+      // Accepter un tableau ou une chaîne
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          throw new Error('La tâche doit être assignée à au moins un membre');
+        }
+        return true;
+      }
+      if (value && typeof value === 'string') {
+        return true; // Sera converti en tableau plus tard
+      }
+      throw new Error('L\'assignation est requise');
+    }),
     body('statut').optional().isIn(['a_faire', 'en_cours', 'en_attente', 'termine', 'annule']),
     body('priorite').optional().isIn(['basse', 'normale', 'haute', 'urgente'])
   ],
   async (req, res) => {
     try {
+      console.log('📝 Données reçues pour création de tâche:', {
+        titre: req.body.titre,
+        assignedTo: req.body.assignedTo,
+        statut: req.body.statut,
+        priorite: req.body.priorite,
+        dateEcheance: req.body.dateEcheance,
+        dossier: req.body.dossier
+      });
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.error('❌ Erreurs de validation:', errors.array());
         return res.status(400).json({
           success: false,
           message: 'Erreurs de validation',
@@ -154,14 +177,41 @@ router.post(
         notes
       } = req.body;
 
-      // Vérifier que l'utilisateur assigné existe
-      const assignedUser = await User.findById(assignedTo);
-      if (!assignedUser) {
-        return res.status(404).json({
+      // Normaliser assignedTo en tableau
+      let assignedToArray = [];
+      if (Array.isArray(assignedTo)) {
+        assignedToArray = assignedTo.filter(id => id); // Filtrer les valeurs vides
+      } else if (assignedTo) {
+        assignedToArray = [assignedTo];
+      }
+
+      if (assignedToArray.length === 0) {
+        console.error('❌ Aucun utilisateur assigné');
+        return res.status(400).json({
           success: false,
-          message: 'Utilisateur assigné non trouvé'
+          message: 'La tâche doit être assignée à au moins un membre',
+          errors: [{
+            param: 'assignedTo',
+            msg: 'La tâche doit être assignée à au moins un membre'
+          }]
         });
       }
+
+      // Vérifier que tous les utilisateurs assignés existent
+      console.log('👤 Vérification des utilisateurs assignés:', assignedToArray);
+      const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
+      if (assignedUsers.length !== assignedToArray.length) {
+        console.error('❌ Utilisateurs non trouvés. Attendus:', assignedToArray.length, 'Trouvés:', assignedUsers.length);
+        return res.status(404).json({
+          success: false,
+          message: 'Un ou plusieurs utilisateurs assignés non trouvés',
+          errors: [{
+            param: 'assignedTo',
+            msg: 'Un ou plusieurs utilisateurs assignés non trouvés'
+          }]
+        });
+      }
+      console.log('✅ Utilisateurs assignés validés:', assignedUsers.map(u => u.email));
 
       // Vérifier que le dossier existe si fourni
       let dossierExists = null;
@@ -175,43 +225,51 @@ router.post(
         }
       }
 
+      console.log('✅ Création de la tâche...');
       const task = await Task.create({
         titre,
         description: description || '',
         statut: statut || 'a_faire',
         priorite: priorite || 'normale',
-        assignedTo,
+        assignedTo: assignedToArray,
         createdBy: req.user.id,
         dateEcheance: dateEcheance || null,
         dateDebut: dateDebut || null,
         dossier: dossier || null,
         notes: notes || ''
       });
+      console.log('✅ Tâche créée avec succès:', task._id);
 
       const taskPopulated = await Task.findById(task._id)
         .populate('assignedTo', 'firstName lastName email role')
         .populate('createdBy', 'firstName lastName email role')
         .populate('dossier', 'titre numero statut');
 
-      // Notifier l'utilisateur assigné à la nouvelle tâche
+      // Notifier tous les utilisateurs assignés à la nouvelle tâche
       try {
         const creator = req.user;
         const creatorName = `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.email;
 
-        await Notification.create({
-          user: assignedUser._id,
-          type: 'other',
-          titre: 'Nouvelle tâche assignée',
-          message: `${creatorName} vous a assigné une nouvelle tâche : "${task.titre}".`,
-          lien: '/admin?section=tasks',
-          metadata: {
-            taskId: task._id.toString(),
-            dossierId: dossier || null,
-            createdBy: creator._id.toString()
+        for (const assignedUserId of assignedToArray) {
+          try {
+            await Notification.create({
+              user: assignedUserId,
+              type: 'other',
+              titre: 'Nouvelle tâche assignée',
+              message: `${creatorName} vous a assigné une nouvelle tâche : "${task.titre}".`,
+              lien: '/admin/taches',
+              metadata: {
+                taskId: task._id.toString(),
+                dossierId: dossier || null,
+                createdBy: creator._id.toString()
+              }
+            });
+          } catch (notifError) {
+            console.error('Erreur lors de la notification d\'un utilisateur assigné:', notifError);
           }
-        });
+        }
       } catch (notifError) {
-        console.error('Erreur lors de la notification de l\'utilisateur assigné à la tâche:', notifError);
+        console.error('Erreur lors de la notification des utilisateurs assignés:', notifError);
       }
 
       // Si la tâche est liée à un dossier, notifier les autres membres de l'équipe du dossier
@@ -266,11 +324,26 @@ router.post(
         task: taskPopulated
       });
     } catch (error) {
-      console.error('Erreur lors de la création de la tâche:', error);
+      console.error('❌ Erreur lors de la création de la tâche:', error);
+      console.error('❌ Stack trace:', error.stack);
+      
+      // Si c'est une erreur de validation Mongoose
+      if (error.name === 'ValidationError') {
+        const mongooseErrors = Object.values(error.errors).map((err) => ({
+          param: err.path,
+          msg: err.message
+        }));
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation du modèle',
+          errors: mongooseErrors
+        });
+      }
+      
       res.status(500).json({
         success: false,
         message: 'Erreur serveur',
-        error: error.message
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Une erreur est survenue lors de la création de la tâche'
       });
     }
   }
@@ -313,7 +386,8 @@ router.put(
 
       // Vérifier les permissions
       const isCreator = task.createdBy && task.createdBy.toString() === req.user.id;
-      const isAssigned = task.assignedTo && task.assignedTo.toString() === req.user.id;
+      const assignedToArray = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
+      const isAssigned = assignedToArray.some(id => id.toString() === req.user.id);
       const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
 
       if (!isCreator && !isAssigned && !isAdmin) {
@@ -338,24 +412,38 @@ router.put(
         commentaireEffectue
       } = req.body;
 
-      // Vérifier que l'utilisateur assigné existe si fourni
-      if (assignedTo) {
-        console.log('👤 Vérification de l\'utilisateur assigné:', assignedTo);
-        const assignedUser = await User.findById(assignedTo);
-        if (!assignedUser) {
-          console.error('❌ Utilisateur assigné non trouvé:', assignedTo);
-          return res.status(404).json({
+      // Normaliser assignedTo en tableau si fourni
+      let assignedToArray = null;
+      if (assignedTo !== undefined) {
+        if (Array.isArray(assignedTo)) {
+          assignedToArray = assignedTo;
+        } else if (assignedTo) {
+          assignedToArray = [assignedTo];
+        } else {
+          assignedToArray = [];
+        }
+
+        if (assignedToArray.length === 0) {
+          return res.status(400).json({
             success: false,
-            message: 'Utilisateur assigné non trouvé'
+            message: 'La tâche doit être assignée à au moins un membre'
           });
         }
-        console.log('✅ Utilisateur assigné trouvé:', assignedUser.email);
+
         // Seuls les admins peuvent réassigner
         if (!isAdmin) {
-          console.error('❌ Tentative de réassignation par un non-admin');
           return res.status(403).json({
             success: false,
             message: 'Seuls les administrateurs peuvent réassigner une tâche'
+          });
+        }
+
+        // Vérifier que tous les utilisateurs assignés existent
+        const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
+        if (assignedUsers.length !== assignedToArray.length) {
+          return res.status(404).json({
+            success: false,
+            message: 'Un ou plusieurs utilisateurs assignés non trouvés'
           });
         }
       }
@@ -371,12 +459,17 @@ router.put(
         }
       }
 
+      // Sauvegarder les anciennes valeurs pour les notifications
+      const oldStatut = task.statut;
+      const oldPriorite = task.priorite;
+      const oldAssignedTo = Array.isArray(task.assignedTo) ? [...task.assignedTo] : [task.assignedTo].filter(Boolean);
+
       // Mettre à jour les champs
       if (titre !== undefined) task.titre = titre;
       if (description !== undefined) task.description = description;
       if (statut !== undefined) task.statut = statut;
       if (priorite !== undefined) task.priorite = priorite;
-      if (assignedTo !== undefined && isAdmin) task.assignedTo = assignedTo;
+      if (assignedToArray !== null && isAdmin) task.assignedTo = assignedToArray;
       if (dateEcheance !== undefined) task.dateEcheance = dateEcheance || null;
       if (dateDebut !== undefined) task.dateDebut = dateDebut || null;
       if (dateFin !== undefined) task.dateFin = dateFin || null;
@@ -422,7 +515,7 @@ router.put(
             type: 'other',
             titre: 'Tâche effectuée',
             message: `${assignedUserName} a marqué la tâche "${task.titre}" comme effectuée.${req.body.commentaireEffectue ? ` Commentaire: ${req.body.commentaireEffectue}` : ''}`,
-            lien: `/admin?section=tasks`,
+            lien: `/admin/taches`,
             metadata: {
               taskId: task._id.toString(),
               assignedUserId: req.user.id,
@@ -431,7 +524,93 @@ router.put(
           });
         } catch (notifError) {
           console.error('Erreur lors de la création de la notification:', notifError);
-          // Ne pas bloquer la mise à jour si la notification échoue
+        }
+      }
+
+      // Notifications pour changements de statut ou priorité
+      const currentAssignedTo = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo].filter(Boolean);
+      const allRecipients = new Set([...currentAssignedTo.map(id => id.toString())]);
+      
+      // Ajouter tous les admins
+      try {
+        const admins = await User.find({ role: { $in: ['admin', 'superadmin'] }, isActive: { $ne: false } });
+        admins.forEach(admin => allRecipients.add(admin._id.toString()));
+      } catch (err) {
+        console.error('Erreur lors de la récupération des admins:', err);
+      }
+
+      // Notification de changement de statut
+      if (statut !== undefined && statut !== oldStatut) {
+        try {
+          const modifier = req.user;
+          const modifierName = `${modifier.firstName || ''} ${modifier.lastName || ''}`.trim() || modifier.email;
+          const statutLabels = {
+            'a_faire': 'À faire',
+            'en_cours': 'En cours',
+            'en_attente': 'En attente',
+            'termine': 'Terminé',
+            'annule': 'Annulé'
+          };
+
+          for (const recipientId of allRecipients) {
+            if (recipientId === req.user.id.toString()) continue; // Ne pas notifier le modificateur
+            try {
+              await Notification.create({
+                user: recipientId,
+                type: 'other',
+                titre: 'Statut de tâche modifié',
+                message: `${modifierName} a modifié le statut de la tâche "${task.titre}" de "${statutLabels[oldStatut] || oldStatut}" à "${statutLabels[statut] || statut}".`,
+                lien: '/admin/taches',
+                metadata: {
+                  taskId: task._id.toString(),
+                  oldStatut,
+                  newStatut: statut,
+                  modifierId: req.user.id.toString()
+                }
+              });
+            } catch (notifError) {
+              console.error('Erreur lors de la notification de changement de statut:', notifError);
+            }
+          }
+        } catch (err) {
+          console.error('Erreur lors des notifications de changement de statut:', err);
+        }
+      }
+
+      // Notification de changement de priorité
+      if (priorite !== undefined && priorite !== oldPriorite) {
+        try {
+          const modifier = req.user;
+          const modifierName = `${modifier.firstName || ''} ${modifier.lastName || ''}`.trim() || modifier.email;
+          const prioriteLabels = {
+            'basse': 'Basse',
+            'normale': 'Normale',
+            'haute': 'Haute',
+            'urgente': 'Urgente'
+          };
+
+          for (const recipientId of allRecipients) {
+            if (recipientId === req.user.id.toString()) continue; // Ne pas notifier le modificateur
+            try {
+              await Notification.create({
+                user: recipientId,
+                type: 'other',
+                titre: 'Priorité de tâche modifiée',
+                message: `${modifierName} a modifié la priorité de la tâche "${task.titre}" de "${prioriteLabels[oldPriorite] || oldPriorite}" à "${prioriteLabels[priorite] || priorite}".`,
+                lien: '/admin/taches',
+                metadata: {
+                  taskId: task._id.toString(),
+                  oldPriorite,
+                  newPriorite: priorite,
+                  modifierId: req.user.id.toString()
+                }
+              });
+            } catch (notifError) {
+              console.error('Erreur lors de la notification de changement de priorité:', notifError);
+            }
+          }
+        } catch (err) {
+          console.error('Erreur lors des notifications de changement de priorité:', err);
         }
       }
 

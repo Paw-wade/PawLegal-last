@@ -1,8 +1,6 @@
 {
-  "/domaines/page": "app/domaines/page.js",
-  "/admin/messages/page": "app/admin/messages/page.js",
-  "/client/compte/page": "app/client/compte/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/admin/compte/page": "app/admin/compte/page.js",
-  "/admin/taches/page": "app/admin/taches/page.js"
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/admin/taches/page": "app/admin/taches/page.js",
+  "/admin/corbeille/page": "app/admin/corbeille/page.js"
 }

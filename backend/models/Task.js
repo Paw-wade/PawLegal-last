@@ -21,9 +21,17 @@ const taskSchema = new mongoose.Schema({
     default: 'normale'
   },
   assignedTo: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: [mongoose.Schema.Types.ObjectId],
     ref: 'User',
-    required: [true, 'La tâche doit être assignée à un membre'],
+    default: [],
+    validate: {
+      validator: function(v) {
+        // Permettre un tableau vide temporairement (pendant la modification)
+        // La validation finale se fera dans les routes
+        return Array.isArray(v);
+      },
+      message: 'assignedTo doit être un tableau'
+    }
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -95,9 +103,13 @@ taskSchema.index({ dossier: 1 });
 taskSchema.index({ dateEcheance: 1 });
 taskSchema.index({ statut: 1, priorite: 1 });
 
-// Mettre à jour updatedAt avant de sauvegarder
+// Mettre à jour updatedAt avant de sauvegarder et normaliser assignedTo
 taskSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  // Si assignedTo n'est pas un tableau, le convertir
+  if (this.assignedTo && !Array.isArray(this.assignedTo)) {
+    this.assignedTo = [this.assignedTo];
+  }
   next();
 });
 

@@ -276,24 +276,38 @@ export default function MessagesPage() {
   const handleBatchRead = async () => {
     if (selectedMessages.size === 0) return;
     try {
-      await messagesAPI.markBatchAsRead(Array.from(selectedMessages));
-      await loadMessages();
-      setSelectedMessages(new Set());
+      const response = await messagesAPI.markBatchAsRead(Array.from(selectedMessages));
+      if (response.data.success) {
+        await loadMessages();
+        setSelectedMessages(new Set());
+        setError(null);
+      } else {
+        setError(response.data.message || 'Erreur lors du marquage des messages');
+      }
     } catch (err: any) {
       console.error('Erreur lors du marquage batch:', err);
-      alert('Erreur lors du marquage des messages');
+      const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du marquage des messages';
+      setError(errorMessage);
+      alert(`Erreur: ${errorMessage}`);
     }
   };
 
   const handleBatchUnread = async () => {
     if (selectedMessages.size === 0) return;
     try {
-      await messagesAPI.markBatchAsUnread(Array.from(selectedMessages));
-      await loadMessages();
-      setSelectedMessages(new Set());
+      const response = await messagesAPI.markBatchAsUnread(Array.from(selectedMessages));
+      if (response.data.success) {
+        await loadMessages();
+        setSelectedMessages(new Set());
+        setError(null);
+      } else {
+        setError(response.data.message || 'Erreur lors du marquage des messages');
+      }
     } catch (err: any) {
       console.error('Erreur lors du marquage batch:', err);
-      alert('Erreur lors du marquage des messages');
+      const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du marquage des messages';
+      setError(errorMessage);
+      alert(`Erreur: ${errorMessage}`);
     }
   };
 
@@ -492,10 +506,18 @@ export default function MessagesPage() {
                       {/* Contenu */}
                       <div 
                         className="flex-1 cursor-pointer min-w-0"
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedMessage(message);
                           if (!isRead) {
-                            messagesAPI.markAsRead(messageId).then(() => loadMessages());
+                            try {
+                              await messagesAPI.markAsRead(messageId);
+                              await loadMessages();
+                              setError(null);
+                            } catch (err: any) {
+                              console.error('Erreur lors du marquage comme lu:', err);
+                              const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du marquage comme lu';
+                              setError(errorMessage);
+                            }
                           }
                         }}
                       >
@@ -563,7 +585,8 @@ export default function MessagesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             try {
                               if (isRead) {
                                 await messagesAPI.markAsUnread(messageId);
@@ -571,8 +594,12 @@ export default function MessagesPage() {
                                 await messagesAPI.markAsRead(messageId);
                               }
                               await loadMessages();
-                            } catch (err) {
+                              setError(null);
+                            } catch (err: any) {
                               console.error('Erreur lors du changement de statut:', err);
+                              const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du changement de statut';
+                              setError(errorMessage);
+                              alert(`Erreur: ${errorMessage}`);
                             }
                           }}
                         >
@@ -705,8 +732,12 @@ export default function MessagesPage() {
                         await loadMessages();
                         const updatedMessage = await messagesAPI.getMessage(selectedMessage._id || selectedMessage.id).then(r => r.data.message);
                         setSelectedMessage(updatedMessage);
-                      } catch (err) {
+                        setError(null);
+                      } catch (err: any) {
                         console.error('Erreur lors du changement de statut:', err);
+                        const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du changement de statut';
+                        setError(errorMessage);
+                        alert(`Erreur: ${errorMessage}`);
                       }
                     }}
                   >

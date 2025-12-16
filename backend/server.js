@@ -98,21 +98,36 @@ console.log('✅ Route /api/user enregistrée'); // Debug log
 
 // Route des tâches
 try {
-  if (require.resolve('./routes/tasks')) {
-    app.use('/api/tasks', require('./routes/tasks'));
-    console.log('✅ Route /api/tasks enregistrée');
-  }
-} catch (e) {
-  console.log('⚠️ Route /api/tasks non trouvée');
+  const tasksRouter = require('./routes/tasks');
+  app.use('/api/tasks', tasksRouter);
+  console.log('✅ Route /api/tasks enregistrée');
+  console.log('📋 Routes tasks disponibles:');
+  tasksRouter.stack.forEach((r) => {
+    if (r.route) {
+      const methods = Object.keys(r.route.methods).join(', ').toUpperCase();
+      console.log(`   ${methods} ${r.route.path}`);
+    }
+  });
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route tasks:', error.message);
+  console.error(error.stack);
 }
 
 try {
-  if (require.resolve('./routes/messages')) {
-    app.use('/api/messages', require('./routes/messages'));
-    console.log('✅ Route /api/messages enregistrée');
-  }
-} catch (e) {
-  console.log('⚠️ Route /api/messages non trouvée');
+  const messagesRouter = require('./routes/messages');
+  app.use('/api/messages', messagesRouter);
+  console.log('✅ Route /api/messages enregistrée');
+  // Afficher les routes disponibles pour debug
+  console.log('📋 Routes messages disponibles:');
+  messagesRouter.stack.forEach((r) => {
+    if (r.route) {
+      const methods = Object.keys(r.route.methods).join(', ').toUpperCase();
+      console.log(`   ${methods} ${r.route.path}`);
+    }
+  });
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route messages:', error.message);
+  console.error(error.stack);
 }
 
 try {
@@ -176,6 +191,16 @@ try {
   }
 } catch (e) {
   console.log('⚠️ Route /api/notifications non trouvée');
+}
+
+// Route corbeille
+try {
+  const trashRouter = require('./routes/trash');
+  app.use('/api/trash', trashRouter);
+  console.log('✅ Route /api/trash enregistrée');
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route trash:', error.message);
+  console.error(error.stack);
 }
 
 try {
@@ -275,9 +300,39 @@ const startServer = async () => {
       }
     }
     
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
       console.log(`🚀 Serveur démarré sur le port ${PORT}`);
       console.log(`📡 API disponible sur http://localhost:${PORT}/api`);
+      
+      // Démarrer le système de vérification des échéances de tâches
+      try {
+        const { checkTaskDeadlines } = require('./utils/taskDeadlineNotifications');
+        
+        // Vérifier immédiatement au démarrage
+        console.log('⏰ Vérification initiale des échéances de tâches...');
+        await checkTaskDeadlines();
+        
+        // Vérifier toutes les 24 heures (à minuit)
+        const scheduleDeadlineCheck = () => {
+          const now = new Date();
+          const tomorrow = new Date(now);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(0, 0, 0, 0);
+          
+          const msUntilMidnight = tomorrow.getTime() - now.getTime();
+          
+          setTimeout(() => {
+            checkTaskDeadlines();
+            // Répéter toutes les 24 heures
+            setInterval(checkTaskDeadlines, 24 * 60 * 60 * 1000);
+          }, msUntilMidnight);
+        };
+        
+        scheduleDeadlineCheck();
+        console.log('✅ Système de vérification des échéances de tâches activé');
+      } catch (error) {
+        console.error('⚠️ Erreur lors de l\'initialisation du système de vérification des échéances:', error);
+      }
     });
     
     // Gérer les erreurs de port
