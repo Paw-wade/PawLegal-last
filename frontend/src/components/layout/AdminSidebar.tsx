@@ -72,7 +72,7 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
           fixed top-0 left-0 h-full bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 z-50
           transform transition-all duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-          lg:translate-x-0 lg:static lg:z-auto lg:h-screen
+          lg:translate-x-0
           ${isCollapsed ? 'w-20' : 'w-64'}
           flex flex-col shadow-lg
         `}
