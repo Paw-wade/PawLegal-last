@@ -1,5 +1,6 @@
 {
-  "/admin/notifications/page": "app/admin/notifications/page.js",
-  "/admin/dossiers/page": "app/admin/dossiers/page.js",
-  "/admin/messages/page": "app/admin/messages/page.js"
+  "/page": "app/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/auth/signin/page": "app/auth/signin/page.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
 }
