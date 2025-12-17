@@ -29,6 +29,7 @@ export default function NotificationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | NotificationCategoryKey>('all');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -184,39 +185,37 @@ export default function NotificationsPage() {
     categorizedNotifications[key].push(notif);
   });
 
+  const getCategoryUnreadCount = (key: NotificationCategoryKey) =>
+    (categorizedNotifications[key] || []).filter((n) => !n.lu).length;
+
+  const getCategoryCount = (key: NotificationCategoryKey) => (categorizedNotifications[key] || []).length;
+
+  const scopedNotifications =
+    categoryFilter === 'all'
+      ? notifications
+      : notifications.filter((n) => getNotificationCategory(n) === categoryFilter);
+  const scopedTotalCount = scopedNotifications.length;
+  const scopedUnreadCount = scopedNotifications.filter((n) => !n.lu).length;
+
+  const visibleNotifications = (() => {
+    const base = filteredNotifications;
+    if (categoryFilter === 'all') return base;
+    return base.filter((n) => getNotificationCategory(n) === categoryFilter);
+  })().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-16">
-        <div className="mb-8 flex items-center justify-between">
+      <main className="container mx-auto px-4 py-8">
+        <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2">Mes Notifications</h1>
-            <p className="text-muted-foreground">Restez informé de toutes les actions sur vos dossiers</p>
+            <h1 className="text-3xl font-bold mb-1">Mes Notifications</h1>
+            <p className="text-muted-foreground text-sm">Vue claire par catégories</p>
           </div>
-          <div className="flex gap-3">
-            <div className="flex gap-2 border rounded-md p-1">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  filter === 'all' ? 'bg-primary text-white' : 'hover:bg-accent'
-                }`}
-              >
-                Toutes
-              </button>
-              <button
-                onClick={() => setFilter('unread')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  filter === 'unread' ? 'bg-primary text-white' : 'hover:bg-accent'
-                }`}
-              >
-                Non lues ({unreadCount})
-              </button>
-            </div>
-            {unreadCount > 0 && (
-              <Button variant="outline" onClick={handleMarkAllAsRead}>
-                Tout marquer comme lu
-              </Button>
-            )}
-          </div>
+          {unreadCount > 0 && (
+            <Button variant="outline" onClick={handleMarkAllAsRead}>
+              Tout marquer comme lu
+            </Button>
+          )}
         </div>
 
         {error && (
@@ -241,96 +240,173 @@ export default function NotificationsPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
-            {categoryDefinitions.map(({ key, label, icon }) => {
-              const items = categorizedNotifications[key];
-              if (!items.length) return null;
+          <div className="space-y-4">
+            {/* Badges catégories */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Badges statut */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                    filter === 'all'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
+                  }`}
+                >
+                  Toutes
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                    filter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {scopedTotalCount}
+                  </span>
+                </button>
 
-              return (
-                <section key={key}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                      <span>{icon}</span>
-                      <span>{label}</span>
-                    </h2>
-                    <span className="text-xs text-muted-foreground">{items.length} notification(s)</span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4">
-                    {items.map((notification: any) => (
-                      <div
-                        key={notification._id || notification.id}
-                        className={`bg-white rounded-xl shadow-md p-5 border transition-all hover:shadow-lg ${
-                          notification.lu 
-                            ? 'opacity-60 border-gray-200' 
-                            : `${getNotificationColor(notification.type)} shadow-lg`
-                        }`}
-                      >
-                        <div className="flex items-start gap-4">
-                          <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
-                            notification.lu ? 'bg-gray-100' : 'bg-primary/10'
-                          }`}>
-                            {getNotificationIcon(notification.type)}
+                <button
+                  onClick={() => setFilter('unread')}
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                    filter === 'unread'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
+                  }`}
+                  title="Afficher uniquement les notifications non lues"
+                >
+                  Non lues
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                    filter === 'unread' ? 'bg-white/20 text-white' : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {scopedUnreadCount}
+                  </span>
+                </button>
+              </div>
+
+              <div className="hidden sm:block w-px h-8 bg-gray-200 mx-1" />
+
+              {/* Badges catégories */}
+              <button
+                onClick={() => setCategoryFilter('all')}
+                className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
+                  categoryFilter === 'all'
+                    ? 'bg-primary text-white border-primary shadow-sm'
+                    : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
+                }`}
+              >
+                Toutes catégories
+                <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                  categoryFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {filteredNotifications.length}
+                </span>
+              </button>
+
+              {categoryDefinitions.map(({ key, label, icon }) => {
+                const total = getCategoryCount(key);
+                const unreadInCat = getCategoryUnreadCount(key);
+                const active = categoryFilter === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setCategoryFilter(key)}
+                    className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
+                      active
+                        ? 'bg-primary text-white border-primary shadow-sm'
+                        : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
+                    }`}
+                  >
+                    <span className="text-base">{icon}</span>
+                    <span>{label}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {total}
+                    </span>
+                    {filter === 'all' && unreadInCat > 0 && (
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                        active ? 'bg-red-500/90 text-white' : 'bg-red-50 text-red-700 border border-red-200'
+                      }`}>
+                        {unreadInCat} non lue{unreadInCat > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Liste */}
+            {visibleNotifications.length === 0 ? (
+              <div className="bg-white rounded-lg border border-gray-200 p-10 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Aucune notification dans cette catégorie.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {visibleNotifications.map((notification: any) => (
+                  <div
+                    key={notification._id || notification.id}
+                    className={`bg-white rounded-xl border p-4 transition-all hover:shadow-sm ${
+                      notification.lu ? 'border-gray-200' : 'border-primary/30'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0 ${
+                        notification.lu ? 'bg-gray-100' : 'bg-primary/10'
+                      }`}>
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className={`font-semibold text-sm ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
+                              {notification.titre}
+                            </p>
+                            <p className={`text-xs mt-1 line-clamp-2 ${notification.lu ? 'text-muted-foreground' : 'text-gray-700'}`}>
+                              {notification.message}
+                            </p>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between mb-2 gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className={`font-bold text-base ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
-                                    {notification.titre}
-                                  </h3>
-                                  {!notification.lu && (
-                                    <span className="inline-block w-2 h-2 bg-primary rounded-full flex-shrink-0"></span>
-                                  )}
-                                </div>
-                                <p className={`text-sm mb-2 ${notification.lu ? 'text-muted-foreground' : 'text-foreground'}`}>
-                                  {notification.message}
-                                </p>
-                              </div>
-                              <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                                {new Date(notification.createdAt).toLocaleDateString('fr-FR', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
-                            </div>
-                            <div className="flex gap-2 flex-wrap">
-                              {notification.lien && (
-                                <Link href={notification.lien}>
-                                  <Button variant="outline" size="sm" className="text-xs">
-                                    Voir les détails
-                                  </Button>
-                                </Link>
-                              )}
-                              {!notification.lu && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleMarkAsRead(notification._id || notification.id)}
-                                  className="text-xs"
-                                >
-                                  Marquer comme lu
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDelete(notification._id || notification.id)}
-                                className="text-red-600 hover:text-red-700 text-xs"
-                              >
-                                Supprimer
+                          <span className="text-[11px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+                            {new Date(notification.createdAt).toLocaleDateString('fr-FR', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+
+                        <div className="flex gap-2 flex-wrap mt-3">
+                          {notification.lien && (
+                            <Link href={notification.lien}>
+                              <Button variant="outline" size="sm" className="text-xs h-9 px-3">
+                                Ouvrir
                               </Button>
-                            </div>
-                          </div>
+                            </Link>
+                          )}
+                          {!notification.lu && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleMarkAsRead(notification._id || notification.id)}
+                              className="text-xs h-9 px-3"
+                            >
+                              Marquer comme lu
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(notification._id || notification.id)}
+                            className="text-red-600 hover:text-red-700 text-xs h-9 px-3"
+                          >
+                            Supprimer
+                          </Button>
                         </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                </section>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>

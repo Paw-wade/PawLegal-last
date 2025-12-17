@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { messagesAPI, dossiersAPI } from '@/lib/api';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 
 interface MessageNotificationModalProps {
   isOpen: boolean;
@@ -12,9 +12,15 @@ interface MessageNotificationModalProps {
 }
 
 export function MessageNotificationModal({ isOpen, onClose, message }: MessageNotificationModalProps) {
+  const { data: session } = useSession();
   const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
   const [isLoadingDossier, setIsLoadingDossier] = useState(false);
   const [dossier, setDossier] = useState<any>(null);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [showReplyForm, setShowReplyForm] = useState(false);
+  const [replySubject, setReplySubject] = useState('');
+  const [replyContent, setReplyContent] = useState('');
+  const [replyError, setReplyError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -38,6 +44,15 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     }
   }, [isOpen, message?.dossierId]);
 
+  useEffect(() => {
+    if (!isOpen || !message) return;
+    const baseSubject = (message?.sujet || 'Message').toString();
+    setReplySubject(baseSubject.startsWith('Re:') ? baseSubject : `Re: ${baseSubject}`);
+    setReplyContent('');
+    setReplyError(null);
+    setShowReplyForm(false);
+  }, [isOpen, message?._id, message?.id]);
+
   const handleMarkAsRead = async () => {
     if (!message || isMarkingAsRead) return;
     
@@ -52,7 +67,7 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     }
   };
 
-  const handleReply = () => {
+  const handleOpenMessage = () => {
     const messageId = message._id || message.id;
     const basePath = typeof window !== 'undefined' && window.location.pathname.includes('/admin') 
       ? '/admin' 
@@ -70,6 +85,68 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     onClose();
   };
 
+  const handleSendInlineReply = async () => {
+    if (!message || isSendingReply) return;
+    setReplyError(null);
+
+    const contenu = replyContent?.trim?.() || '';
+    if (!contenu) {
+      setReplyError('Veuillez saisir un message.');
+      return;
+    }
+
+    try {
+      setIsSendingReply(true);
+
+      const formDataToSend = new FormData();
+      formDataToSend.append('sujet', (replySubject?.trim?.() || `Re: ${(message?.sujet || 'Message').toString()}`));
+      formDataToSend.append('contenu', contenu);
+
+      // Lier au fil existant
+      const messageParentId =
+        message?.messageParent?._id ||
+        message?.messageParent ||
+        message?._id ||
+        message?.id;
+      if (messageParentId) {
+        formDataToSend.append('messageParent', messageParentId.toString());
+      }
+
+      // Conserver le dossier si disponible
+      if (message?.dossierId) {
+        formDataToSend.append('dossierId', message.dossierId.toString());
+      }
+
+      // Admin -> répondre à l'expéditeur (destinataire requis côté admin UI)
+      const isAdminContext =
+        typeof window !== 'undefined' && window.location.pathname.includes('/admin');
+      if (isAdminContext) {
+        const expediteurId = message?.expediteur?._id || message?.expediteur?.id;
+        if (expediteurId) {
+          formDataToSend.append('destinataire', expediteurId.toString());
+        }
+      }
+
+      const response = await messagesAPI.sendMessage(formDataToSend);
+      if (response?.data?.success) {
+        // Marquer le message original comme lu (best-effort)
+        try {
+          await messagesAPI.markAsRead(message._id || message.id);
+        } catch (e) {
+          // ignore
+        }
+        onClose();
+      } else {
+        setReplyError(response?.data?.message || 'Erreur lors de l’envoi de la réponse.');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de l’envoi de la réponse:', error);
+      setReplyError(error?.response?.data?.message || error?.message || 'Erreur lors de l’envoi de la réponse.');
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
   if (!isOpen || !message) return null;
 
   const expediteur = message.expediteur;
@@ -77,12 +154,12 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     ? `${expediteur.firstName || ''} ${expediteur.lastName || ''}`.trim() || expediteur.email
     : 'Expéditeur inconnu';
 
-  const isRead = message.lu?.some((reader: any) => {
-    const readerId = reader?._id?.toString() || reader?.toString();
-    const currentUserId = typeof window !== 'undefined' 
-      ? localStorage.getItem('userId') || sessionStorage.getItem('userId')
-      : null;
-    return readerId === currentUserId;
+  const currentUserId =
+    (session?.user as any)?.id ||
+    (typeof window !== 'undefined' ? localStorage.getItem('userId') || sessionStorage.getItem('userId') : null);
+  const isRead = message.lu?.some((l: any) => {
+    const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+    return luUserId && currentUserId && luUserId.toString() === currentUserId.toString();
   });
 
   return (
@@ -156,6 +233,82 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
               )}
             </div>
           )}
+
+          {/* Réponse inline */}
+          {showReplyForm && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-900">Répondre</p>
+                <button
+                  onClick={() => {
+                    setShowReplyForm(false);
+                    setReplyError(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none transition-colors"
+                  aria-label="Fermer la réponse"
+                >
+                  ×
+                </button>
+              </div>
+
+              {replyError && (
+                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{replyError}</p>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sujet</p>
+                  <input
+                    value={replySubject}
+                    onChange={(e) => setReplySubject(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-400 transition-colors"
+                    placeholder="Sujet"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Votre réponse</p>
+                  <textarea
+                    value={replyContent}
+                    onChange={(e) => setReplyContent(e.target.value)}
+                    className="w-full min-h-[110px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-400 transition-colors"
+                    placeholder="Écrivez votre message…"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={handleSendInlineReply}
+                    disabled={isSendingReply}
+                    className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isSendingReply ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        Envoi...
+                      </>
+                    ) : (
+                      <>
+                        <span>📨</span>
+                        Envoyer la réponse
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowReplyForm(false);
+                      setReplyError(null);
+                    }}
+                    className="flex-1 px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -178,11 +331,19 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
           )}
 
           <button
-            onClick={handleReply}
+            onClick={() => setShowReplyForm(true)}
             className="flex-1 px-6 py-3 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
           >
             <span>↩️</span>
-            Répondre
+            Répondre ici
+          </button>
+
+          <button
+            onClick={handleOpenMessage}
+            className="flex-1 px-6 py-3 text-sm font-medium text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <span>💬</span>
+            Ouvrir le message
           </button>
 
           {!isRead && (

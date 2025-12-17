@@ -291,7 +291,10 @@ export default function AdminMessagesPage() {
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
-    return message.lu?.some((l: any) => l.user?.toString() === userId?.toString());
+    return message.lu?.some((l: any) => {
+      const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+      return luUserId === userId?.toString?.();
+    });
   };
 
   const canCurrentUserMarkAsRead = (message: any) => {
@@ -308,6 +311,36 @@ export default function AdminMessagesPage() {
         c?.toString?.() === userId.toString()
     );
     return !!(isDestinataire || isEnCopie);
+  };
+
+  const markMessageAsReadOptimistic = (messageId: string) => {
+    const userId = (session?.user as any)?.id?.toString?.();
+    if (!userId) return;
+    setMessages((prev) =>
+      prev.map((m: any) => {
+        const id = (m._id || m.id)?.toString?.();
+        if (id !== messageId.toString()) return m;
+        const alreadyRead = m.lu?.some((l: any) => {
+          const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+          return luUserId === userId;
+        });
+        if (alreadyRead) return m;
+        return {
+          ...m,
+          lu: [...(m.lu || []), { user: userId, readAt: new Date().toISOString() }],
+        };
+      })
+    );
+    setSelectedMessage((prev: any) => {
+      const id = (prev?._id || prev?.id)?.toString?.();
+      if (!prev || id !== messageId.toString()) return prev;
+      const alreadyRead = prev.lu?.some((l: any) => {
+        const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+        return luUserId === userId;
+      });
+      if (alreadyRead) return prev;
+      return { ...prev, lu: [...(prev.lu || []), { user: userId, readAt: new Date().toISOString() }] };
+    });
   };
 
   const toggleMessageSelection = (messageId: string) => {
@@ -410,7 +443,8 @@ export default function AdminMessagesPage() {
     return null;
   }
 
-  const unreadCount = messages.filter(m => !isMessageRead(m)).length;
+  // IMPORTANT: "Non lus" = non lus PAR MOI (uniquement si je suis destinataire ou en copie)
+  const unreadCount = messages.filter(m => canCurrentUserMarkAsRead(m) && !isMessageRead(m)).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
@@ -662,7 +696,9 @@ export default function AdminMessagesPage() {
                         onClick={() => {
                           setSelectedMessage(message);
                           if (!isRead && canCurrentUserMarkAsRead(message)) {
-                            messagesAPI.markAsRead(messageId).then(() => loadMessages());
+                            // Supprimer le badge "Nouveau" immédiatement côté UI
+                            markMessageAsReadOptimistic(messageId);
+                            messagesAPI.markAsRead(messageId).catch(() => loadMessages());
                           }
                         }}
                       >

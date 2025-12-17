@@ -800,25 +800,87 @@ export default function AdminTachesPage() {
                         <label className="text-xs text-muted-foreground mb-1 block">
                           👥 Assigner à
                         </label>
-                        <select
-                          multiple
-                          value={assignedToArray.map((a: any) => a._id || a).filter(Boolean)}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions, option => option.value);
-                            handleUpdateAssignment(task._id || task.id, selected);
-                          }}
-                          className="text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors w-full"
-                          disabled={isLoading}
-                          size={Math.min(teamMembers.length, 5)}
-                        >
-                          {teamMembers.map((member) => (
-                            <option key={member._id || member.id} value={member._id || member.id}>
-                              {member.firstName} {member.lastName}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Maintenez Ctrl/Cmd pour sélectionner plusieurs personnes
+                        <details className="relative">
+                          <summary
+                            className="list-none cursor-pointer text-xs px-2 py-1.5 rounded-md border border-gray-300 bg-background hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors w-full flex items-center justify-between gap-2"
+                            onClick={(e) => {
+                              // empêcher le clic sur certains éléments enfants de fermer/ouvrir involontairement
+                              e.stopPropagation();
+                            }}
+                          >
+                            <span className="truncate">
+                              {assignedToArray.length === 0
+                                ? 'Choisir...'
+                                : assignedToArray.length === 1
+                                ? (() => {
+                                    const a: any = assignedToArray[0];
+                                    const m = teamMembers.find((u) => (u._id || u.id) === (a?._id || a));
+                                    return m ? `${m.firstName} ${m.lastName}` : '1 sélectionné';
+                                  })()
+                                : `${assignedToArray.length} sélectionnés`}
+                            </span>
+                            <span className="text-gray-500">▾</span>
+                          </summary>
+
+                          <div
+                            className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 max-h-56 overflow-y-auto"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="text-[10px] text-muted-foreground px-2 pb-2">
+                              Dépliez la liste puis cochez une ou plusieurs personnes.
+                            </p>
+                            {teamMembers.length === 0 ? (
+                              <p className="text-xs text-muted-foreground p-2">
+                                Aucun membre disponible
+                              </p>
+                            ) : (
+                              <div className="space-y-1">
+                                {teamMembers.map((member) => {
+                                  const memberId = (member._id || member.id)?.toString();
+                                  const currentIds = assignedToArray.map((a: any) => (a?._id || a)?.toString()).filter(Boolean);
+                                  const isChecked = currentIds.includes(memberId);
+                                  const wouldBeEmpty = isChecked && currentIds.length === 1;
+
+                                  return (
+                                    <label
+                                      key={memberId}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        disabled={isLoading || wouldBeEmpty}
+                                        onChange={() => {
+                                          const next = isChecked
+                                            ? currentIds.filter((id) => id !== memberId)
+                                            : [...currentIds, memberId];
+
+                                          if (next.length === 0) {
+                                            // Ne pas autoriser une tâche sans assignation
+                                            return;
+                                          }
+
+                                          handleUpdateAssignment(task._id || task.id, next);
+                                        }}
+                                        className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                                      />
+                                      <span className="text-xs text-gray-800">
+                                        {member.firstName} {member.lastName}
+                                      </span>
+                                      {wouldBeEmpty && (
+                                        <span className="ml-auto text-[10px] text-muted-foreground">
+                                          min. 1
+                                        </span>
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Dépliez la liste puis cochez une ou plusieurs personnes.
                         </p>
                       </div>
                     </div>

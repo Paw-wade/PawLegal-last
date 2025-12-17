@@ -107,11 +107,34 @@ export default function AdminMessageDetailPage() {
     try {
       const response = await messagesAPI.getMessage(messageId);
       if (response.data.success) {
-        setMessage(response.data.message);
-        // Marquer le message comme lu si ce n'est pas déjà fait
-        const userId = (session?.user as any)?.id;
-        const isRead = response.data.message.lu?.some((l: any) => l.user?.toString() === userId?.toString());
-        if (!isRead) {
+        const fetchedMessage = response.data.message;
+        setMessage(fetchedMessage);
+
+        // Marquer comme lu automatiquement à l'ouverture (uniquement si l'utilisateur est destinataire ou en copie)
+        const userId = (session?.user as any)?.id?.toString?.();
+        const isDestinataire = fetchedMessage.destinataires?.some(
+          (d: any) => (d?._id?.toString?.() || d?.toString?.()) === userId
+        );
+        const isEnCopie = fetchedMessage.copie?.some(
+          (c: any) => (c?._id?.toString?.() || c?.toString?.()) === userId
+        );
+        const canMark = !!(userId && (isDestinataire || isEnCopie));
+        const isRead = fetchedMessage.lu?.some((l: any) => {
+          const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+          return luUserId === userId;
+        });
+
+        if (canMark && !isRead) {
+          // Supprimer le badge "Nouveau" immédiatement côté UI
+          setMessage((prev: any) => {
+            if (!prev) return prev;
+            const alreadyRead = prev.lu?.some((l: any) => {
+              const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+              return luUserId === userId;
+            });
+            if (alreadyRead) return prev;
+            return { ...prev, lu: [...(prev.lu || []), { user: userId, readAt: new Date().toISOString() }] };
+          });
           try {
             await messagesAPI.markAsRead(messageId);
           } catch (err) {

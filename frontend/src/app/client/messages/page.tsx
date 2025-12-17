@@ -61,7 +61,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'received' | 'sent' | 'unread'>('all');
+  const [filter, setFilter] = useState<'all' | 'received' | 'sent' | 'unread'>('received');
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
@@ -271,7 +271,56 @@ export default function MessagesPage() {
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
-    return message.lu?.some((l: any) => l.user?.toString() === userId?.toString());
+    return message.lu?.some((l: any) => {
+      const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+      return luUserId === userId?.toString?.();
+    });
+  };
+
+  const canCurrentUserMarkAsRead = (message: any) => {
+    const userId = (session?.user as any)?.id;
+    if (!userId) return false;
+    const isDestinataire = message.destinataires?.some(
+      (d: any) =>
+        d?._id?.toString() === userId.toString() ||
+        d?.toString?.() === userId.toString()
+    );
+    const isEnCopie = message.copie?.some(
+      (c: any) =>
+        c?._id?.toString() === userId.toString() ||
+        c?.toString?.() === userId.toString()
+    );
+    return !!(isDestinataire || isEnCopie);
+  };
+
+  const markMessageAsReadOptimistic = (messageId: string) => {
+    const userId = (session?.user as any)?.id?.toString?.();
+    if (!userId) return;
+    setMessages((prev) =>
+      prev.map((m: any) => {
+        const id = (m._id || m.id)?.toString?.();
+        if (id !== messageId.toString()) return m;
+        const alreadyRead = m.lu?.some((l: any) => {
+          const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+          return luUserId === userId;
+        });
+        if (alreadyRead) return m;
+        return {
+          ...m,
+          lu: [...(m.lu || []), { user: userId, readAt: new Date().toISOString() }],
+        };
+      })
+    );
+    setSelectedMessage((prev: any) => {
+      const id = (prev?._id || prev?.id)?.toString?.();
+      if (!prev || id !== messageId.toString()) return prev;
+      const alreadyRead = prev.lu?.some((l: any) => {
+        const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+        return luUserId === userId;
+      });
+      if (alreadyRead) return prev;
+      return { ...prev, lu: [...(prev.lu || []), { user: userId, readAt: new Date().toISOString() }] };
+    });
   };
 
   const toggleMessageSelection = (messageId: string) => {
@@ -345,7 +394,8 @@ export default function MessagesPage() {
 
   if (!session) return null;
 
-  const unreadCount = messages.filter(m => !isMessageRead(m)).length;
+  // IMPORTANT: "Non lus" = non lus PAR MOI (uniquement si je suis destinataire ou en copie)
+  const unreadCount = messages.filter(m => canCurrentUserMarkAsRead(m) && !isMessageRead(m)).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
@@ -593,8 +643,10 @@ export default function MessagesPage() {
                         className="flex-1 cursor-pointer min-w-0"
                         onClick={async () => {
                           setSelectedMessage(message);
-                          if (!isRead) {
+                          if (!isRead && canCurrentUserMarkAsRead(message)) {
                             try {
+                              // Supprimer le badge "Nouveau" immédiatement côté UI
+                              markMessageAsReadOptimistic(messageId);
                               await messagesAPI.markAsRead(messageId);
                               await loadMessages();
                               setError(null);

@@ -19,6 +19,19 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
 
     console.log('📥 Requête DLOG PDF reçue:', { date, user: req.user?.email });
 
+    // stringify robuste (évite les erreurs BigInt / circular / etc.)
+    const safeStringify = (value) => {
+      try {
+        return JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      } catch (e) {
+        try {
+          return String(value);
+        } catch (_e2) {
+          return '[unserializable]';
+        }
+      }
+    };
+
     if (!date) {
       return res.status(400).json({
         success: false,
@@ -188,6 +201,7 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
          .text('Aucune action enregistrée pour cette date.', { indent: 20 });
     } else {
       logs.forEach((log, index) => {
+        try {
         // Vérifier si on doit ajouter une nouvelle page
         if (doc.y > 700) {
           doc.addPage();
@@ -252,7 +266,12 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
              .text('Métadonnées:', { indent: 30 })
              .moveDown(0.2);
           Object.entries(log.metadata).forEach(([key, value]) => {
-            doc.text(`  ${key}: ${JSON.stringify(value)}`, { indent: 40 });
+            const serialized = safeStringify(value);
+            // éviter les lignes gigantesques qui peuvent faire exploser le PDF
+            const clipped = typeof serialized === 'string' && serialized.length > 2000
+              ? `${serialized.slice(0, 2000)}…`
+              : serialized;
+            doc.text(`  ${key}: ${clipped}`, { indent: 40 });
           });
         }
 
@@ -262,19 +281,27 @@ router.get('/dlog/pdf', authorize('superadmin'), async (req, res) => {
            .lineTo(550, doc.y)
            .stroke()
            .moveDown();
+        } catch (perLogErr) {
+          console.warn('⚠️ Log ignoré lors de la génération PDF (erreur sur une entrée):', perLogErr?.message || perLogErr);
+          try {
+            doc.fontSize(9)
+              .fillColor('#cc0000')
+              .text(`⚠️ Erreur sur l'action #${index + 1} (entrée ignorée)`, { indent: 20 })
+              .moveDown(0.5);
+          } catch (_ignore) {}
+        }
       });
     }
 
     // Ajouter le numéro de page sur la première page
     addPageFooter();
     
-    // Finaliser le PDF
-    doc.end();
-
-    // Gérer la fin du stream
     doc.on('end', () => {
       console.log('✅ DLOG PDF généré avec succès pour la date:', date);
     });
+
+    // Finaliser le PDF
+    doc.end();
 
   } catch (error) {
     console.error('❌ Erreur lors de la génération du DLOG PDF:', error);
@@ -328,10 +355,18 @@ router.get('/', authorize('superadmin'), async (req, res) => {
     if (startDate || endDate) {
       filter.createdAt = {};
       if (startDate) {
-        filter.createdAt.$gte = new Date(startDate);
+        const sd = new Date(startDate);
+        if (!isNaN(sd.getTime())) {
+          sd.setHours(0, 0, 0, 0);
+          filter.createdAt.$gte = sd;
+        }
       }
       if (endDate) {
-        filter.createdAt.$lte = new Date(endDate);
+        const ed = new Date(endDate);
+        if (!isNaN(ed.getTime())) {
+          ed.setHours(23, 59, 59, 999);
+          filter.createdAt.$lte = ed;
+        }
       }
     }
 
