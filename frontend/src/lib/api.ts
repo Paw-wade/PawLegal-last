@@ -875,4 +875,93 @@ export const cmsAPI = {
   },
 };
 
+export const smsTemplatesAPI = {
+  // Récupérer tous les templates
+  getTemplates: (params?: { category?: string; isActive?: boolean; search?: string }) => {
+    return api.get('/sms-templates', { params });
+  },
+  
+  // Récupérer un template par ID
+  getTemplate: (id: string) => {
+    return api.get(`/sms-templates/${id}`);
+  },
+  
+  // Créer un template
+  createTemplate: (data: {
+    code: string;
+    name: string;
+    description?: string;
+    message: string;
+    variables?: Array<{ name: string; description?: string; example?: string }>;
+    category?: string;
+    isActive?: boolean;
+  }) => {
+    return api.post('/sms-templates', data);
+  },
+  
+  // Mettre à jour un template
+  updateTemplate: (id: string, data: {
+    code?: string;
+    name?: string;
+    description?: string;
+    message?: string;
+    variables?: Array<{ name: string; description?: string; example?: string }>;
+    category?: string;
+    isActive?: boolean;
+  }) => {
+    return api.put(`/sms-templates/${id}`, data);
+  },
+  
+  // Supprimer un template
+  deleteTemplate: (id: string) => {
+    return api.delete(`/sms-templates/${id}`);
+  },
+  
+  // Tester un template
+  testTemplate: (id: string, variables: Record<string, any>) => {
+    return api.post(`/sms-templates/${id}/test`, { variables });
+  },
+  
+  // Initialiser les templates par défaut
+  initDefaults: () => {
+    return api.post('/sms-templates/init-defaults');
+  },
+};
+
+export const smsHistoryAPI = {
+  // Récupérer l'historique des SMS
+  getHistory: (params?: {
+    to?: string;
+    status?: string;
+    context?: string;
+    templateCode?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    return api.get('/sms-history', { params });
+  },
+  
+  // Récupérer les statistiques
+  getStats: (params?: { startDate?: string; endDate?: string }) => {
+    return api.get('/sms-history/stats', { params });
+  },
+  
+  // Récupérer un SMS par ID
+  getSms: (id: string) => {
+    return api.get(`/sms-history/${id}`);
+  },
+};
+
+export const smsPreferencesAPI = {
+  // Mettre à jour les préférences SMS
+  updatePreferences: (data: {
+    enabled?: boolean;
+    types?: Record<string, boolean>;
+  }) => {
+    return api.put('/user/sms-preferences', data);
+  },
+};
+
 

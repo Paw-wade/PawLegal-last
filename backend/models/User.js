@@ -103,6 +103,27 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  smsPreferences: {
+    enabled: {
+      type: Boolean,
+      default: true // Par défaut, les SMS sont activés
+    },
+    types: {
+      appointment_confirmed: { type: Boolean, default: true },
+      appointment_cancelled: { type: Boolean, default: true },
+      appointment_updated: { type: Boolean, default: true },
+      appointment_reminder: { type: Boolean, default: true },
+      dossier_created: { type: Boolean, default: true },
+      dossier_updated: { type: Boolean, default: true },
+      dossier_status_changed: { type: Boolean, default: true },
+      document_uploaded: { type: Boolean, default: true },
+      message_received: { type: Boolean, default: true },
+      task_assigned: { type: Boolean, default: true },
+      task_reminder: { type: Boolean, default: true },
+      account_security: { type: Boolean, default: true },
+      otp: { type: Boolean, default: true } // OTP toujours activé pour sécurité
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now

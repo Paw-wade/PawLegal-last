@@ -487,7 +487,15 @@ router.post(
         if (phoneNumber) {
           await sendNotificationSMS(
             phoneNumber,
-            `Votre demande a été reçue et un dossier a été créé. Référence: ${newDossier._id}. L'équipe Paw Legal vous contactera prochainement.`
+            'dossier_created',
+            {
+              dossierTitle: newDossier.titre || 'Votre dossier',
+              dossierId: newDossier._id.toString()
+            },
+            {
+              context: 'dossier',
+              contextId: newDossier._id.toString()
+            }
           );
           console.log(`✅ SMS envoyé à ${phoneNumber} pour la création du dossier ${newDossier._id}`);
         }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { userAPI } from '@/lib/api';
+import { userAPI, smsPreferencesAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', disabled = false, ...props }: any) {
@@ -66,7 +66,7 @@ function Textarea({ className = '', ...props }: any) {
 export default function AdminComptePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [activeTab, setActiveTab] = useState<'profil' | 'password'>('profil');
+  const [activeTab, setActiveTab] = useState<'profil' | 'password' | 'sms'>('profil');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +102,26 @@ export default function AdminComptePage() {
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
+  });
+
+  // Préférences SMS
+  const [smsPreferences, setSmsPreferences] = useState({
+    enabled: true,
+    types: {
+      appointment_confirmed: true,
+      appointment_cancelled: true,
+      appointment_updated: true,
+      appointment_reminder: true,
+      dossier_created: true,
+      dossier_updated: true,
+      dossier_status_changed: true,
+      document_uploaded: true,
+      message_received: true,
+      task_assigned: true,
+      task_reminder: true,
+      account_security: true,
+      otp: true, // Toujours activé pour sécurité
+    }
   });
 
   useEffect(() => {
@@ -179,6 +199,28 @@ export default function AdminComptePage() {
         
         console.log('📝 Données pré-remplies:', preFilledData);
         setProfileData(preFilledData);
+        
+        // Charger les préférences SMS
+        if (user.smsPreferences) {
+          setSmsPreferences({
+            enabled: user.smsPreferences.enabled !== false,
+            types: {
+              appointment_confirmed: user.smsPreferences.types?.appointment_confirmed !== false,
+              appointment_cancelled: user.smsPreferences.types?.appointment_cancelled !== false,
+              appointment_updated: user.smsPreferences.types?.appointment_updated !== false,
+              appointment_reminder: user.smsPreferences.types?.appointment_reminder !== false,
+              dossier_created: user.smsPreferences.types?.dossier_created !== false,
+              dossier_updated: user.smsPreferences.types?.dossier_updated !== false,
+              dossier_status_changed: user.smsPreferences.types?.dossier_status_changed !== false,
+              document_uploaded: user.smsPreferences.types?.document_uploaded !== false,
+              message_received: user.smsPreferences.types?.message_received !== false,
+              task_assigned: user.smsPreferences.types?.task_assigned !== false,
+              task_reminder: user.smsPreferences.types?.task_reminder !== false,
+              account_security: user.smsPreferences.types?.account_security !== false,
+              otp: true, // Toujours activé
+            }
+          });
+        }
       } else {
         console.error('❌ Erreur: réponse non réussie', response.data);
         setError('Impossible de charger le profil');
@@ -314,6 +356,19 @@ export default function AdminComptePage() {
               <span className="flex items-center justify-center gap-2">
                 <span className="text-lg">🔒</span>
                 <span>Mot de passe</span>
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('sms')}
+              className={`flex-1 px-6 py-3 font-semibold text-sm transition-all duration-200 rounded-lg ${
+                activeTab === 'sms'
+                  ? 'bg-white text-primary shadow-md border border-primary/20'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-white/50'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <span className="text-lg">📱</span>
+                <span>Notifications SMS</span>
               </span>
             </button>
           </div>
@@ -743,6 +798,140 @@ export default function AdminComptePage() {
                     <span className="flex items-center gap-2">
                       <span>🔒</span>
                       <span>Modifier le mot de passe</span>
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'sms' && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSaving(true);
+                setError(null);
+                setSuccess(null);
+                try {
+                  await smsPreferencesAPI.updatePreferences(smsPreferences);
+                  setSuccess('Préférences SMS mises à jour avec succès');
+                  setTimeout(() => setSuccess(null), 3000);
+                } catch (error: any) {
+                  setError(error.response?.data?.message || 'Erreur lors de la mise à jour');
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              className="space-y-6 max-w-4xl"
+            >
+              <div className="bg-gradient-to-br from-orange-50/50 to-white rounded-xl p-6 border border-orange-100 space-y-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-1 h-8 bg-orange-500 rounded-full"></div>
+                  <h3 className="text-xl font-bold text-foreground">Préférences SMS</h3>
+                </div>
+
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg mb-6">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note :</strong> Les SMS OTP (codes de vérification) sont toujours activés pour des raisons de sécurité et ne peuvent pas être désactivés.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <Label className="text-base font-semibold mb-1">Activer les notifications SMS</Label>
+                    <p className="text-sm text-muted-foreground">Activez ou désactivez toutes les notifications SMS</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={smsPreferences.enabled}
+                      onChange={(e) => setSmsPreferences({ ...smsPreferences, enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+
+                <div className="border-t border-border pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Types de notifications</h3>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'appointment_confirmed', label: 'Confirmation de rendez-vous', icon: '📅' },
+                      { key: 'appointment_cancelled', label: 'Annulation de rendez-vous', icon: '❌' },
+                      { key: 'appointment_updated', label: 'Modification de rendez-vous', icon: '✏️' },
+                      { key: 'appointment_reminder', label: 'Rappel de rendez-vous', icon: '⏰' },
+                      { key: 'dossier_created', label: 'Création de dossier', icon: '📁' },
+                      { key: 'dossier_updated', label: 'Mise à jour de dossier', icon: '🔄' },
+                      { key: 'dossier_status_changed', label: 'Changement de statut de dossier', icon: '📊' },
+                      { key: 'document_uploaded', label: 'Document ajouté', icon: '📄' },
+                      { key: 'message_received', label: 'Nouveau message', icon: '💬' },
+                      { key: 'task_assigned', label: 'Tâche assignée', icon: '✅' },
+                      { key: 'task_reminder', label: 'Rappel de tâche', icon: '⏳' },
+                      { key: 'account_security', label: 'Sécurité du compte', icon: '🔒' },
+                      { key: 'otp', label: 'Codes OTP (toujours activé)', icon: '🔐', disabled: true },
+                    ].map((type) => (
+                      <div
+                        key={type.key}
+                        className={`flex items-center justify-between p-4 rounded-lg border ${
+                          smsPreferences.types[type.key as keyof typeof smsPreferences.types]
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{type.icon}</span>
+                          <div>
+                            <Label className="text-sm font-semibold mb-0">{type.label}</Label>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={smsPreferences.types[type.key as keyof typeof smsPreferences.types] || false}
+                            onChange={(e) =>
+                              setSmsPreferences({
+                                ...smsPreferences,
+                                types: {
+                                  ...smsPreferences.types,
+                                  [type.key]: e.target.checked,
+                                },
+                              })
+                            }
+                            disabled={type.disabled || !smsPreferences.enabled}
+                            className="sr-only peer"
+                          />
+                          <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary ${type.disabled || !smsPreferences.enabled ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-4 pt-4 border-t border-gray-200">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push('/admin')}
+                  disabled={isSaving}
+                  className="px-6 py-2.5 font-semibold border-2 hover:bg-gray-50"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all"
+                >
+                  {isSaving ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin">⏳</span>
+                      <span>Enregistrement...</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <span>📱</span>
+                      <span>Enregistrer les préférences</span>
                     </span>
                   )}
                 </Button>

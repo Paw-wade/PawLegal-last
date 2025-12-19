@@ -626,8 +626,12 @@ router.post(
                 const formattedPhone = formatPhoneNumber(destinatairePrincipal.phone);
                 if (formattedPhone) {
                   await sendNotificationSMS(formattedPhone, 'message_received', {
-                    message: `Vous avez reçu un nouveau message de ${expediteurName}. Connectez-vous pour le consulter.`,
+                    senderName: expediteurName,
                     messageId: nouveauMessage._id.toString()
+                  }, {
+                    userId: destinatairesIds[0].toString(),
+                    context: 'message',
+                    contextId: nouveauMessage._id.toString()
                   });
                   console.log(`✅ SMS envoyé à ${formattedPhone}`);
                 }

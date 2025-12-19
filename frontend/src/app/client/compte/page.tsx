@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { userAPI } from '@/lib/api';
+import { userAPI, smsPreferencesAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', disabled = false, ...props }: any) {
@@ -58,7 +58,7 @@ function Label({ className = '', children, ...props }: any) {
 export default function ComptePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [activeTab, setActiveTab] = useState<'profil' | 'password'>('profil');
+  const [activeTab, setActiveTab] = useState<'profil' | 'password' | 'sms'>('profil');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +93,26 @@ export default function ComptePage() {
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
+  });
+
+  // Préférences SMS
+  const [smsPreferences, setSmsPreferences] = useState({
+    enabled: true,
+    types: {
+      appointment_confirmed: true,
+      appointment_cancelled: true,
+      appointment_updated: true,
+      appointment_reminder: true,
+      dossier_created: true,
+      dossier_updated: true,
+      dossier_status_changed: true,
+      document_uploaded: true,
+      message_received: true,
+      task_assigned: true,
+      task_reminder: true,
+      account_security: true,
+      otp: true, // Toujours activé pour sécurité
+    }
   });
 
   useEffect(() => {
@@ -313,6 +333,19 @@ export default function ComptePage() {
             <span className="flex items-center gap-2">
               <span>🔒</span>
               <span>Mot de passe</span>
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('sms')}
+            className={`px-6 py-3 text-sm font-semibold rounded-lg transition-all duration-200 ${
+              activeTab === 'sms'
+                ? 'bg-primary text-white shadow-md'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span>📱</span>
+              <span>Notifications SMS</span>
             </span>
           </button>
         </div>
@@ -712,6 +745,121 @@ export default function ComptePage() {
                       <span>Modifier le mot de passe</span>
                     </span>
                   )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'sms' && (
+          <div className="bg-white rounded-xl shadow-lg border border-border overflow-hidden">
+            <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-8 py-6 border-b border-border">
+              <h2 className="text-2xl font-bold text-foreground flex items-center gap-3">
+                <span className="text-3xl">📱</span>
+                <span>Préférences SMS</span>
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2">Gérez les notifications SMS que vous souhaitez recevoir</p>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSaving(true);
+                setError(null);
+                setSuccess(null);
+                try {
+                  await smsPreferencesAPI.updatePreferences(smsPreferences);
+                  setSuccess('Préférences SMS mises à jour avec succès');
+                  setTimeout(() => setSuccess(null), 3000);
+                } catch (error: any) {
+                  setError(error.response?.data?.message || 'Erreur lors de la mise à jour');
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              className="p-8 space-y-6"
+            >
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg mb-6">
+                <p className="text-sm text-blue-800">
+                  <strong>Note :</strong> Les SMS OTP (codes de vérification) sont toujours activés pour des raisons de sécurité et ne peuvent pas être désactivés.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <Label className="text-base font-semibold mb-1">Activer les notifications SMS</Label>
+                    <p className="text-sm text-muted-foreground">Activez ou désactivez toutes les notifications SMS</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={smsPreferences.enabled}
+                      onChange={(e) => setSmsPreferences({ ...smsPreferences, enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+
+                <div className="border-t border-border pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Types de notifications</h3>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'appointment_confirmed', label: 'Confirmation de rendez-vous', icon: '📅' },
+                      { key: 'appointment_cancelled', label: 'Annulation de rendez-vous', icon: '❌' },
+                      { key: 'appointment_updated', label: 'Modification de rendez-vous', icon: '✏️' },
+                      { key: 'appointment_reminder', label: 'Rappel de rendez-vous', icon: '⏰' },
+                      { key: 'dossier_created', label: 'Création de dossier', icon: '📁' },
+                      { key: 'dossier_updated', label: 'Mise à jour de dossier', icon: '🔄' },
+                      { key: 'dossier_status_changed', label: 'Changement de statut de dossier', icon: '📊' },
+                      { key: 'document_uploaded', label: 'Document ajouté', icon: '📄' },
+                      { key: 'message_received', label: 'Nouveau message', icon: '💬' },
+                      { key: 'task_assigned', label: 'Tâche assignée', icon: '✅' },
+                      { key: 'task_reminder', label: 'Rappel de tâche', icon: '⏳' },
+                      { key: 'account_security', label: 'Sécurité du compte', icon: '🔒' },
+                      { key: 'otp', label: 'Codes OTP (toujours activé)', icon: '🔐', disabled: true },
+                    ].map((type) => (
+                      <div
+                        key={type.key}
+                        className={`flex items-center justify-between p-4 rounded-lg border ${
+                          smsPreferences.types[type.key as keyof typeof smsPreferences.types]
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{type.icon}</span>
+                          <div>
+                            <Label className="text-sm font-semibold mb-0">{type.label}</Label>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={smsPreferences.types[type.key as keyof typeof smsPreferences.types] || false}
+                            onChange={(e) =>
+                              setSmsPreferences({
+                                ...smsPreferences,
+                                types: {
+                                  ...smsPreferences.types,
+                                  [type.key]: e.target.checked,
+                                },
+                              })
+                            }
+                            disabled={type.disabled || !smsPreferences.enabled}
+                            className="sr-only peer"
+                          />
+                          <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary ${type.disabled || !smsPreferences.enabled ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button type="submit" disabled={isSaving} className="px-8 py-3">
+                  {isSaving ? 'Enregistrement...' : 'Enregistrer les préférences'}
                 </Button>
               </div>
             </form>

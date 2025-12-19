@@ -1,4 +1,7 @@
 {
-  "/page": "app/page.js",
-  "/auth/complete-profile/page": "app/auth/complete-profile/page.js"
+  "/_not-found/page": "app/_not-found/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/admin/sms/page": "app/admin/sms/page.js",
+  "/admin/taches/page": "app/admin/taches/page.js"
 }

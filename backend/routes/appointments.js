@@ -451,6 +451,10 @@ router.patch(
                 name: `${rendezVous.prenom} ${rendezVous.nom}`,
                 date: dateFormatted,
                 time: rendezVous.heure
+              }, {
+                userId: rendezVous.user?._id || rendezVous.user,
+                context: 'appointment',
+                contextId: rendezVous._id.toString()
               });
               console.log(`✅ SMS d'annulation envoyé à ${rendezVous.telephone}`);
             } catch (smsError) {
@@ -618,6 +622,10 @@ router.put(
                   name: `${rendezVous.prenom} ${rendezVous.nom}`,
                   date: dateFormatted,
                   time: rendezVous.heure
+                }, {
+                  userId: rendezVous.user?._id || rendezVous.user,
+                  context: 'appointment',
+                  contextId: rendezVous._id.toString()
                 });
                 console.log(`✅ SMS de modification envoyé à ${rendezVous.telephone}`);
               } catch (smsError) {
@@ -770,7 +778,11 @@ router.patch(
                   date: dateFormatted,
                   time: rendezVous.heure
                 };
-                await sendNotificationSMS(rendezVous.telephone, statut === 'confirme' ? 'appointment_confirmed' : 'appointment_cancelled', smsData);
+                await sendNotificationSMS(rendezVous.telephone, statut === 'confirme' ? 'appointment_confirmed' : 'appointment_cancelled', smsData, {
+                  userId: rendezVous.user?._id || rendezVous.user,
+                  context: 'appointment',
+                  contextId: rendezVous._id.toString()
+                });
                 console.log(`✅ SMS envoyé à ${rendezVous.telephone} pour le rendez-vous ${rendezVous._id}`);
               } catch (smsError) {
                 console.error('⚠️ Erreur lors de l\'envoi du SMS (non bloquant):', smsError.message);

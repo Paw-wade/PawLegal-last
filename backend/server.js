@@ -248,6 +248,20 @@ try {
   console.log('⚠️ Route /api/sms non trouvée:', e.message);
 }
 
+try {
+  app.use('/api/sms-templates', require('./routes/sms-templates'));
+  console.log('✅ Route /api/sms-templates enregistrée');
+} catch (e) {
+  console.error('❌ Erreur lors du chargement de la route sms-templates:', e.message);
+}
+
+try {
+  app.use('/api/sms-history', require('./routes/sms-history'));
+  console.log('✅ Route /api/sms-history enregistrée');
+} catch (e) {
+  console.error('❌ Erreur lors du chargement de la route sms-history:', e.message);
+}
+
 // Middleware de gestion d'erreurs (doit être après les routes)
 const errorHandler = require('./middleware/errorHandler');
 app.use(errorHandler);

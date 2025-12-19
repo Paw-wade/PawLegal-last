@@ -32,33 +32,34 @@ router.get('/profile', async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        profilComplete: user.profilComplete || false,
-        dateNaissance: user.dateNaissance,
-        lieuNaissance: user.lieuNaissance,
-        nationalite: user.nationalite,
-        sexe: user.sexe,
-        numeroEtranger: user.numeroEtranger,
-        numeroTitre: user.numeroTitre,
-        typeTitre: user.typeTitre,
-        dateDelivrance: user.dateDelivrance,
-        dateExpiration: user.dateExpiration,
-        adressePostale: user.adressePostale,
-        ville: user.ville,
-        codePostal: user.codePostal,
-        pays: user.pays,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      }
-    });
+      res.json({
+        success: true,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          profilComplete: user.profilComplete || false,
+          smsPreferences: user.smsPreferences || { enabled: true, types: {} },
+          dateNaissance: user.dateNaissance,
+          lieuNaissance: user.lieuNaissance,
+          nationalite: user.nationalite,
+          sexe: user.sexe,
+          numeroEtranger: user.numeroEtranger,
+          numeroTitre: user.numeroTitre,
+          typeTitre: user.typeTitre,
+          dateDelivrance: user.dateDelivrance,
+          dateExpiration: user.dateExpiration,
+          adressePostale: user.adressePostale,
+          ville: user.ville,
+          codePostal: user.codePostal,
+          pays: user.pays,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt
+        }
+      });
   } catch (error) {
     console.error('Erreur lors de la récupération du profil:', error);
     res.status(500).json({
@@ -107,7 +108,8 @@ router.put(
         ville,
         codePostal,
         pays,
-        profilComplete
+        profilComplete,
+        smsPreferences
       } = req.body;
       
       const effectiveUserId = getEffectiveUserId(req);
@@ -150,11 +152,84 @@ router.put(
           email: user.email,
           phone: user.phone,
           role: user.role,
-          profilComplete: user.profilComplete || false
+          profilComplete: user.profilComplete || false,
+          smsPreferences: user.smsPreferences || { enabled: true, types: {} }
         }
       });
     } catch (error) {
       console.error('Erreur lors de la mise à jour du profil:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur',
+        error: error.message
+      });
+    }
+  }
+);
+
+// @route   PUT /api/user/sms-preferences
+// @desc    Mettre à jour les préférences SMS
+// @access  Private
+router.put(
+  '/sms-preferences',
+  [
+    body('enabled').optional().isBoolean(),
+    body('types').optional().isObject()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation',
+          errors: errors.array()
+        });
+      }
+
+      const effectiveUserId = getEffectiveUserId(req);
+      const user = await User.findById(effectiveUserId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'Utilisateur non trouvé'
+        });
+      }
+
+      const { enabled, types } = req.body;
+
+      if (!user.smsPreferences) {
+        user.smsPreferences = {
+          enabled: true,
+          types: {}
+        };
+      }
+
+      if (enabled !== undefined) {
+        user.smsPreferences.enabled = enabled;
+      }
+
+      if (types) {
+        user.smsPreferences.types = user.smsPreferences.types || {};
+        Object.keys(types).forEach(type => {
+          // Ne pas permettre de désactiver l'OTP pour des raisons de sécurité
+          if (type === 'otp' && types[type] === false) {
+            return; // Ignorer la désactivation de l'OTP
+          }
+          user.smsPreferences.types[type] = types[type];
+        });
+      }
+
+      await user.save();
+
+      res.json({
+        success: true,
+        message: 'Préférences SMS mises à jour avec succès',
+        smsPreferences: user.smsPreferences
+      });
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour des préférences SMS:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur serveur',

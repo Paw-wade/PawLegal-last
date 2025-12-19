@@ -29,6 +29,7 @@ const adminMenuItems: MenuItem[] = [
   { href: '/admin/documents', label: 'Documents', icon: '📄' },
   { href: '/admin/temoignages', label: 'Témoignages', icon: '⭐' },
   { href: '/admin/notifications', label: 'Notifications', icon: '🔔' },
+  { href: '/admin/sms', label: 'SMS', icon: '📱' },
   { href: '/admin/cms', label: 'CMS', icon: '✏️' },
   { href: '/admin/logs', label: 'Logs', icon: '📋', roles: ['superadmin'] },
   { href: '/admin/corbeille', label: 'Corbeille', icon: '🗑️' },

@@ -706,6 +706,9 @@ export default function AdminUtilisateursPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'client' | 'admin' | 'superadmin'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [profilFilter, setProfilFilter] = useState<'all' | 'complete' | 'incomplete'>('all');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -755,12 +758,28 @@ export default function AdminUtilisateursPage() {
     }
   };
 
-  // Filtrer les utilisateurs selon le terme de recherche
+  // Filtrer les utilisateurs selon le terme de recherche et les filtres
   const filteredUsers = utilisateurs.filter((user) => {
+    // Filtre de recherche
     const fullName = `${user.firstName || ''} ${user.lastName || ''}`.toLowerCase();
     const email = (user.email || '').toLowerCase();
-    const search = searchTerm.toLowerCase();
-    return fullName.includes(search) || email.includes(search);
+    const search = (searchTerm || '').toLowerCase();
+    const matchesSearch = !search || fullName.includes(search) || email.includes(search);
+    
+    // Filtre par rôle
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    
+    // Filtre par statut (actif/inactif)
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && user.isActive !== false) ||
+      (statusFilter === 'inactive' && user.isActive === false);
+    
+    // Filtre par profil complet
+    const matchesProfil = profilFilter === 'all' ||
+      (profilFilter === 'complete' && user.profilComplete === true) ||
+      (profilFilter === 'incomplete' && user.profilComplete !== true);
+    
+    return matchesSearch && matchesRole && matchesStatus && matchesProfil;
   });
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -952,17 +971,146 @@ export default function AdminUtilisateursPage() {
             </div>
           )}
 
-          <div className="mb-4 flex items-center justify-between">
-            <input
-              type="text"
-              placeholder="Rechercher un utilisateur..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-            <Button onClick={loadUsers} variant="outline">
-              Actualiser
-            </Button>
+          <div className="mb-6 space-y-4">
+            {/* Barre de recherche */}
+            <div className="flex items-center justify-between gap-4">
+              <input
+                type="text"
+                placeholder="Rechercher un utilisateur..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <Button onClick={loadUsers} variant="outline">
+                Actualiser
+              </Button>
+            </div>
+
+            {/* Badges de tri */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-muted-foreground">Filtrer par :</span>
+              
+              {/* Filtre par rôle */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Rôle:</span>
+                <button
+                  onClick={() => setRoleFilter('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    roleFilter === 'all'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Tous
+                </button>
+                <button
+                  onClick={() => setRoleFilter('client')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    roleFilter === 'client'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  👤 Clients
+                </button>
+                <button
+                  onClick={() => setRoleFilter('admin')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    roleFilter === 'admin'
+                      ? 'bg-purple-500 text-white shadow-md'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  }`}
+                >
+                  👨‍💼 Admins
+                </button>
+                <button
+                  onClick={() => setRoleFilter('superadmin')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    roleFilter === 'superadmin'
+                      ? 'bg-red-500 text-white shadow-md'
+                      : 'bg-red-50 text-red-700 hover:bg-red-100'
+                  }`}
+                >
+                  🔴 SuperAdmins
+                </button>
+              </div>
+
+              {/* Filtre par statut */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Statut:</span>
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    statusFilter === 'all'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Tous
+                </button>
+                <button
+                  onClick={() => setStatusFilter('active')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    statusFilter === 'active'
+                      ? 'bg-green-500 text-white shadow-md'
+                      : 'bg-green-50 text-green-700 hover:bg-green-100'
+                  }`}
+                >
+                  ✅ Actifs
+                </button>
+                <button
+                  onClick={() => setStatusFilter('inactive')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    statusFilter === 'inactive'
+                      ? 'bg-gray-500 text-white shadow-md'
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  ⏸️ Inactifs
+                </button>
+              </div>
+
+              {/* Filtre par profil */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Profil:</span>
+                <button
+                  onClick={() => setProfilFilter('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    profilFilter === 'all'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Tous
+                </button>
+                <button
+                  onClick={() => setProfilFilter('complete')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    profilFilter === 'complete'
+                      ? 'bg-emerald-500 text-white shadow-md'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  ✓ Complet
+                </button>
+                <button
+                  onClick={() => setProfilFilter('incomplete')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    profilFilter === 'incomplete'
+                      ? 'bg-orange-500 text-white shadow-md'
+                      : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+                  }`}
+                >
+                  ⚠️ Incomplet
+                </button>
+              </div>
+
+              {/* Compteur de résultats */}
+              <div className="ml-auto text-sm text-muted-foreground">
+                {filteredUsers.length} utilisateur{filteredUsers.length > 1 ? 's' : ''}
+                {filteredUsers.length !== utilisateurs.length && ` sur ${utilisateurs.length}`}
+              </div>
+            </div>
           </div>
 
           {isLoading ? (
@@ -1044,13 +1192,6 @@ export default function AdminUtilisateursPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-
-          {!isLoading && utilisateurs.length > 0 && (
-            <div className="mt-4 text-sm text-muted-foreground">
-              Total: {filteredUsers.length} utilisateur{filteredUsers.length > 1 ? 's' : ''}
-              {searchTerm && filteredUsers.length !== utilisateurs.length && ` (sur ${utilisateurs.length})`}
             </div>
           )}
         </div>
