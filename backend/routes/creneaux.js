@@ -56,9 +56,26 @@ router.get('/available', async (req, res) => {
     });
 
     // Filtrer les heures disponibles
-    const heuresDisponiblesFiltrees = heuresDisponibles.filter(
+    let heuresDisponiblesFiltrees = heuresDisponibles.filter(
       heure => !heuresIndisponibles.has(heure)
     );
+
+    // Si la date est aujourd'hui, filtrer les heures déjà passées
+    const maintenant = new Date();
+    const dateAujourdhui = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
+    const dateDemandee = new Date(targetDate);
+    
+    if (dateDemandee.getTime() === dateAujourdhui.getTime()) {
+      // C'est aujourd'hui, filtrer les heures passées
+      const heureActuelle = maintenant.getHours();
+      const minuteActuelle = maintenant.getMinutes();
+      const heureActuelleStr = `${heureActuelle.toString().padStart(2, '0')}:${minuteActuelle.toString().padStart(2, '0')}`;
+      
+      heuresDisponiblesFiltrees = heuresDisponiblesFiltrees.filter(heure => {
+        // Comparer les heures au format HH:MM
+        return heure > heureActuelleStr;
+      });
+    }
 
     res.json({
       success: true,

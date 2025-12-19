@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { appointmentsAPI, creneauxAPI, userAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
-function Input({ className = '', type, value, onChange, ...props }: any) {
+const Input = React.forwardRef<HTMLInputElement, any>(({ className = '', type, value, onChange, onInput, onBlur, ...props }, ref) => {
   // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
   if (type === 'date') {
     return (
@@ -28,12 +28,18 @@ function Input({ className = '', type, value, onChange, ...props }: any) {
   
   return (
     <input
+      ref={ref}
       type={type}
+      value={value}
+      onChange={onChange}
+      onInput={onInput}
+      onBlur={onBlur}
       className={`flex h-7 w-full rounded border border-input bg-background px-2 py-0.5 text-[11px] ring-offset-background file:border-0 file:bg-transparent file:text-[11px] file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 function Label({ className = '', children, ...props }: any) {
   return (
@@ -131,6 +137,13 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Refs pour détecter l'auto-remplissage du navigateur
+  const nomInputRef = useRef<HTMLInputElement>(null);
+  const prenomInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const telephoneInputRef = useRef<HTMLInputElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
   // Réinitialiser userProfileLoaded quand le widget s'ouvre
   useEffect(() => {
     if (isOpen) {
@@ -147,8 +160,16 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
   const [heuresDisponibles, setHeuresDisponibles] = useState<string[]>(heuresDisponiblesParDefaut);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
-  // Date minimale (aujourd'hui)
-  const today = new Date().toISOString().split('T')[0];
+  // Date minimale (aujourd'hui) - format YYYY-MM-DD
+  const today = getTodayDate();
+
+  // S'assurer que la date sélectionnée n'est pas passée
+  useEffect(() => {
+    const todayStr = getTodayDate();
+    if (formData.date && formData.date < todayStr) {
+      setFormData(prev => ({ ...prev, date: todayStr, heure: '' }));
+    }
+  }, [formData.date]);
 
   // Charger les créneaux disponibles quand la date change
   useEffect(() => {
@@ -213,21 +234,90 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
     loadUserProfile();
   }, [isOpen, session, userProfileLoaded]);
 
+  // Détecter l'auto-remplissage du navigateur
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const checkAutoFill = () => {
+      // Vérifier chaque input pour détecter les valeurs auto-remplies
+      if (nomInputRef.current && nomInputRef.current.value !== formData.nom) {
+        setFormData(prev => ({ ...prev, nom: nomInputRef.current?.value || '' }));
+      }
+      if (prenomInputRef.current && prenomInputRef.current.value !== formData.prenom) {
+        setFormData(prev => ({ ...prev, prenom: prenomInputRef.current?.value || '' }));
+      }
+      if (emailInputRef.current && emailInputRef.current.value !== formData.email) {
+        setFormData(prev => ({ ...prev, email: emailInputRef.current?.value || '' }));
+      }
+      if (telephoneInputRef.current && telephoneInputRef.current.value !== formData.telephone) {
+        setFormData(prev => ({ ...prev, telephone: telephoneInputRef.current?.value || '' }));
+      }
+      // Pour la date, chercher l'input date natif dans le composant DateInput via le DOM
+      const dateInputNative = document.querySelector('#date[type="date"]') as HTMLInputElement;
+      if (dateInputNative && dateInputNative.value !== formData.date) {
+        setFormData(prev => ({ ...prev, date: dateInputNative.value }));
+      }
+    };
+
+    // Vérifier immédiatement
+    checkAutoFill();
+
+    // Vérifier périodiquement (l'auto-remplissage peut se produire avec un délai)
+    const interval = setInterval(checkAutoFill, 500);
+    
+    // Vérifier aussi après un délai plus long (certains navigateurs remplissent après plusieurs secondes)
+    const timeout = setTimeout(checkAutoFill, 2000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [isOpen, formData.nom, formData.prenom, formData.email, formData.telephone, formData.date]);
+
   const loadAvailableSlots = async (date: string) => {
     setLoadingSlots(true);
     try {
       const response = await creneauxAPI.getAvailableSlots(date);
       if (response.data.success) {
-        setHeuresDisponibles(response.data.heuresDisponibles || []);
+        let heuresDisponibles = response.data.heuresDisponibles || [];
+        
+        // Si la date sélectionnée est aujourd'hui, filtrer les heures déjà passées
+        const maintenant = new Date();
+        const dateAujourdhui = maintenant.toISOString().split('T')[0];
+        
+        if (date === dateAujourdhui) {
+          const heureActuelle = maintenant.getHours();
+          const minuteActuelle = maintenant.getMinutes();
+          const heureActuelleStr = `${heureActuelle.toString().padStart(2, '0')}:${minuteActuelle.toString().padStart(2, '0')}`;
+          
+          heuresDisponibles = heuresDisponibles.filter(heure => {
+            // Comparer les heures au format HH:MM
+            return heure > heureActuelleStr;
+          });
+        }
+        
+        setHeuresDisponibles(heuresDisponibles);
         // Si l'heure sélectionnée n'est plus disponible, la réinitialiser
-        if (formData.heure && !response.data.heuresDisponibles.includes(formData.heure)) {
+        if (formData.heure && !heuresDisponibles.includes(formData.heure)) {
           setFormData({ ...formData, heure: '' });
         }
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des créneaux disponibles:', err);
-      // En cas d'erreur, utiliser les heures par défaut
-      setHeuresDisponibles(heuresDisponiblesParDefaut);
+      // En cas d'erreur, utiliser les heures par défaut mais filtrer si c'est aujourd'hui
+      let heuresParDefaut = heuresDisponiblesParDefaut;
+      const maintenant = new Date();
+      const dateAujourdhui = maintenant.toISOString().split('T')[0];
+      
+      if (formData.date === dateAujourdhui) {
+        const heureActuelle = maintenant.getHours();
+        const minuteActuelle = maintenant.getMinutes();
+        const heureActuelleStr = `${heureActuelle.toString().padStart(2, '0')}:${minuteActuelle.toString().padStart(2, '0')}`;
+        
+        heuresParDefaut = heuresParDefaut.filter(heure => heure > heureActuelleStr);
+      }
+      
+      setHeuresDisponibles(heuresParDefaut);
     } finally {
       setLoadingSlots(false);
     }
@@ -239,16 +329,35 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
     setError(null);
     setSuccess(null);
 
+    // Récupérer les valeurs réelles des inputs DOM pour détecter l'auto-remplissage
+    const nomValue = nomInputRef.current?.value || formData.nom;
+    const emailValue = emailInputRef.current?.value || formData.email;
+    // Pour la date, chercher l'input date natif dans le composant DateInput via le DOM
+    const dateInputNative = document.querySelector('#date[type="date"]') as HTMLInputElement;
+    const dateValue = dateInputNative?.value || formData.date;
+    const heureValue = formData.heure; // Le select n'a pas besoin de ref car il est toujours synchronisé
+
+    // Mettre à jour formData avec les valeurs réelles des inputs DOM
+    const updatedFormData = {
+      ...formData,
+      nom: nomValue.trim(),
+      email: emailValue.trim(),
+      date: dateValue,
+    };
+
     // Validation : seuls nom, email, date et heure sont obligatoires pour ne pas bloquer les utilisateurs non connectés
-    if (!formData.nom || !formData.email || !formData.date || !formData.heure) {
+    if (!updatedFormData.nom || !updatedFormData.email || !updatedFormData.date || !heureValue) {
       setError('Veuillez renseigner au minimum votre nom, votre email, la date et l\'heure du rendez-vous.');
       setIsSubmitting(false);
       return;
     }
 
+    // Mettre à jour l'état avec les valeurs réelles
+    setFormData(updatedFormData);
+
     try {
-      console.log('Envoi de la demande de rendez-vous:', formData);
-      const response = await appointmentsAPI.createAppointment(formData);
+      console.log('Envoi de la demande de rendez-vous:', updatedFormData);
+      const response = await appointmentsAPI.createAppointment(updatedFormData);
       console.log('Réponse du serveur:', response.data);
       if (response.data.success) {
         setSuccess(response.data.message);
@@ -340,11 +449,23 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
           <div>
             <Label htmlFor="nom">Nom *</Label>
             <Input
+              ref={nomInputRef}
               id="nom"
               name="family-name"
               type="text"
               value={formData.nom}
               onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+              onInput={(e) => {
+                const target = e.target as HTMLInputElement;
+                setFormData({ ...formData, nom: target.value });
+              }}
+              onBlur={(e) => {
+                const target = e.target as HTMLInputElement;
+                if (target.value !== formData.nom) {
+                  setFormData({ ...formData, nom: target.value });
+                }
+              }}
+              autoComplete="family-name"
               required
               className="mt-0.5"
               placeholder="Nom"
@@ -353,11 +474,23 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
           <div>
             <Label htmlFor="prenom">Prénom *</Label>
             <Input
+              ref={prenomInputRef}
               id="prenom"
               name="given-name"
               type="text"
               value={formData.prenom}
               onChange={(e) => setFormData({ ...formData, prenom: e.target.value })}
+              onInput={(e) => {
+                const target = e.target as HTMLInputElement;
+                setFormData({ ...formData, prenom: target.value });
+              }}
+              onBlur={(e) => {
+                const target = e.target as HTMLInputElement;
+                if (target.value !== formData.prenom) {
+                  setFormData({ ...formData, prenom: target.value });
+                }
+              }}
+              autoComplete="given-name"
               required
               className="mt-0.5"
               placeholder="Prénom"
@@ -368,12 +501,23 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
         <div>
           <Label htmlFor="email">Email *</Label>
           <Input
+            ref={emailInputRef}
             id="email"
             name="email"
             type="email"
             autoComplete="email"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            onInput={(e) => {
+              const target = e.target as HTMLInputElement;
+              setFormData({ ...formData, email: target.value });
+            }}
+            onBlur={(e) => {
+              const target = e.target as HTMLInputElement;
+              if (target.value !== formData.email) {
+                setFormData({ ...formData, email: target.value });
+              }
+            }}
             required
             className="mt-0.5"
             placeholder="email@exemple.com"
@@ -383,12 +527,23 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
         <div>
           <Label htmlFor="telephone">Téléphone *</Label>
           <Input
+            ref={telephoneInputRef}
             id="telephone"
             name="tel"
             type="tel"
             autoComplete="tel"
             value={formData.telephone}
             onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+            onInput={(e) => {
+              const target = e.target as HTMLInputElement;
+              setFormData({ ...formData, telephone: target.value });
+            }}
+            onBlur={(e) => {
+              const target = e.target as HTMLInputElement;
+              if (target.value !== formData.telephone) {
+                setFormData({ ...formData, telephone: target.value });
+              }
+            }}
             required
             className="mt-0.5"
             placeholder="06 12 34 56 78"
@@ -399,10 +554,23 @@ export function ReservationWidget({ isOpen: controlledIsOpen, onClose, defaultOp
           <div>
             <Label htmlFor="date">Date *</Label>
             <Input
+              ref={dateInputRef}
               id="date"
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              onInput={(e) => {
+                const target = e.target as HTMLInputElement;
+                if (target.value !== formData.date) {
+                  setFormData({ ...formData, date: target.value });
+                }
+              }}
+              onBlur={(e) => {
+                const target = e.target as HTMLInputElement;
+                if (target.value !== formData.date) {
+                  setFormData({ ...formData, date: target.value });
+                }
+              }}
               required
               min={today}
               className="mt-0.5"
