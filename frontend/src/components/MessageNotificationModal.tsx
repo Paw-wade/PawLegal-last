@@ -163,9 +163,9 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={onClose}>
       <div 
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-8 animate-in fade-in zoom-in duration-300"
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col mx-4 p-6 animate-in fade-in zoom-in duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -189,7 +189,7 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
         </div>
 
         {/* Content */}
-        <div className="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2">
+        <div className="space-y-4 mb-6 flex-1 overflow-y-auto pr-2 min-h-0">
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expéditeur</p>
             <p className="text-base font-semibold text-gray-900">{expediteurName}</p>
@@ -278,21 +278,21 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleSendInlineReply}
                     disabled={isSendingReply}
-                    className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                   >
                     {isSendingReply ? (
                       <>
-                        <span className="animate-spin">⏳</span>
-                        Envoi...
+                        <span className="text-sm animate-spin">⏳</span>
+                        <span className="truncate">Envoi...</span>
                       </>
                     ) : (
                       <>
-                        <span>📨</span>
-                        Envoyer la réponse
+                        <span className="text-sm">📨</span>
+                        <span className="truncate">Envoyer la réponse</span>
                       </>
                     )}
                   </button>
@@ -301,7 +301,7 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
                       setShowReplyForm(false);
                       setReplyError(null);
                     }}
-                    className="flex-1 px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                   >
                     Annuler
                   </button>
@@ -312,10 +312,10 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+        <div className="flex flex-wrap gap-2 pt-6 border-t border-gray-200">
           <button
             onClick={onClose}
-            className="flex-1 px-6 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             Fermer
           </button>
@@ -323,44 +323,44 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
           {message.dossierId && (
             <button
               onClick={handleOpenDossier}
-              className="flex-1 px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
             >
-              <span>📁</span>
-              Ouvrir le dossier
+              <span className="text-sm">📁</span>
+              <span className="truncate">Ouvrir le dossier</span>
             </button>
           )}
 
           <button
             onClick={() => setShowReplyForm(true)}
-            className="flex-1 px-6 py-3 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-1.5"
           >
-            <span>↩️</span>
-            Répondre ici
+            <span className="text-sm">↩️</span>
+            <span className="truncate">Répondre ici</span>
           </button>
 
           <button
             onClick={handleOpenMessage}
-            className="flex-1 px-6 py-3 text-sm font-medium text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
           >
-            <span>💬</span>
-            Ouvrir le message
+            <span className="text-sm">💬</span>
+            <span className="truncate">Ouvrir le message</span>
           </button>
 
           {!isRead && (
             <button
               onClick={handleMarkAsRead}
               disabled={isMarkingAsRead}
-              className="flex-1 px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               {isMarkingAsRead ? (
                 <>
-                  <span className="animate-spin">⏳</span>
-                  Marquage...
+                  <span className="text-sm animate-spin">⏳</span>
+                  <span className="truncate">Marquage...</span>
                 </>
               ) : (
                 <>
-                  <span>✓</span>
-                  Marquer comme lu
+                  <span className="text-sm">✓</span>
+                  <span className="truncate">Marquer comme lu</span>
                 </>
               )}
             </button>
