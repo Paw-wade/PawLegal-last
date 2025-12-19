@@ -485,7 +485,7 @@ router.put(
   protect,
   [
     body('date').optional().isISO8601().withMessage('Date invalide'),
-    body('heure').optional().trim().notEmpty().withMessage('Heure invalide'),
+    body('heure').optional().trim(),
     body('motif').optional().trim(),
     body('description').optional().trim().isLength({ max: 500 }).withMessage('La description ne peut pas dépasser 500 caractères'),
     body('effectue').optional().isBoolean().withMessage('Le champ effectue doit être un booléen'),

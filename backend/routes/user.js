@@ -75,8 +75,8 @@ router.get('/profile', async (req, res) => {
 router.put(
   '/profile',
   [
-    body('firstName').optional().trim().notEmpty().withMessage('Le prénom ne peut pas être vide'),
-    body('lastName').optional().trim().notEmpty().withMessage('Le nom ne peut pas être vide'),
+    body('firstName').optional().trim(),
+    body('lastName').optional().trim(),
     body('phone').optional().trim()
   ],
   async (req, res) => {

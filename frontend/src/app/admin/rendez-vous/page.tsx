@@ -661,13 +661,12 @@ export default function AdminRendezVousPage() {
             }} className="space-y-4">
               {/* Statut */}
               <div>
-                <Label htmlFor="editStatut">Statut *</Label>
+                <Label htmlFor="editStatut">Statut</Label>
                 <select
                   id="editStatut"
                   value={editFormData.statut}
                   onChange={(e) => setEditFormData({ ...editFormData, statut: e.target.value })}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                  required
                 >
                   <option value="en_attente">En attente</option>
                   <option value="confirme">Confirmé</option>
@@ -679,24 +678,22 @@ export default function AdminRendezVousPage() {
               {/* Date et Heure */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="editDate">Date *</Label>
+                  <Label htmlFor="editDate">Date</Label>
                   <Input
                     id="editDate"
                     type="date"
                     value={editFormData.date}
                     onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
-                    required
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="editHeure">Heure *</Label>
+                  <Label htmlFor="editHeure">Heure</Label>
                   <Input
                     id="editHeure"
                     type="time"
                     value={editFormData.heure}
                     onChange={(e) => setEditFormData({ ...editFormData, heure: e.target.value })}
-                    required
                     className="mt-1"
                   />
                 </div>
@@ -704,13 +701,12 @@ export default function AdminRendezVousPage() {
 
               {/* Motif */}
               <div>
-                <Label htmlFor="editMotif">Motif *</Label>
+                <Label htmlFor="editMotif">Motif</Label>
                 <select
                   id="editMotif"
                   value={editFormData.motif}
                   onChange={(e) => setEditFormData({ ...editFormData, motif: e.target.value })}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                  required
                 >
                   <option value="">Sélectionner un motif</option>
                   <option value="Consultation">Consultation</option>

@@ -357,25 +357,23 @@ export default function ComptePage() {
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-sm font-semibold">Prénom *</Label>
+                    <Label htmlFor="firstName" className="text-sm font-semibold">Prénom</Label>
                     <Input
                       id="firstName"
                       type="text"
                       value={profileData.firstName}
                       onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
-                      required
                       className="mt-1 h-11 border-2 focus:border-primary transition-colors"
                       placeholder="Votre prénom"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-sm font-semibold">Nom *</Label>
+                    <Label htmlFor="lastName" className="text-sm font-semibold">Nom</Label>
                     <Input
                       id="lastName"
                       type="text"
                       value={profileData.lastName}
                       onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
-                      required
                       className="mt-1 h-11 border-2 focus:border-primary transition-colors"
                       placeholder="Votre nom"
                     />
@@ -383,13 +381,12 @@ export default function ComptePage() {
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-semibold">Email *</Label>
+                    <Label htmlFor="email" className="text-sm font-semibold">Email</Label>
                     <Input
                       id="email"
                       type="email"
                       value={profileData.email}
                       onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      required
                       className="mt-1 h-11 border-2 focus:border-primary transition-colors"
                       placeholder="votre@email.com"
                     />

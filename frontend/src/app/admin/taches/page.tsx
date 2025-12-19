@@ -153,17 +153,19 @@ export default function AdminTachesPage() {
     setError(null);
 
     try {
-      // Validation frontend
-      if (!formData.titre || formData.titre.trim() === '') {
-        setError('Le titre de la tâche est requis');
-        setIsLoading(false);
-        return;
-      }
+      // Validation frontend - uniquement pour la création
+      if (!editingTask) {
+        if (!formData.titre || formData.titre.trim() === '') {
+          setError('Le titre de la tâche est requis');
+          setIsLoading(false);
+          return;
+        }
 
-      if (formData.assignedTo.length === 0) {
-        setError('Veuillez assigner la tâche à au moins un membre');
-        setIsLoading(false);
-        return;
+        if (formData.assignedTo.length === 0) {
+          setError('Veuillez assigner la tâche à au moins un membre');
+          setIsLoading(false);
+          return;
+        }
       }
 
       console.log('📤 Envoi des données de tâche:', {
@@ -423,12 +425,12 @@ export default function AdminTachesPage() {
               
               <form onSubmit={handleSubmit} className="p-6 space-y-5">
                 <div>
-                  <Label htmlFor="titre">Titre de la tâche *</Label>
+                  <Label htmlFor="titre">Titre de la tâche {!editingTask && '*'}</Label>
                   <Input
                     id="titre"
                     value={formData.titre}
                     onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
-                    required
+                    required={!editingTask}
                     className="mt-1"
                     placeholder="Ex: Préparer le dossier de demande de titre de séjour"
                   />
@@ -480,7 +482,7 @@ export default function AdminTachesPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="assignedTo">Assigner à *</Label>
+                  <Label htmlFor="assignedTo">Assigner à {!editingTask && '*'}</Label>
                   <div className="mt-2 space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
                     {teamMembers.map((member) => (
                       <label key={member._id || member.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
@@ -496,7 +498,7 @@ export default function AdminTachesPage() {
                       </label>
                     ))}
                   </div>
-                  {formData.assignedTo.length === 0 && (
+                  {formData.assignedTo.length === 0 && !editingTask && (
                     <p className="text-xs text-red-600 mt-1">Veuillez sélectionner au moins un membre</p>
                   )}
                 </div>

@@ -483,33 +483,30 @@ function Modal({ isOpen, onClose, userId, onUpdate }: { isOpen: boolean; onClose
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="firstName">Prénom *</Label>
+                      <Label htmlFor="firstName">Prénom</Label>
                       <Input
                         id="firstName"
                         value={formData.firstName || ''}
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        required
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="lastName">Nom *</Label>
+                      <Label htmlFor="lastName">Nom</Label>
                       <Input
                         id="lastName"
                         value={formData.lastName || ''}
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        required
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email">Email *</Label>
+                      <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
                         type="email"
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        required
                         className="mt-1"
                       />
                     </div>
@@ -524,13 +521,12 @@ function Modal({ isOpen, onClose, userId, onUpdate }: { isOpen: boolean; onClose
                       />
                     </div>
                     <div>
-                      <Label htmlFor="role">Rôle *</Label>
+                      <Label htmlFor="role">Rôle</Label>
                       <select
                         id="role"
                         value={formData.role || 'client'}
                         onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                        required
                       >
                         <option value="client">Client</option>
                         <option value="admin">Admin</option>

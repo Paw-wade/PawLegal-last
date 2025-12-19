@@ -665,7 +665,7 @@ export default function AdminDossiersPage() {
               </div>
 
               {/* Sélection utilisateur existant */}
-              {clientType === 'existing' && (
+              {clientType === 'existing' && !editingDossier && (
                 <div>
                   <Label htmlFor="userId">Sélectionner un utilisateur *</Label>
                   <select
@@ -686,7 +686,7 @@ export default function AdminDossiersPage() {
               )}
 
               {/* Formulaire utilisateur non inscrit */}
-              {clientType === 'new' && (
+              {clientType === 'new' && !editingDossier && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="clientNom">Nom *</Label>
@@ -738,12 +738,12 @@ export default function AdminDossiersPage() {
                 
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="titre">Titre du dossier *</Label>
+                    <Label htmlFor="titre">Titre du dossier {!editingDossier && '*'}</Label>
                     <Input
                       id="titre"
                       value={formData.titre}
                       onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
-                      required
+                      required={!editingDossier}
                       className="mt-1"
                       placeholder="Ex: Demande de titre de séjour"
                     />
@@ -763,13 +763,13 @@ export default function AdminDossiersPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="categorie">Catégorie de dossier *</Label>
+                      <Label htmlFor="categorie">Catégorie de dossier {!editingDossier && '*'}</Label>
                       <select
                         id="categorie"
                         value={formData.categorie}
                         onChange={(e) => setFormData({ ...formData, categorie: e.target.value, type: '' })}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                        required
+                        required={!editingDossier}
                       >
                         <option value="">-- Sélectionner une catégorie --</option>
                         {Object.entries(categories).map(([key, cat]) => (
@@ -779,13 +779,13 @@ export default function AdminDossiersPage() {
                     </div>
 
                     <div>
-                      <Label htmlFor="type">Type de dossier *</Label>
+                      <Label htmlFor="type">Type de dossier {!editingDossier && '*'}</Label>
                       <select
                         id="type"
                         value={formData.type}
                         onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                        required
+                        required={!editingDossier}
                         disabled={!formData.categorie}
                       >
                         <option value="">-- Sélectionner un type --</option>
