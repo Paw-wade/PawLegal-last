@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signIn } from 'next-auth/react';
 import { userAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
+import { useAutoFillDetection, getRealInputValues } from '@/hooks/useAutoFillDetection';
 
 // Composants simplifiés
 function Button({ children, variant = 'default', className = '', disabled = false, type = 'button', ...props }: any) {
@@ -20,7 +21,7 @@ function Button({ children, variant = 'default', className = '', disabled = fals
   );
 }
 
-function Input({ className = '', type, value, onChange, ...props }: any) {
+const Input = React.forwardRef<HTMLInputElement, any>(({ className = '', type, value, onChange, ...props }, ref) => {
   // Pour les champs de date, utiliser le composant DateInput qui garantit le format jour/mois/année
   if (type === 'date') {
     return (
@@ -43,12 +44,16 @@ function Input({ className = '', type, value, onChange, ...props }: any) {
   
   return (
     <input
+      ref={ref}
       type={type}
+      value={value}
+      onChange={onChange}
       className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors ${className}`}
       {...props}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 function Label({ children, ...props }: any) {
   return (
@@ -77,6 +82,30 @@ export default function CompleteProfilePage() {
     ville: '',
     codePostal: '',
     pays: 'France',
+  });
+
+  // Refs pour détecter l'auto-remplissage
+  const numeroEtrangerInputRef = useRef<HTMLInputElement>(null);
+  const lieuNaissanceInputRef = useRef<HTMLInputElement>(null);
+  const nationaliteInputRef = useRef<HTMLInputElement>(null);
+  const adressePostaleInputRef = useRef<HTMLInputElement>(null);
+  const villeInputRef = useRef<HTMLInputElement>(null);
+  const codePostalInputRef = useRef<HTMLInputElement>(null);
+  const paysInputRef = useRef<HTMLInputElement>(null);
+
+  // Détecter l'auto-remplissage du navigateur
+  useAutoFillDetection({
+    inputRefs: {
+      numeroEtranger: numeroEtrangerInputRef,
+      lieuNaissance: lieuNaissanceInputRef,
+      nationalite: nationaliteInputRef,
+      adressePostale: adressePostaleInputRef,
+      ville: villeInputRef,
+      codePostal: codePostalInputRef,
+      pays: paysInputRef,
+    },
+    formData,
+    setFormData: (updater) => setFormData(updater),
   });
 
   useEffect(() => {
@@ -144,6 +173,26 @@ export default function CompleteProfilePage() {
     setIsLoading(true);
     setError(null);
 
+    // Récupérer les valeurs réelles des inputs DOM pour détecter l'auto-remplissage
+    const realValues = getRealInputValues({
+      numeroEtranger: numeroEtrangerInputRef,
+      lieuNaissance: lieuNaissanceInputRef,
+      nationalite: nationaliteInputRef,
+      adressePostale: adressePostaleInputRef,
+      ville: villeInputRef,
+      codePostal: codePostalInputRef,
+      pays: paysInputRef,
+    }, formData);
+
+    // Pour la date, chercher l'input date natif dans le composant DateInput via le DOM
+    const dateInputNative = document.querySelector('#dateNaissance[type="date"]') as HTMLInputElement;
+    if (dateInputNative && dateInputNative.value !== formData.dateNaissance) {
+      realValues.dateNaissance = dateInputNative.value;
+    }
+
+    // Mettre à jour l'état avec les valeurs réelles
+    setFormData(realValues);
+
     // Validation minimale
     // Le numéro d'étranger n'est plus obligatoire
 
@@ -152,8 +201,8 @@ export default function CompleteProfilePage() {
       if (profilePhoto) {
         const formDataToSend = new FormData();
         formDataToSend.append('photo', profilePhoto);
-        Object.keys(formData).forEach((key) => {
-          formDataToSend.append(key, (formData as any)[key]);
+        Object.keys(realValues).forEach((key) => {
+          formDataToSend.append(key, (realValues as any)[key]);
         });
         formDataToSend.append('profilComplete', 'true');
 
@@ -175,7 +224,7 @@ export default function CompleteProfilePage() {
 
       // Sinon, envoyer les données normalement
       const response = await userAPI.updateProfile({
-        ...formData,
+        ...realValues,
         profilComplete: true,
       });
 
@@ -303,6 +352,7 @@ export default function CompleteProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="numeroEtranger">Numéro d'étranger</Label>
                     <Input
+                      ref={numeroEtrangerInputRef}
                       id="numeroEtranger"
                       name="numeroEtranger"
                       value={formData.numeroEtranger}
@@ -327,17 +377,20 @@ export default function CompleteProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="lieuNaissance">Lieu de naissance</Label>
                     <Input
+                      ref={lieuNaissanceInputRef}
                       id="lieuNaissance"
                       name="lieuNaissance"
                       value={formData.lieuNaissance}
                       onChange={handleChange}
                       placeholder="Ville, Pays"
+                      autoComplete="bday-place"
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="nationalite">Nationalité</Label>
                     <Input
+                      ref={nationaliteInputRef}
                       id="nationalite"
                       name="nationalite"
                       value={formData.nationalite}
@@ -379,11 +432,13 @@ export default function CompleteProfilePage() {
                 <div className="space-y-2">
                   <Label htmlFor="adressePostale">Adresse postale</Label>
                   <Input
+                    ref={adressePostaleInputRef}
                     id="adressePostale"
                     name="adressePostale"
                     value={formData.adressePostale}
                     onChange={handleChange}
                     placeholder="Numéro et nom de rue"
+                    autoComplete="street-address"
                   />
                 </div>
 
@@ -391,33 +446,39 @@ export default function CompleteProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="ville">Ville</Label>
                     <Input
+                      ref={villeInputRef}
                       id="ville"
                       name="ville"
                       value={formData.ville}
                       onChange={handleChange}
                       placeholder="Ville"
+                      autoComplete="address-level2"
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="codePostal">Code postal</Label>
                     <Input
+                      ref={codePostalInputRef}
                       id="codePostal"
                       name="codePostal"
                       value={formData.codePostal}
                       onChange={handleChange}
                       placeholder="75001"
+                      autoComplete="postal-code"
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="pays">Pays</Label>
                     <Input
+                      ref={paysInputRef}
                       id="pays"
                       name="pays"
                       value={formData.pays}
                       onChange={handleChange}
                       placeholder="France"
+                      autoComplete="country"
                     />
                   </div>
                 </div>

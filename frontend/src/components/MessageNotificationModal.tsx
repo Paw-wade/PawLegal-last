@@ -46,7 +46,10 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
 
   useEffect(() => {
     if (!isOpen || !message) return;
-    const baseSubject = (message?.sujet || 'Message').toString();
+    const isContactMessage = message.isContactMessage || !message.sujet;
+    const baseSubject = isContactMessage 
+      ? (message?.subject || 'Message').toString()
+      : (message?.sujet || 'Message').toString();
     setReplySubject(baseSubject.startsWith('Re:') ? baseSubject : `Re: ${baseSubject}`);
     setReplyContent('');
     setReplyError(null);
@@ -58,10 +61,26 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
     
     try {
       setIsMarkingAsRead(true);
-      await messagesAPI.markAsRead(message._id || message.id);
+      const isContactMessage = message.isContactMessage || !message.sujet;
+      if (isContactMessage) {
+        const { contactAPI } = await import('@/lib/api');
+        const response = await contactAPI.markAsRead(message._id || message.id, true);
+        if (response.data.success) {
+          console.log('✅ Message de contact marqué comme lu');
+        } else {
+          console.error('❌ Erreur lors du marquage:', response.data.message);
+        }
+      } else {
+        await messagesAPI.markAsRead(message._id || message.id);
+      }
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur lors du marquage du message:', error);
+      console.error('Détails:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
     } finally {
       setIsMarkingAsRead(false);
     }
@@ -149,18 +168,30 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
 
   if (!isOpen || !message) return null;
 
-  const expediteur = message.expediteur;
-  const expediteurName = expediteur 
-    ? `${expediteur.firstName || ''} ${expediteur.lastName || ''}`.trim() || expediteur.email
-    : 'Expéditeur inconnu';
+  const isContactMessage = message.isContactMessage || !message.sujet;
+  const expediteur = isContactMessage 
+    ? { firstName: message.name?.split(' ')[0] || '', lastName: message.name?.split(' ').slice(1).join(' ') || '', email: message.email }
+    : message.expediteur;
+  const expediteurName = isContactMessage
+    ? message.name || message.email || 'Expéditeur inconnu'
+    : expediteur 
+      ? `${expediteur.firstName || ''} ${expediteur.lastName || ''}`.trim() || expediteur.email
+      : 'Expéditeur inconnu';
 
   const currentUserId =
     (session?.user as any)?.id ||
     (typeof window !== 'undefined' ? localStorage.getItem('userId') || sessionStorage.getItem('userId') : null);
-  const isRead = message.lu?.some((l: any) => {
-    const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
-    return luUserId && currentUserId && luUserId.toString() === currentUserId.toString();
-  });
+  
+  // Gérer les deux formats : ancien (booléen) et nouveau (tableau)
+  const isRead = isContactMessage
+    ? Array.isArray(message.lu) && message.lu.some((l: any) => {
+        const luUserId = l?.user?._id?.toString() || l?.user?.toString();
+        return luUserId && currentUserId && luUserId.toString() === currentUserId.toString();
+      })
+    : Array.isArray(message.lu) && message.lu.some((l: any) => {
+        const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+        return luUserId && currentUserId && luUserId.toString() === currentUserId.toString();
+      });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={onClose}>
@@ -176,7 +207,18 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
             </div>
             <div>
               <h3 className="text-2xl font-bold text-gray-900">Nouveau message</h3>
-              <p className="text-sm text-gray-500 mt-1">Vous avez reçu un nouveau message</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {isContactMessage 
+                  ? 'Vous avez reçu un nouveau message via le formulaire de contact'
+                  : message.dossierId
+                    ? isLoadingDossier
+                      ? `Chargement des informations du dossier...`
+                      : dossier
+                        ? `Nouveau message de ${expediteurName} concernant le dossier n°${dossier.numero || dossier.numeroDossier || dossier._id?.toString().slice(-6) || 'N/A'}`
+                        : `Nouveau message de ${expediteurName} concernant un dossier`
+                    : `Nouveau message de ${expediteurName}`
+                }
+              </p>
             </div>
           </div>
           <button
@@ -197,19 +239,33 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
 
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sujet</p>
-            <p className="text-base font-semibold text-gray-900">{message.sujet}</p>
+            <p className="text-base font-semibold text-gray-900">
+              {isContactMessage ? message.subject : message.sujet}
+            </p>
           </div>
 
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message</p>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{message.contenu}</p>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {isContactMessage ? message.message : message.contenu}
+            </p>
           </div>
 
-          {message.piecesJointes && message.piecesJointes.length > 0 && (
+          {isContactMessage && message.phone && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Téléphone</p>
+              <p className="text-sm text-gray-700">{message.phone}</p>
+            </div>
+          )}
+
+          {(() => {
+            const attachments = isContactMessage ? message.documents : message.piecesJointes;
+            return attachments && Array.isArray(attachments) && attachments.length > 0;
+          })() && (
             <div className="bg-gray-50 rounded-lg p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pièces jointes</p>
               <p className="text-sm text-gray-700">
-                📎 {message.piecesJointes.length} fichier(s) attaché(s)
+                📎 {(isContactMessage ? message.documents : message.piecesJointes)?.length || 0} fichier(s) attaché(s)
               </p>
             </div>
           )}

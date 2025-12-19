@@ -61,6 +61,11 @@ const rendezVousSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  dossierId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Dossier',
+    required: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

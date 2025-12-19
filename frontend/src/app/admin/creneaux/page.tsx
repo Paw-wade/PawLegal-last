@@ -70,6 +70,18 @@ export default function AdminCreneauxPage() {
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
   ];
 
+  // Helper pour convertir une date en chaîne YYYY-MM-DD de manière sécurisée
+  const formatDateToString = (date: string | Date): string | null => {
+    if (!date) return null;
+    try {
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
+      if (isNaN(dateObj.getTime())) return null;
+      return dateObj.toISOString().split('T')[0];
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
@@ -117,6 +129,18 @@ export default function AdminCreneauxPage() {
         }
         
         // Filtrer pour s'assurer que la date correspond (double vérification)
+        // Helper pour convertir une date en chaîne YYYY-MM-DD de manière sécurisée
+        const formatDateToStringLocal = (date: string | Date): string | null => {
+          if (!date) return null;
+          try {
+            const dateObj = typeof date === 'string' ? new Date(date) : date;
+            if (isNaN(dateObj.getTime())) return null;
+            return dateObj.toISOString().split('T')[0];
+          } catch {
+            return null;
+          }
+        };
+        
         const creneauxFermes = creneauxRecus.filter((c: any) => {
           // Vérifier que la date correspond
           if (!c.date) {
@@ -128,10 +152,15 @@ export default function AdminCreneauxPage() {
             if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
               return false;
             }
-            const creneauDate = formatDateToString(c.date);
-            const selectedDateStr = formatDateToString(selectedDate);
+            const creneauDate = formatDateToStringLocal(c.date);
+            const selectedDateStr = formatDateToStringLocal(selectedDate);
             
-            if (!creneauDate || !selectedDateStr || creneauDate !== selectedDateStr) {
+            if (!creneauDate || !selectedDateStr) {
+              console.log(`⚠️ Créneau ${c.heure} ignoré: date invalide (${creneauDate} vs ${selectedDateStr})`);
+              return false;
+            }
+            
+            if (creneauDate !== selectedDateStr) {
               console.log(`⚠️ Créneau ${c.heure} ignoré: date ne correspond pas (${creneauDate} vs ${selectedDateStr})`);
               return false;
             }
@@ -139,9 +168,16 @@ export default function AdminCreneauxPage() {
             // Vérifier que le créneau est bien fermé
             const isFerme = c.ferme === true || c.ferme === 'true' || String(c.ferme) === 'true';
             if (!isFerme) {
-              console.log(`⚠️ Créneau ${c.heure} ignoré: n'est pas marqué comme fermé`);
+              console.log(`⚠️ Créneau ${c.heure} ignoré: n'est pas marqué comme fermé (ferme=${c.ferme})`);
               return false;
             }
+            
+            console.log('✅ Créneau fermé accepté:', {
+              heure: c.heure,
+              date: creneauDate,
+              ferme: c.ferme,
+              id: c._id || c.id
+            });
             
             return true;
           } catch (err) {
@@ -151,6 +187,14 @@ export default function AdminCreneauxPage() {
         });
         
         console.log('📋 Créneaux fermés filtrés:', creneauxFermes.length);
+        if (creneauxFermes.length > 0) {
+          console.log('📋 Détails des créneaux filtrés:', creneauxFermes.map((c: any) => ({
+            id: c._id || c.id,
+            heure: c.heure,
+            date: formatDateToStringLocal(c.date),
+            ferme: c.ferme
+          })));
+        }
         
         setCreneaux(creneauxFermes);
       } else {
@@ -260,50 +304,62 @@ export default function AdminCreneauxPage() {
     try {
       const response = await creneauxAPI.reopenSlot(creneauId);
       if (response.data.success) {
+        // Recharger les créneaux pour mettre à jour l'affichage
         await loadCreneaux();
+        // Afficher un message de succès
+        const successMessage = response.data.message || 'Créneau rouvert avec succès';
+        alert(successMessage);
+      } else {
+        setError(response.data.message || 'Erreur lors de la réouverture du créneau');
       }
     } catch (err: any) {
       console.error('Erreur lors de la réouverture du créneau:', err);
-      setError(err.response?.data?.message || 'Erreur lors de la réouverture du créneau');
+      const errorMessage = err.response?.data?.message || 
+                          err.response?.data?.error ||
+                          'Erreur lors de la réouverture du créneau';
+      setError(errorMessage);
+      alert(`Erreur: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   // Les créneaux sont déjà filtrés pour être fermés dans loadCreneaux
-  // Mais on vérifie quand même la date pour être sûr
-  // Note: loadCreneaux charge déjà uniquement les créneaux fermés pour la date sélectionnée
+  // Puisque loadCreneaux charge déjà uniquement les créneaux fermés pour la date sélectionnée,
+  // on peut utiliser directement creneaux, mais on fait une vérification supplémentaire pour être sûr
   const creneauxFermesPourDate = creneaux.filter(c => {
+    // Vérifier que le créneau a une date
     if (!c.date) {
-      console.log('⚠️ Créneau sans date:', c);
       return false;
     }
     
+    // Vérifier que le créneau est bien fermé
+    const isFerme = c.ferme === true || c.ferme === 'true' || String(c.ferme) === 'true';
+    if (!isFerme) {
+      return false;
+    }
+    
+    // Vérifier que la date correspond (double vérification)
     try {
-      const creneauDate = new Date(c.date);
-      if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
+      const creneauDateStr = formatDateToString(c.date);
+      const selectedDateStr = formatDateToString(selectedDate);
+      
+      if (!creneauDateStr || !selectedDateStr) {
         return false;
       }
       
-      const selectedDateObj = new Date(selectedDate);
-      
-      // Normaliser les dates pour la comparaison (année, mois, jour uniquement)
-      const creneauDateStr = creneauDate.toISOString().split('T')[0];
-      const selectedDateStr = selectedDateObj.toISOString().split('T')[0];
-      
       const matchesDate = creneauDateStr === selectedDateStr;
-      const isFerme = c.ferme === true || c.ferme === 'true' || String(c.ferme) === 'true';
       
-      if (matchesDate && isFerme) {
-        console.log('✅ Créneau fermé valide:', {
+      if (matchesDate) {
+        console.log('✅ Créneau fermé affiché:', {
           heure: c.heure,
           date: creneauDateStr,
           ferme: c.ferme,
-          isFerme
+          id: c._id || c.id
         });
       }
       
-      return matchesDate && isFerme;
+      return matchesDate;
     } catch (err) {
       console.error('Erreur lors du filtrage du créneau:', err, c);
       return false;
@@ -312,18 +368,6 @@ export default function AdminCreneauxPage() {
 
   // Pour le modal de fermeture, on doit charger tous les créneaux (fermés et non fermés) pour savoir lesquels sont déjà fermés
   const [allCreneauxForDate, setAllCreneauxForDate] = useState<any[]>([]);
-
-  // Helper pour convertir une date en chaîne YYYY-MM-DD de manière sécurisée
-  const formatDateToString = (date: string | Date): string | null => {
-    if (!date) return null;
-    try {
-      const dateObj = typeof date === 'string' ? new Date(date) : date;
-      if (isNaN(dateObj.getTime())) return null;
-      return dateObj.toISOString().split('T')[0];
-    } catch {
-      return null;
-    }
-  };
 
   useEffect(() => {
     if (!selectedDate || isNaN(new Date(selectedDate).getTime())) {
@@ -357,7 +401,15 @@ export default function AdminCreneauxPage() {
     totalCreneauxCharges: creneaux.length,
     creneauxFermes: creneauxFermesPourDate.length,
     heuresFermees: heuresFermees,
-    creneauxFermesPourDate: creneauxFermesPourDate.map(c => ({ heure: c.heure, date: c.date, ferme: c.ferme }))
+    creneauxFermesPourDate: creneauxFermesPourDate.map(c => ({ heure: c.heure, date: c.date, ferme: c.ferme })),
+    creneauxDetails: creneaux.map(c => ({
+      heure: c.heure,
+      date: c.date,
+      dateFormatted: formatDateToString(c.date),
+      selectedDateFormatted: formatDateToString(selectedDate),
+      ferme: c.ferme,
+      id: c._id || c.id
+    }))
   });
 
   if (status === 'loading') {

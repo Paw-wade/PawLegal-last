@@ -127,6 +127,28 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    // Ignorer silencieusement les 404 pour les clés CMS manquantes (comportement attendu)
+    // Cette vérification doit être faite AVANT tous les logs d'erreur
+    const isCmsKeyNotFound = error.response?.status === 404 && 
+                             error.config?.url?.includes('/content/value') &&
+                             error.response?.data?.message === 'Clé non trouvée';
+    
+    if (isCmsKeyNotFound) {
+      // Ne pas logger cette erreur - c'est un comportement attendu quand une clé CMS n'existe pas encore
+      return Promise.reject(error);
+    }
+    
+    // Gérer les erreurs de connexion (backend non disponible)
+    if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED') || !error.response) {
+      console.warn('⚠️ Le serveur backend n\'est pas disponible. Vérifiez que le serveur est démarré sur le port 3005.');
+      // Ne pas rejeter l'erreur de manière agressive, retourner une erreur contrôlée
+      return Promise.reject({
+        ...error,
+        isConnectionError: true,
+        message: 'Le serveur backend n\'est pas disponible. Veuillez vérifier que le serveur est démarré.'
+      });
+    }
+    
     // Log détaillé des erreurs pour appointments
     if (error.config?.url?.includes('/appointments')) {
       console.error('❌ Erreur API appointments:', {
@@ -141,17 +163,6 @@ api.interceptors.response.use(
       if (error.response?.status === 404) {
         console.error('❌ Route non trouvée:', error.config?.url);
       }
-    }
-    
-    // Gérer les erreurs de connexion (backend non disponible)
-    if (error.code === 'ECONNREFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED') || !error.response) {
-      console.warn('⚠️ Le serveur backend n\'est pas disponible. Vérifiez que le serveur est démarré sur le port 3005.');
-      // Ne pas rejeter l'erreur de manière agressive, retourner une erreur contrôlée
-      return Promise.reject({
-        ...error,
-        isConnectionError: true,
-        message: 'Le serveur backend n\'est pas disponible. Veuillez vérifier que le serveur est démarré.'
-      });
     }
     
     // Log des erreurs pour le débogage
@@ -170,8 +181,8 @@ api.interceptors.response.use(
       // L'utilisateur peut choisir de se déconnecter manuellement
     }
     
-    // Gérer les erreurs 404 (route non trouvée)
-    if (error.response?.status === 404) {
+    // Gérer les erreurs 404 (route non trouvée) - sauf pour les clés CMS manquantes
+    if (error.response?.status === 404 && !isCmsKeyNotFound) {
       console.error('❌ Route non trouvée:', error.config?.url);
     }
     
@@ -189,11 +200,25 @@ export const authAPI = {
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
   
+  loginPhone: (data: { phone: string }) =>
+    api.post('/auth/login-phone', data),
+  
+  setupPassword: (data: { password: string; email?: string }) =>
+    api.post('/auth/setup-password', data),
+  
   forgotPassword: (data: { email: string }) =>
     api.post('/auth/forgot-password', data),
   
   getMe: () =>
     api.get('/auth/me'),
+};
+
+export const otpAPI = {
+  send: (data: { firstName: string; lastName: string; phone: string }) =>
+    api.post('/otp/send', data),
+  
+  verify: (data: { phone: string; code: string }) =>
+    api.post('/otp/verify', data),
 };
 
 export const userAPI = {
@@ -369,6 +394,10 @@ export const contactAPI = {
   // Admin - Mettre à jour un message
   updateMessage: (id: string, data: { lu?: boolean; repondu?: boolean; reponse?: string }) =>
     api.patch(`/contact/${id}`, data),
+  
+  // Admin - Marquer un message comme lu/non lu
+  markAsRead: (id: string, isRead: boolean = true) =>
+    api.patch(`/contact/${id}`, { lu: isRead }),
   
   // Admin - Télécharger un document
   downloadDocument: (messageId: string, docId: string) =>
@@ -740,7 +769,7 @@ export const creneauxAPI = {
   
   // Admin - Rouvrir un créneau
   reopenSlot: (id: string) =>
-    api.delete(`/creneaux/${id}`),
+    api.patch(`/creneaux/${id}/reopen`),
 };
 
 // CMS - Gestion des contenus texte
@@ -825,9 +854,24 @@ export const cmsAPI = {
     return api.put(`/content/${id}`, data);
   },
 
-  // Admin - désactiver une entrée
+  // Admin - désactiver/archiver une entrée
   deleteEntry: (id: string) => {
     return api.delete(`/content/${id}`);
+  },
+  
+  // Admin - publier un contenu
+  publishEntry: (id: string) => {
+    return api.patch(`/content/${id}/publish`);
+  },
+  
+  // Admin - dépublier un contenu
+  unpublishEntry: (id: string) => {
+    return api.patch(`/content/${id}/unpublish`);
+  },
+  
+  // Admin - récupérer l'historique d'un contenu
+  getEntryHistory: (id: string) => {
+    return api.get(`/content/${id}/history`);
   },
 };
 

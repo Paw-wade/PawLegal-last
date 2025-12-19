@@ -299,8 +299,42 @@ router.post(
   }
 );
 
+// @route   PATCH /api/creneaux/:id/reopen
+// @desc    Rouvrir un créneau (admin) - met ferme à false au lieu de supprimer
+// @access  Private (Admin)
+router.patch('/:id/reopen', async (req, res) => {
+  try {
+    const creneau = await Creneau.findById(req.params.id);
+
+    if (!creneau) {
+      return res.status(404).json({
+        success: false,
+        message: 'Créneau non trouvé'
+      });
+    }
+
+    // Mettre à jour le créneau pour le rouvrir
+    creneau.ferme = false;
+    creneau.motifFermeture = ''; // Optionnel : supprimer le motif de fermeture
+    await creneau.save();
+
+    res.json({
+      success: true,
+      message: 'Créneau rouvert avec succès',
+      creneau: creneau
+    });
+  } catch (error) {
+    console.error('Erreur lors de la réouverture du créneau:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   DELETE /api/creneaux/:id
-// @desc    Rouvrir un créneau (admin)
+// @desc    Supprimer un créneau (admin) - gardé pour compatibilité
 // @access  Private (Admin)
 router.delete('/:id', async (req, res) => {
   try {
@@ -313,14 +347,28 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    // Si le créneau est fermé, on le rouvre au lieu de le supprimer
+    if (creneau.ferme === true || creneau.ferme === 'true') {
+      creneau.ferme = false;
+      creneau.motifFermeture = '';
+      await creneau.save();
+      
+      return res.json({
+        success: true,
+        message: 'Créneau rouvert avec succès',
+        creneau: creneau
+      });
+    }
+
+    // Sinon, on supprime le créneau
     await creneau.deleteOne();
 
     res.json({
       success: true,
-      message: 'Créneau rouvert avec succès'
+      message: 'Créneau supprimé avec succès'
     });
   } catch (error) {
-    console.error('Erreur lors de la réouverture du créneau:', error);
+    console.error('Erreur lors de la suppression/réouverture du créneau:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',

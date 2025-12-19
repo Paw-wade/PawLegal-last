@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{\"lib\\\\api.ts -> next-auth/react\":{\"id\":\"lib\\\\api.ts -> next-auth/react\",\"files\":[]}}"
+self.__REACT_LOADABLE_MANIFEST="{\"components\\\\MessageNotificationModal.tsx -> @/lib/api\":{\"id\":\"components\\\\MessageNotificationModal.tsx -> @/lib/api\",\"files\":[]},\"lib\\\\api.ts -> next-auth/react\":{\"id\":\"lib\\\\api.ts -> next-auth/react\",\"files\":[]}}"

@@ -153,6 +153,23 @@ router.post(
         rendezVous: rendezVousId ? [rendezVousId] : []
       });
 
+      // Si le dossier est créé depuis un rendez-vous, lier le rendez-vous au dossier
+      if (rendezVousId) {
+        try {
+          const RendezVous = require('../models/RendezVous');
+          const rendezVous = await RendezVous.findById(rendezVousId);
+          
+          if (rendezVous) {
+            rendezVous.dossierId = dossier._id;
+            await rendezVous.save();
+            console.log(`✅ Rendez-vous ${rendezVousId} lié au dossier ${dossier._id}`);
+          }
+        } catch (linkError) {
+          console.error('Erreur lors de la liaison du rendez-vous au dossier:', linkError);
+          // Ne pas bloquer la création du dossier si la liaison échoue
+        }
+      }
+
       // Si le dossier est créé depuis un rendez-vous, notifier les admins
       if (rendezVousId && finalUserId) {
         try {

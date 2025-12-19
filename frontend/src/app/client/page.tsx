@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
+import { AppointmentBadgeModal } from '@/components/AppointmentBadgeModal';
 import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel } from '@/lib/dossierUtils';
 import { useCmsText } from '@/lib/contentClient';
@@ -42,6 +43,9 @@ function ClientDashboardContent() {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedUser, setImpersonatedUser] = useState<any>(null);
   const [hasToken, setHasToken] = useState(false);
+  const [recentAppointments, setRecentAppointments] = useState<any[]>([]);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
 
   // Textes CMS pour le header du dashboard client
   const dashboardTitleClient = useCmsText(
@@ -355,6 +359,18 @@ function ClientDashboardContent() {
             ...prev,
             rendezVous: appointments.length
           }));
+          
+          // Trier par date (plus récents en premier) et prendre les 3 prochains
+          const sortedAppointments = appointments
+            .filter((apt: any) => apt.statut !== 'annule' && apt.statut !== 'annulé')
+            .sort((a: any, b: any) => {
+              const dateA = new Date(a.date).getTime();
+              const dateB = new Date(b.date).getTime();
+              return dateA - dateB; // Plus proche en premier
+            })
+            .slice(0, 3);
+          
+          setRecentAppointments(sortedAppointments);
         }
       } catch (err) {
         console.error('❌ Erreur lors du chargement des rendez-vous:', err);
@@ -568,6 +584,40 @@ function ClientDashboardContent() {
                   <p className="text-sm text-muted-foreground">Gérez vos rendez-vous</p>
                 </div>
               </div>
+              {/* Rendez-vous récents */}
+              {recentAppointments.length > 0 && (
+                <div className="mb-4 space-y-2 max-h-32 overflow-y-auto">
+                  {recentAppointments.map((apt: any) => {
+                    const aptDate = apt.date ? new Date(apt.date) : null;
+                    const formattedDate = aptDate ? aptDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '';
+                    return (
+                      <div
+                        key={apt._id || apt.id}
+                        onClick={() => {
+                          setSelectedAppointment(apt);
+                          setShowAppointmentModal(true);
+                        }}
+                        className="p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-xs text-foreground">{formattedDate}</p>
+                            <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            apt.statut === 'confirme' ? 'bg-blue-100 text-blue-800' :
+                            apt.statut === 'termine' ? 'bg-green-100 text-green-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {apt.statut === 'confirme' ? 'Confirmé' : apt.statut === 'termine' ? 'Terminé' : 'En attente'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              
               <div className="flex gap-2 pt-4 border-t border-blue-200">
                 <Button 
                   variant="outline" 
@@ -771,14 +821,28 @@ function ClientDashboardContent() {
              />
 
              {/* Modal de notification de message */}
-             <MessageNotificationModal
-               isOpen={showMessageModal}
-               onClose={() => {
-                 setShowMessageModal(false);
-                 setUnreadMessage(null);
-               }}
-               message={unreadMessage}
-             />
+        <MessageNotificationModal
+          isOpen={showMessageModal}
+          onClose={() => {
+            setShowMessageModal(false);
+            setUnreadMessage(null);
+          }}
+          message={unreadMessage}
+        />
+
+        {/* Modal de gestion des rendez-vous */}
+        <AppointmentBadgeModal
+          isOpen={showAppointmentModal}
+          onClose={() => {
+            setShowAppointmentModal(false);
+            setSelectedAppointment(null);
+          }}
+          appointment={selectedAppointment}
+          isAdmin={false}
+          onUpdate={() => {
+            loadStats();
+          }}
+        />
            </div>
          );
        }

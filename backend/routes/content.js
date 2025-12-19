@@ -60,6 +60,7 @@ router.get(
         key,
         locale,
         isActive: true,
+        status: 'published', // Seuls les contenus publiés sont accessibles publiquement
       })
         .sort({ version: -1, updatedAt: -1 })
         .lean();
@@ -180,7 +181,16 @@ router.post(
         description,
         version,
         isActive: true,
+        status: 'draft',
         updatedBy: req.user ? req.user._id : undefined,
+        changeHistory: [{
+          version,
+          value,
+          description,
+          status: 'draft',
+          updatedBy: req.user ? req.user._id : undefined,
+          changeType: 'created',
+        }],
       });
 
       clearCacheForKey(key, locale);
@@ -212,6 +222,7 @@ router.put(
     body('page').optional().isString(),
     body('section').optional().isString(),
     body('isActive').optional().isBoolean(),
+    body('status').optional().isIn(['draft', 'published', 'archived']),
   ],
   async (req, res) => {
     try {
@@ -233,16 +244,37 @@ router.put(
         });
       }
 
-      const { value, description, page, section, isActive } = req.body;
+      const { value, description, page, section, isActive, status } = req.body;
 
       // Créer une nouvelle version pour garder l'historique
       const newVersion = existing.version + 1;
+      
+      // Détecter le type de changement
+      let changeType = 'updated';
+      if (status && status !== existing.status) {
+        changeType = status === 'published' ? 'published' : status === 'archived' ? 'archived' : 'status_changed';
+      }
+
+      // Ajouter à l'historique
+      if (!existing.changeHistory) {
+        existing.changeHistory = [];
+      }
+      existing.changeHistory.push({
+        version: existing.version,
+        value: existing.value,
+        description: existing.description,
+        status: existing.status,
+        updatedBy: existing.updatedBy,
+        changeType: 'updated',
+        updatedAt: existing.updatedAt || new Date(),
+      });
 
       existing.value = value;
       if (description !== undefined) existing.description = description;
       if (page !== undefined) existing.page = page;
       if (section !== undefined) existing.section = section;
       if (isActive !== undefined) existing.isActive = isActive;
+      if (status !== undefined) existing.status = status;
       existing.version = newVersion;
       existing.updatedBy = req.user ? req.user._id : undefined;
 
@@ -280,7 +312,22 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    // Ajouter à l'historique
+    if (!existing.changeHistory) {
+      existing.changeHistory = [];
+    }
+    existing.changeHistory.push({
+      version: existing.version,
+      value: existing.value,
+      description: existing.description,
+      status: existing.status,
+      updatedBy: existing.updatedBy,
+      changeType: 'archived',
+      updatedAt: new Date(),
+    });
+
     existing.isActive = false;
+    existing.status = 'archived';
     existing.updatedBy = req.user ? req.user._id : undefined;
     await existing.save();
 
@@ -288,10 +335,139 @@ router.delete('/:id', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Contenu désactivé avec succès',
+      message: 'Contenu archivé avec succès',
     });
   } catch (error) {
-    console.error('Erreur lors de la désactivation du contenu CMS:', error);
+    console.error('Erreur lors de l\'archivage du contenu CMS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message,
+    });
+  }
+});
+
+// @route   PATCH /api/content/:id/publish
+// @desc    Publier un contenu
+// @access  Private (admin)
+router.patch('/:id/publish', async (req, res) => {
+  try {
+    const existing = await CmsContent.findById(req.params.id);
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Entrée CMS non trouvée',
+      });
+    }
+
+    // Ajouter à l'historique
+    if (!existing.changeHistory) {
+      existing.changeHistory = [];
+    }
+    existing.changeHistory.push({
+      version: existing.version,
+      value: existing.value,
+      description: existing.description,
+      status: existing.status,
+      updatedBy: existing.updatedBy,
+      changeType: 'published',
+      updatedAt: new Date(),
+    });
+
+    existing.status = 'published';
+    existing.isActive = true;
+    existing.updatedBy = req.user ? req.user._id : undefined;
+    await existing.save();
+
+    clearCacheForKey(existing.key, existing.locale);
+
+    res.json({
+      success: true,
+      message: 'Contenu publié avec succès',
+      entry: existing,
+    });
+  } catch (error) {
+    console.error('Erreur lors de la publication du contenu CMS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message,
+    });
+  }
+});
+
+// @route   PATCH /api/content/:id/unpublish
+// @desc    Dépublier un contenu (retour en brouillon)
+// @access  Private (admin)
+router.patch('/:id/unpublish', async (req, res) => {
+  try {
+    const existing = await CmsContent.findById(req.params.id);
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Entrée CMS non trouvée',
+      });
+    }
+
+    // Ajouter à l'historique
+    if (!existing.changeHistory) {
+      existing.changeHistory = [];
+    }
+    existing.changeHistory.push({
+      version: existing.version,
+      value: existing.value,
+      description: existing.description,
+      status: existing.status,
+      updatedBy: existing.updatedBy,
+      changeType: 'status_changed',
+      updatedAt: new Date(),
+    });
+
+    existing.status = 'draft';
+    existing.updatedBy = req.user ? req.user._id : undefined;
+    await existing.save();
+
+    clearCacheForKey(existing.key, existing.locale);
+
+    res.json({
+      success: true,
+      message: 'Contenu dépublié avec succès',
+      entry: existing,
+    });
+  } catch (error) {
+    console.error('Erreur lors de la dépublication du contenu CMS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api/content/:id/history
+// @desc    Récupérer l'historique des modifications d'un contenu
+// @access  Private (admin)
+router.get('/:id/history', async (req, res) => {
+  try {
+    const entry = await CmsContent.findById(req.params.id)
+      .populate('changeHistory.updatedBy', 'firstName lastName email')
+      .select('changeHistory');
+
+    if (!entry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Entrée CMS non trouvée',
+      });
+    }
+
+    res.json({
+      success: true,
+      history: entry.changeHistory || [],
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération de l\'historique:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',

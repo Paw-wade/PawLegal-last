@@ -48,10 +48,17 @@ const messageSchema = new mongoose.Schema({
       required: true
     }
   }],
-  lu: {
-    type: Boolean,
-    default: false
-  },
+  lu: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    luAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   repondu: {
     type: Boolean,
     default: false

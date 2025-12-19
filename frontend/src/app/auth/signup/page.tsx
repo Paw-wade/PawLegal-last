@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
-import { authAPI } from '@/lib/api';
+import { otpAPI } from '@/lib/api';
+import { useAutoFillDetection, getRealInputValues } from '@/hooks/useAutoFillDetection';
 
 // Composants simplifiés intégrés
 function Button({ 
@@ -52,14 +53,16 @@ function Button({
   );
 }
 
-function Input({ className = '', ...props }: any) {
+const Input = React.forwardRef<HTMLInputElement, any>(({ className = '', ...props }, ref) => {
   return (
     <input
+      ref={ref}
       className={`flex h-11 w-full rounded-md border-2 border-input bg-background px-4 py-2.5 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus:border-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 function Label({ className = '', children, ...props }: any) {
   return (
@@ -72,25 +75,50 @@ function Label({ className = '', children, ...props }: any) {
   );
 }
 
+type Step = 'info' | 'otp';
+
 export default function SignupPage() {
   const router = useRouter();
+  const [step, setStep] = useState<Step>('info');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   
   // États pour les valeurs du formulaire
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
-    email: '',
     phone: '',
-    password: '',
-    confirmPassword: '',
+    otpCode: '',
   });
 
   // États pour les erreurs de validation
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Refs pour détecter l'auto-remplissage
+  const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const lastNameInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const otpInputRef = useRef<HTMLInputElement>(null);
+
+  // Détecter l'auto-remplissage du navigateur
+  useAutoFillDetection({
+    inputRefs: {
+      firstName: firstNameInputRef,
+      lastName: lastNameInputRef,
+      phone: phoneInputRef,
+    },
+    formData,
+    setFormData: (updater) => setFormData(updater),
+  });
+
+  // Compte à rebours pour le renvoi de code
+  React.useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   const validateField = (name: string, value: string) => {
     const errors: Record<string, string> = { ...fieldErrors };
@@ -114,37 +142,22 @@ export default function SignupPage() {
           delete errors.lastName;
         }
         break;
-      case 'email':
+      case 'phone':
         if (!value || value.trim().length === 0) {
-          errors.email = 'L\'email est requis';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
-          errors.email = 'Email invalide';
+          errors.phone = 'Le numéro de téléphone est requis';
+        } else if (!/^(\+33|0)[1-9](\d{2}){4}$/.test(value.replace(/\s/g, ''))) {
+          errors.phone = 'Numéro de téléphone invalide';
         } else {
-          delete errors.email;
+          delete errors.phone;
         }
         break;
-      case 'password':
-        if (!value || value.length === 0) {
-          errors.password = 'Le mot de passe est requis';
-        } else if (value.length < 6) {
-          errors.password = 'Le mot de passe doit contenir au moins 6 caractères';
+      case 'otpCode':
+        if (!value || value.trim().length === 0) {
+          errors.otpCode = 'Le code OTP est requis';
+        } else if (!/^\d{6}$/.test(value.trim())) {
+          errors.otpCode = 'Le code OTP doit contenir 6 chiffres';
         } else {
-          delete errors.password;
-        }
-        // Vérifier aussi la confirmation si elle existe
-        if (formData.confirmPassword && value !== formData.confirmPassword) {
-          errors.confirmPassword = 'Les mots de passe ne correspondent pas';
-        } else if (formData.confirmPassword) {
-          delete errors.confirmPassword;
-        }
-        break;
-      case 'confirmPassword':
-        if (!value || value.length === 0) {
-          errors.confirmPassword = 'Veuillez confirmer votre mot de passe';
-        } else if (value !== formData.password) {
-          errors.confirmPassword = 'Les mots de passe ne correspondent pas';
-        } else {
-          delete errors.confirmPassword;
+          delete errors.otpCode;
         }
         break;
     }
@@ -160,84 +173,65 @@ export default function SignupPage() {
     validateField(name, value);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     
-    // Valider tous les champs
-    validateField('firstName', formData.firstName);
-    validateField('lastName', formData.lastName);
-    validateField('email', formData.email);
-    validateField('password', formData.password);
-    validateField('confirmPassword', formData.confirmPassword);
+    // Récupérer les valeurs réelles des inputs DOM pour détecter l'auto-remplissage
+    const realValues = getRealInputValues({
+      firstName: firstNameInputRef,
+      lastName: lastNameInputRef,
+      phone: phoneInputRef,
+    }, formData);
+
+    // Mettre à jour l'état avec les valeurs réelles
+    setFormData(realValues);
+    
+    // Valider tous les champs avec les valeurs réelles
+    validateField('firstName', realValues.firstName);
+    validateField('lastName', realValues.lastName);
+    validateField('phone', realValues.phone);
 
     // Vérifier s'il y a des erreurs
-    const hasErrors = Object.keys(fieldErrors).length > 0;
-    if (hasErrors) {
+    if (fieldErrors.firstName || fieldErrors.lastName || fieldErrors.phone) {
       setError('Veuillez corriger les erreurs dans le formulaire');
       return;
     }
 
-    // Vérifications finales
-    if (!formData.firstName.trim() || formData.firstName.trim().length < 2) {
+    // Vérifications finales avec les valeurs réelles
+    if (!realValues.firstName.trim() || realValues.firstName.trim().length < 2) {
       setError('Le prénom doit contenir au moins 2 caractères');
       return;
     }
 
-    if (!formData.lastName.trim() || formData.lastName.trim().length < 2) {
+    if (!realValues.lastName.trim() || realValues.lastName.trim().length < 2) {
       setError('Le nom doit contenir au moins 2 caractères');
       return;
     }
 
-    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      setError('Veuillez entrer une adresse email valide');
-      return;
-    }
-
-    if (!formData.password || formData.password.length < 6) {
-      setError('Le mot de passe doit contenir au moins 6 caractères');
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Les mots de passe ne correspondent pas');
+    const phoneRegex = /^(\+33|0)[1-9](\d{2}){4}$/;
+    const cleanedPhone = realValues.phone.replace(/\s/g, '');
+    if (!cleanedPhone || !phoneRegex.test(cleanedPhone)) {
+      setError('Veuillez entrer un numéro de téléphone valide');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const registerData = {
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
-        phone: formData.phone.trim() || undefined,
-      };
-
-      const response = await authAPI.register(registerData);
+      const response = await otpAPI.send({
+        firstName: realValues.firstName.trim(),
+        lastName: realValues.lastName.trim(),
+        phone: cleanedPhone,
+      });
 
       if (response.data.success) {
-        // Stocker le token
-        localStorage.setItem('token', response.data.token);
-        
-        // Connecter automatiquement l'utilisateur avec NextAuth
-        const result = await signIn('credentials', {
-          email: registerData.email,
-          password: registerData.password,
-          redirect: false,
-        });
-
-        if (result?.ok) {
-          // Rediriger vers la page de complétion de profil
-          router.push('/auth/complete-profile');
-        } else {
-          // Si la connexion automatique échoue, rediriger quand même
-          router.push('/auth/complete-profile');
-        }
+        setStep('otp');
+        setCountdown(60); // 60 secondes avant de pouvoir renvoyer le code
+        setError(null);
       }
     } catch (err: any) {
-      console.error('Erreur lors de l\'inscription:', err);
+      console.error('Erreur lors de l\'envoi de l\'OTP:', err);
       
       if (err.response?.data?.message) {
         setError(err.response.data.message);
@@ -245,7 +239,100 @@ export default function SignupPage() {
         const errorMessages = err.response.data.errors.map((e: any) => e.msg || e.message).join(', ');
         setError(errorMessages);
       } else {
-        setError('Une erreur est survenue lors de l\'inscription. Veuillez réessayer.');
+        setError('Une erreur est survenue lors de l\'envoi du code. Veuillez réessayer.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    
+    const realValues = getRealInputValues({
+      otpCode: otpInputRef,
+    }, formData);
+
+    setFormData(realValues);
+    validateField('otpCode', realValues.otpCode);
+
+    if (fieldErrors.otpCode) {
+      setError('Veuillez entrer un code OTP valide');
+      return;
+    }
+
+    if (!realValues.otpCode.trim() || !/^\d{6}$/.test(realValues.otpCode.trim())) {
+      setError('Le code OTP doit contenir 6 chiffres');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const cleanedPhone = formData.phone.replace(/\s/g, '');
+      const response = await otpAPI.verify({
+        phone: cleanedPhone,
+        code: realValues.otpCode.trim(),
+      });
+
+      if (response.data.success) {
+        // Stocker le token
+        localStorage.setItem('token', response.data.token);
+        
+        // Si l'utilisateur doit définir un mot de passe, rediriger vers la page de setup
+        if (response.data.user.needsPasswordSetup) {
+          router.push('/auth/setup-password');
+        } else {
+          // Sinon, connecter automatiquement avec NextAuth
+          const result = await signIn('credentials', {
+            redirect: false,
+          });
+
+          if (result?.ok) {
+            router.push('/client');
+          } else {
+            router.push('/client');
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Erreur lors de la vérification de l\'OTP:', err);
+      
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Code OTP invalide ou expiré. Veuillez réessayer.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+    
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const cleanedPhone = formData.phone.replace(/\s/g, '');
+      const response = await otpAPI.send({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: cleanedPhone,
+      });
+
+      if (response.data.success) {
+        setCountdown(60);
+        setError(null);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du renvoi de l\'OTP:', err);
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Erreur lors du renvoi du code. Veuillez réessayer.');
       }
     } finally {
       setIsLoading(false);
@@ -271,9 +358,14 @@ export default function SignupPage() {
               <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/70 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
                 <span className="text-white font-bold text-2xl">✨</span>
               </div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Créer un compte</h1>
+              <h1 className="text-3xl font-bold text-foreground mb-2">
+                {step === 'info' ? 'Créer un compte' : 'Vérification'}
+              </h1>
               <p className="text-muted-foreground">
-                Remplissez le formulaire pour créer votre compte Paw Legal
+                {step === 'info' 
+                  ? 'Remplissez vos informations pour créer votre compte'
+                  : 'Entrez le code reçu par SMS'
+                }
               </p>
             </div>
           </div>
@@ -289,171 +381,167 @@ export default function SignupPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">Prénom *</Label>
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    onBlur={(e) => validateField('firstName', e.target.value)}
-                    placeholder="Votre prénom"
-                    className={fieldErrors.firstName ? 'border-red-500 focus:border-red-500' : ''}
-                  />
-                  {fieldErrors.firstName && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                      <span>⚠️</span>
-                      <span>{fieldErrors.firstName}</span>
-                    </p>
-                  )}
+            {step === 'info' ? (
+              <form onSubmit={handleSendOTP} className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">Prénom *</Label>
+                    <Input
+                      ref={firstNameInputRef}
+                      id="firstName"
+                      name="firstName"
+                      type="text"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      onBlur={(e) => validateField('firstName', e.target.value)}
+                      placeholder="Votre prénom"
+                      autoComplete="given-name"
+                      className={fieldErrors.firstName ? 'border-red-500 focus:border-red-500' : ''}
+                    />
+                    {fieldErrors.firstName && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>{fieldErrors.firstName}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Nom *</Label>
+                    <Input
+                      ref={lastNameInputRef}
+                      id="lastName"
+                      name="lastName"
+                      type="text"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      onBlur={(e) => validateField('lastName', e.target.value)}
+                      placeholder="Votre nom"
+                      autoComplete="family-name"
+                      className={fieldErrors.lastName ? 'border-red-500 focus:border-red-500' : ''}
+                    />
+                    {fieldErrors.lastName && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>{fieldErrors.lastName}</span>
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Nom *</Label>
+                  <Label htmlFor="phone">Numéro de téléphone *</Label>
                   <Input
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    value={formData.lastName}
+                    ref={phoneInputRef}
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    value={formData.phone}
                     onChange={handleChange}
-                    onBlur={(e) => validateField('lastName', e.target.value)}
-                    placeholder="Votre nom"
-                    className={fieldErrors.lastName ? 'border-red-500 focus:border-red-500' : ''}
+                    onBlur={(e) => validateField('phone', e.target.value)}
+                    placeholder="07 68 03 33 58"
+                    autoComplete="tel"
+                    className={fieldErrors.phone ? 'border-red-500 focus:border-red-500' : ''}
                   />
-                  {fieldErrors.lastName && (
+                  {fieldErrors.phone && (
                     <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                       <span>⚠️</span>
-                      <span>{fieldErrors.lastName}</span>
+                      <span>{fieldErrors.phone}</span>
                     </p>
                   )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  onBlur={(e) => validateField('email', e.target.value)}
-                  placeholder="votre@email.com"
-                  className={fieldErrors.email ? 'border-red-500 focus:border-red-500' : ''}
-                />
-                {fieldErrors.email && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>{fieldErrors.email}</span>
+                  <p className="text-xs text-muted-foreground">
+                    Un code de vérification vous sera envoyé par SMS
                   </p>
-                )}
-              </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Téléphone (optionnel)</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="07 68 03 33 58"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Mot de passe *</Label>
-                <div className="relative">
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin">⏳</span>
+                      <span>Envoi en cours...</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <span>📱</span>
+                      <span>Envoyer le code</span>
+                    </span>
+                  )}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOTP} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="otpCode">Code de vérification *</Label>
                   <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
+                    ref={otpInputRef}
+                    id="otpCode"
+                    name="otpCode"
+                    type="text"
+                    value={formData.otpCode}
                     onChange={handleChange}
-                    onBlur={(e) => validateField('password', e.target.value)}
-                    placeholder="Minimum 8 caractères"
-                    className={`pr-12 ${fieldErrors.password ? 'border-red-500 focus:border-red-500' : ''}`}
+                    onBlur={(e) => validateField('otpCode', e.target.value)}
+                    placeholder="123456"
+                    maxLength={6}
+                    className={fieldErrors.otpCode ? 'border-red-500 focus:border-red-500 text-center text-2xl tracking-widest' : 'text-center text-2xl tracking-widest'}
                   />
+                  {fieldErrors.otpCode && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>{fieldErrors.otpCode}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Code envoyé au {formData.phone}
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin">⏳</span>
+                      <span>Vérification...</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <span>✅</span>
+                      <span>Vérifier le code</span>
+                    </span>
+                  )}
+                </Button>
+
+                <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                    onClick={handleResendOTP}
+                    disabled={countdown > 0 || isLoading}
+                    className="text-sm text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
                   >
-                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                    {countdown > 0 
+                      ? `Renvoyer le code dans ${countdown}s`
+                      : 'Renvoyer le code'
+                    }
                   </button>
                 </div>
-                {fieldErrors.password && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>{fieldErrors.password}</span>
-                  </p>
-                )}
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmer le mot de passe *</Label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    onBlur={(e) => validateField('confirmPassword', e.target.value)}
-                    placeholder="Répétez le mot de passe"
-                    className={`pr-12 ${fieldErrors.confirmPassword ? 'border-red-500 focus:border-red-500' : ''}`}
-                  />
+                <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showConfirmPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                    onClick={() => setStep('info')}
+                    className="text-sm text-muted-foreground hover:text-foreground"
                   >
-                    {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+                    ← Modifier mes informations
                   </button>
                 </div>
-                {fieldErrors.confirmPassword && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>{fieldErrors.confirmPassword}</span>
-                  </p>
-                )}
-                {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>Les mots de passe ne correspondent pas</span>
-                  </p>
-                )}
-                {formData.password && formData.confirmPassword && formData.password === formData.confirmPassword && formData.password.length >= 8 && (
-                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                    <span>✅</span>
-                    <span>Les mots de passe correspondent</span>
-                  </p>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="animate-spin">⏳</span>
-                    <span>Création en cours...</span>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <span>✨</span>
-                    <span>Créer mon compte</span>
-                  </span>
-                )}
-              </Button>
-            </form>
+              </form>
+            )}
 
             <div className="mt-6 pt-6 border-t border-border text-center">
               <p className="text-sm text-muted-foreground">

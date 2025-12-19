@@ -14,21 +14,31 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'L\'email est requis'],
+    required: false, // Email optionnel lors de la création, peut être ajouté plus tard
     unique: true,
+    sparse: true, // Permet plusieurs valeurs null
     lowercase: true,
     trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Veuillez entrer un email valide']
   },
   password: {
     type: String,
-    required: [true, 'Le mot de passe est requis'],
+    required: false, // Mot de passe optionnel lors de la création via OTP
     minlength: [8, 'Le mot de passe doit contenir au moins 8 caractères'],
     select: false
   },
+  phoneVerified: {
+    type: Boolean,
+    default: false
+  },
+  needsPasswordSetup: {
+    type: Boolean,
+    default: false // Indique si l'utilisateur doit définir un mot de passe
+  },
   phone: {
     type: String,
-    trim: true
+    trim: true,
+    required: [true, 'Le numéro de téléphone est requis']
   },
   role: {
     type: String,
@@ -103,9 +113,9 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Hash le mot de passe avant de sauvegarder
+// Hash le mot de passe avant de sauvegarder (seulement si un mot de passe est fourni)
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password') || !this.password) {
     return next();
   }
   
@@ -116,6 +126,9 @@ userSchema.pre('save', async function(next) {
 
 // Méthode pour comparer les mots de passe
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  if (!this.password) {
+    return false; // Pas de mot de passe défini
+  }
   return await bcrypt.compare(candidatePassword, this.password);
 };
 

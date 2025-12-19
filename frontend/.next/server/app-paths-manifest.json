@@ -1,5 +1,4 @@
 {
   "/page": "app/page.js",
-  "/icon.svg/route": "app/icon.svg/route.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
+  "/auth/complete-profile/page": "app/auth/complete-profile/page.js"
 }

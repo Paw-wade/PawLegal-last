@@ -45,14 +45,14 @@ const protect = async (req, res, next) => {
       }
 
       if (!req.user.isActive) {
-        console.warn('⚠️ Compte désactivé pour:', req.user.email); // Debug log
+        console.warn('⚠️ Compte désactivé pour:', req.user.email || `phone:${req.user.phone}`); // Debug log
         return res.status(401).json({
           success: false,
           message: 'Compte désactivé'
         });
       }
 
-      console.log('✅ Utilisateur authentifié:', req.user.email, 'Rôle:', req.user.role); // Debug log
+      console.log('✅ Utilisateur authentifié:', req.user.email || `phone:${req.user.phone}`, 'Rôle:', req.user.role); // Debug log
       next();
     } catch (error) {
       console.error('❌ Erreur de vérification du token:', error.message); // Debug log
@@ -73,7 +73,7 @@ const protect = async (req, res, next) => {
 const authorize = (...roles) => {
   return (req, res, next) => {
     console.log('🔍 Middleware authorize - Route:', req.method, req.path); // Debug log
-    console.log('🔍 User:', req.user ? `${req.user.email} (${req.user.role})` : 'non défini'); // Debug log
+    console.log('🔍 User:', req.user ? `${req.user.email || `phone:${req.user.phone}`} (${req.user.role})` : 'non défini'); // Debug log
     console.log('🔍 Rôles autorisés:', roles); // Debug log
     
     if (!req.user) {

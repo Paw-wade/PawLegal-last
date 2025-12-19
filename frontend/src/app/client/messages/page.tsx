@@ -271,9 +271,12 @@ export default function MessagesPage() {
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
-    return message.lu?.some((l: any) => {
+    if (!message.lu || !Array.isArray(message.lu)) {
+      return false;
+    }
+    return message.lu.some((l: any) => {
       const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
-      return luUserId === userId?.toString?.();
+      return luUserId && userId && luUserId.toString() === userId.toString();
     });
   };
 
@@ -615,9 +618,9 @@ export default function MessagesPage() {
                 <div
                   key={messageId}
                   className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-lg ${
-                    isRead 
-                      ? 'border-gray-300 bg-white' 
-                      : 'border-primary bg-gradient-to-r from-primary/5 to-white'
+                    (isReceived && !isRead)
+                      ? 'border-primary bg-gradient-to-r from-primary/5 to-white' 
+                      : 'border-gray-300 bg-white'
                   } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
                   <div className="p-5">
@@ -633,7 +636,7 @@ export default function MessagesPage() {
 
                       {/* Avatar/Initiale */}
                       <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
-                        isRead ? 'bg-gray-400' : 'bg-primary'
+                        (isReceived && !isRead) ? 'bg-primary' : 'bg-gray-400'
                       }`}>
                         {expediteur?.firstName?.[0]?.toUpperCase() || expediteur?.email?.[0]?.toUpperCase() || '?'}
                       </div>
@@ -666,7 +669,7 @@ export default function MessagesPage() {
                               }`}>
                                 {message.sujet}
                               </h3>
-                              {!isRead && (
+                              {isReceived && !isRead && (
                                 <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-primary text-white text-xs font-semibold">
                                   Nouveau
                                 </span>

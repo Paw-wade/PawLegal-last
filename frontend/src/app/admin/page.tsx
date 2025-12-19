@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
+import { AppointmentBadgeModal } from '@/components/AppointmentBadgeModal';
 import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI, dossiersAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 import { useCmsText } from '@/lib/contentClient';
@@ -76,6 +77,8 @@ export default function AdminDashboardPage() {
   const [newTaskNote, setNewTaskNote] = useState('');
   const [isAddingTaskNote, setIsAddingTaskNote] = useState(false);
   const [taskNotesError, setTaskNotesError] = useState<string | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
 
   // Textes CMS pour le header du dashboard admin
   const dashboardTitle = useCmsText(
@@ -123,19 +126,49 @@ export default function AdminDashboardPage() {
     loadNotifications();
   }, [session, status]);
 
-  // Vérifier les messages non lus à la connexion
+  // Vérifier les messages non lus à la connexion (internes + contact)
   const checkUnreadMessages = async () => {
     if (hasCheckedMessages) return;
     
     try {
-      const response = await messagesAPI.getMessages({ type: 'unread' });
-      if (response.data.success && response.data.messages && response.data.messages.length > 0) {
+      // Charger les messages internes non lus
+      const messagesResponse = await messagesAPI.getMessages({ type: 'unread' });
+      const messages = messagesResponse.data.success && messagesResponse.data.messages 
+        ? messagesResponse.data.messages.map((m: any) => ({ ...m, isContactMessage: false }))
+        : [];
+      
+      // Charger les messages de contact non lus
+      try {
+        const { contactAPI } = await import('@/lib/api');
+        const contactResponse = await contactAPI.getAllMessages({ lu: false });
+        if (contactResponse.data.success && contactResponse.data.messages) {
+          const contactMessages = contactResponse.data.messages.map((m: any) => ({ 
+            ...m, 
+            isContactMessage: true,
+            sujet: m.subject,
+            contenu: m.message,
+            expediteur: { firstName: m.name?.split(' ')[0] || '', lastName: m.name?.split(' ').slice(1).join(' ') || '', email: m.email }
+          }));
+          messages.push(...contactMessages);
+        }
+      } catch (contactError) {
+        console.error('Erreur lors du chargement des messages de contact:', contactError);
+      }
+      
+      // Trier par date de création (plus récent en premier)
+      messages.sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+      
+      if (messages.length > 0) {
         // Prendre le message le plus récent
-        const latestMessage = response.data.messages[0];
+        const latestMessage = messages[0];
         setUnreadMessage(latestMessage);
         setShowMessageModal(true);
         // Garder un aperçu des 3 derniers messages pour le dashboard
-        setMessagesPreview(response.data.messages.slice(0, 3));
+        setMessagesPreview(messages.slice(0, 3));
         setHasCheckedMessages(true);
       } else {
         setMessagesPreview([]);
@@ -636,7 +669,14 @@ export default function AdminDashboardPage() {
                   {tomorrowAppointments.slice(0, 5).map((apt: any) => {
                     const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
                     return (
-                      <div key={apt._id || apt.id} className="p-2 rounded-lg bg-white border border-orange-200">
+                      <div
+                        key={apt._id || apt.id}
+                        onClick={() => {
+                          setSelectedAppointment(apt);
+                          setShowAppointmentModal(true);
+                        }}
+                        className="p-2 rounded-lg bg-white border border-orange-200 hover:bg-orange-50 hover:border-orange-300 cursor-pointer transition-colors"
+                      >
                         <p className="font-semibold text-sm text-foreground">{clientName}</p>
                         <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
                       </div>
@@ -1478,6 +1518,21 @@ export default function AdminDashboardPage() {
             setUnreadMessage(null);
           }}
           message={unreadMessage}
+        />
+
+        {/* Modal de gestion des rendez-vous */}
+        <AppointmentBadgeModal
+          isOpen={showAppointmentModal}
+          onClose={() => {
+            setShowAppointmentModal(false);
+            setSelectedAppointment(null);
+          }}
+          appointment={selectedAppointment}
+          isAdmin={true}
+          onUpdate={() => {
+            loadNotifications();
+            loadStats();
+          }}
         />
 
         {/* Modal de commentaire sur le statut de la tâche - DÉPLACÉ vers /admin/taches */}

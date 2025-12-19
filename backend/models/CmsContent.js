@@ -34,6 +34,12 @@ const cmsContentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    status: {
+      type: String,
+      enum: ['draft', 'published', 'archived'],
+      default: 'draft',
+      index: true,
+    },
     version: {
       type: Number,
       default: 1,
@@ -42,6 +48,24 @@ const cmsContentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    changeHistory: [{
+      version: Number,
+      value: String,
+      description: String,
+      status: String,
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      updatedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      changeType: {
+        type: String,
+        enum: ['created', 'updated', 'status_changed', 'published', 'archived'],
+      },
+    }],
   },
   {
     timestamps: true,

@@ -61,6 +61,25 @@ app.get('/', (req, res) => {
 
 // Routes API
 app.use('/api/auth', require('./routes/auth'));
+
+// Route OTP
+try {
+  const otpRouter = require('./routes/otp');
+  app.use('/api/otp', otpRouter);
+  console.log('✅ Route /api/otp enregistrée');
+  // Afficher les routes disponibles pour debug
+  console.log('📋 Routes OTP disponibles:');
+  otpRouter.stack.forEach((r) => {
+    if (r.route) {
+      const methods = Object.keys(r.route.methods).join(', ').toUpperCase();
+      console.log(`   ${methods} ${r.route.path}`);
+    }
+  });
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route otp:', error.message);
+  console.error(error.stack);
+}
+
 app.use('/api/contact', require('./routes/contact'));
 
 // Routes de permissions

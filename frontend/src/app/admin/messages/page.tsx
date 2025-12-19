@@ -119,21 +119,70 @@ export default function AdminMessagesPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const params: any = { type: filter };
-      if (selectedDossierId) {
-        params.dossierId = selectedDossierId;
+      const allMessages: any[] = [];
+      
+      // Charger les messages internes
+      try {
+        const params: any = { type: filter };
+        if (selectedDossierId) {
+          params.dossierId = selectedDossierId;
+        }
+        if (selectedExpediteurId) {
+          params.expediteurId = selectedExpediteurId;
+        }
+        if (selectedDestinataireId) {
+          params.destinataireId = selectedDestinataireId;
+        }
+        const response = await messagesAPI.getMessages(params);
+        if (response.data.success) {
+          const internalMessages = (response.data.messages || []).map((m: any) => ({ 
+            ...m, 
+            isContactMessage: false 
+          }));
+          allMessages.push(...internalMessages);
+        }
+      } catch (err: any) {
+        console.error('Erreur lors du chargement des messages internes:', err);
       }
-      if (selectedExpediteurId) {
-        params.expediteurId = selectedExpediteurId;
+      
+      // Charger les messages de contact (uniquement si le filtre le permet)
+      if (filter === 'all' || filter === 'received' || filter === 'unread') {
+        try {
+          const { contactAPI } = await import('@/lib/api');
+          const contactParams: any = {};
+          if (filter === 'unread') {
+            contactParams.lu = false;
+          }
+          const contactResponse = await contactAPI.getAllMessages(contactParams);
+          if (contactResponse.data.success) {
+            const contactMessages = (contactResponse.data.messages || []).map((m: any) => ({ 
+              ...m, 
+              isContactMessage: true,
+              sujet: m.subject,
+              contenu: m.message,
+              expediteur: { 
+                firstName: m.name?.split(' ')[0] || '', 
+                lastName: m.name?.split(' ').slice(1).join(' ') || '', 
+                email: m.email 
+              },
+              destinataires: [], // Les messages de contact sont pour tous les admins
+            }));
+            allMessages.push(...contactMessages);
+          }
+        } catch (err: any) {
+          console.error('Erreur lors du chargement des messages de contact:', err);
+        }
       }
-      if (selectedDestinataireId) {
-        params.destinataireId = selectedDestinataireId;
-      }
-      const response = await messagesAPI.getMessages(params);
-      if (response.data.success) {
-        setMessages(response.data.messages || []);
-        setSelectedMessages(new Set()); // Réinitialiser la sélection
-      }
+      
+      // Trier par date de création (plus récent en premier)
+      allMessages.sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+      
+      setMessages(allMessages);
+      setSelectedMessages(new Set()); // Réinitialiser la sélection
     } catch (err: any) {
       console.error('Erreur lors du chargement des messages:', err);
       setError(err.response?.data?.message || 'Erreur lors du chargement des messages');
@@ -291,9 +340,12 @@ export default function AdminMessagesPage() {
 
   const isMessageRead = (message: any) => {
     const userId = (session?.user as any)?.id;
-    return message.lu?.some((l: any) => {
+    if (!message.lu || !Array.isArray(message.lu)) {
+      return false;
+    }
+    return message.lu.some((l: any) => {
       const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
-      return luUserId === userId?.toString?.();
+      return luUserId && userId && luUserId.toString() === userId.toString();
     });
   };
 
@@ -320,26 +372,26 @@ export default function AdminMessagesPage() {
       prev.map((m: any) => {
         const id = (m._id || m.id)?.toString?.();
         if (id !== messageId.toString()) return m;
-        const alreadyRead = m.lu?.some((l: any) => {
+        const alreadyRead = Array.isArray(m.lu) && m.lu.some((l: any) => {
           const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
           return luUserId === userId;
         });
         if (alreadyRead) return m;
         return {
           ...m,
-          lu: [...(m.lu || []), { user: userId, readAt: new Date().toISOString() }],
+          lu: [...(Array.isArray(m.lu) ? m.lu : []), { user: userId, readAt: new Date().toISOString() }],
         };
       })
     );
     setSelectedMessage((prev: any) => {
       const id = (prev?._id || prev?.id)?.toString?.();
       if (!prev || id !== messageId.toString()) return prev;
-      const alreadyRead = prev.lu?.some((l: any) => {
+      const alreadyRead = Array.isArray(prev.lu) && prev.lu.some((l: any) => {
         const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
         return luUserId === userId;
       });
       if (alreadyRead) return prev;
-      return { ...prev, lu: [...(prev.lu || []), { user: userId, readAt: new Date().toISOString() }] };
+      return { ...prev, lu: [...(Array.isArray(prev.lu) ? prev.lu : []), { user: userId, readAt: new Date().toISOString() }] };
     });
   };
 
@@ -443,8 +495,14 @@ export default function AdminMessagesPage() {
     return null;
   }
 
-  // IMPORTANT: "Non lus" = non lus PAR MOI (uniquement si je suis destinataire ou en copie)
-  const unreadCount = messages.filter(m => canCurrentUserMarkAsRead(m) && !isMessageRead(m)).length;
+  // IMPORTANT: "Non lus" = non lus PAR MOI (uniquement si je suis destinataire ou en copie, ou si c'est un message de contact)
+  const unreadCount = messages.filter(m => {
+    if (m.isContactMessage) {
+      // Pour les messages de contact, tous les admins peuvent les marquer comme lus
+      return !isMessageRead(m);
+    }
+    return canCurrentUserMarkAsRead(m) && !isMessageRead(m);
+  }).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
@@ -650,15 +708,20 @@ export default function AdminMessagesPage() {
             </div>
 
             {messages.map((message) => {
-              const expediteur = message.expediteur;
+              const isContactMessage = message.isContactMessage;
+              const expediteur = isContactMessage
+                ? { firstName: message.name?.split(' ')[0] || '', lastName: message.name?.split(' ').slice(1).join(' ') || '', email: message.email }
+                : message.expediteur;
               const userId = (session?.user as any)?.id;
-              const isReceived = message.destinataires?.some((d: any) => 
-                d._id?.toString() === userId?.toString() || 
-                d.toString() === userId?.toString()
-              ) || message.copie?.some((c: any) => 
-                c._id?.toString() === userId?.toString() || 
-                c.toString() === userId?.toString()
-              );
+              const isReceived = isContactMessage
+                ? true // Les messages de contact sont toujours "reçus" par les admins
+                : message.destinataires?.some((d: any) => 
+                    d._id?.toString() === userId?.toString() || 
+                    d.toString() === userId?.toString()
+                  ) || message.copie?.some((c: any) => 
+                    c._id?.toString() === userId?.toString() || 
+                    c.toString() === userId?.toString()
+                  );
               const isRead = isMessageRead(message);
               const messageId = message._id || message.id;
               const isSelected = selectedMessages.has(messageId);
@@ -667,9 +730,9 @@ export default function AdminMessagesPage() {
                 <div
                   key={messageId}
                   className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-lg ${
-                    isRead 
-                      ? 'border-gray-300 bg-white' 
-                      : 'border-primary bg-gradient-to-r from-primary/5 to-white'
+                    (isReceived && !isRead)
+                      ? 'border-primary bg-gradient-to-r from-primary/5 to-white' 
+                      : 'border-gray-300 bg-white'
                   } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
                   <div className="p-5">
@@ -685,7 +748,7 @@ export default function AdminMessagesPage() {
 
                       {/* Avatar/Initiale */}
                       <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
-                        isRead ? 'bg-gray-400' : 'bg-primary'
+                        (isReceived && !isRead) ? 'bg-primary' : 'bg-gray-400'
                       }`}>
                         {expediteur?.firstName?.[0]?.toUpperCase() || expediteur?.email?.[0]?.toUpperCase() || '?'}
                       </div>
@@ -693,12 +756,17 @@ export default function AdminMessagesPage() {
                       {/* Contenu */}
                       <div 
                         className="flex-1 cursor-pointer min-w-0"
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedMessage(message);
-                          if (!isRead && canCurrentUserMarkAsRead(message)) {
+                          if (!isRead && (isContactMessage || canCurrentUserMarkAsRead(message))) {
                             // Supprimer le badge "Nouveau" immédiatement côté UI
                             markMessageAsReadOptimistic(messageId);
-                            messagesAPI.markAsRead(messageId).catch(() => loadMessages());
+                            if (isContactMessage) {
+                              const { contactAPI } = await import('@/lib/api');
+                              contactAPI.markAsRead(messageId, true).catch(() => loadMessages());
+                            } else {
+                              messagesAPI.markAsRead(messageId).catch(() => loadMessages());
+                            }
                           }
                         }}
                       >
@@ -708,16 +776,21 @@ export default function AdminMessagesPage() {
                               <h3 className={`font-semibold text-lg truncate ${
                                 isRead ? 'text-gray-700' : 'text-gray-900'
                               }`}>
-                                {message.sujet}
+                                {isContactMessage ? message.subject : message.sujet}
                               </h3>
-                              {!isRead && (
+                              {isReceived && !isRead && (
                                 <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-primary text-white text-xs font-semibold">
                                   Nouveau
                                 </span>
                               )}
+                              {isContactMessage && (
+                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">
+                                  Contact
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                              {message.contenu}
+                              {isContactMessage ? message.message : message.contenu}
                             </p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                               <span className="font-medium">
@@ -735,12 +808,13 @@ export default function AdminMessagesPage() {
                               </span>
                               <span>•</span>
                               <span>{formatDate(message.createdAt)}</span>
-                              {message.piecesJointes && message.piecesJointes.length > 0 && (
+                              {(isContactMessage ? message.documents : message.piecesJointes) && 
+                               (isContactMessage ? message.documents : message.piecesJointes).length > 0 && (
                                 <>
                                   <span>•</span>
                                   <span className="flex items-center gap-1">
                                     <span>📎</span>
-                                    <span>{message.piecesJointes.length} pièce(s) jointe(s)</span>
+                                    <span>{(isContactMessage ? message.documents : message.piecesJointes).length} pièce(s) jointe(s)</span>
                                   </span>
                                 </>
                               )}
@@ -751,7 +825,7 @@ export default function AdminMessagesPage() {
 
                       {/* Actions */}
                       <div className="flex flex-col gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                        {isReceived && (
+                        {isReceived && !isContactMessage && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -769,6 +843,17 @@ export default function AdminMessagesPage() {
                             }}
                           >
                             Répondre
+                          </Button>
+                        )}
+                        {isContactMessage && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              router.push(`/admin/messages/${messageId}`);
+                            }}
+                          >
+                            Voir le message
                           </Button>
                         )}
                         {canCurrentUserMarkAsRead(message) && (

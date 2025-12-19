@@ -178,15 +178,38 @@ router.get(
   async (req, res) => {
     try {
       const { lu, repondu, limit = 50, page = 1 } = req.query;
+      const userId = req.user.id || req.user._id;
       
-      const query = {};
-      if (lu !== undefined) query.lu = lu === 'true';
-      if (repondu !== undefined) query.repondu = repondu === 'true';
+      let query = {};
+      
+      // Filtrer par statut lu/non lu pour l'utilisateur actuel
+      if (lu !== undefined) {
+        if (lu === 'false' || lu === false) {
+          // Messages non lus par cet utilisateur
+          query = {
+            $or: [
+              { lu: { $exists: false } },
+              { lu: { $size: 0 } },
+              { lu: { $not: { $elemMatch: { user: userId } } } }
+            ]
+          };
+        } else {
+          // Messages lus par cet utilisateur
+          query = {
+            lu: { $elemMatch: { user: userId } }
+          };
+        }
+      }
+      
+      if (repondu !== undefined) {
+        query.repondu = repondu === 'true';
+      }
 
       const messages = await Message.find(query)
         .sort({ createdAt: -1 })
         .limit(parseInt(limit))
-        .skip((parseInt(page) - 1) * parseInt(limit));
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .populate('lu.user', 'firstName lastName email');
 
       const total = await Message.countDocuments(query);
 
@@ -196,7 +219,7 @@ router.get(
         total,
         page: parseInt(page),
         pages: Math.ceil(total / parseInt(limit)),
-        messages
+        messages: messages
       });
     } catch (error) {
       console.error('Erreur lors de la récupération des messages:', error);
@@ -227,9 +250,21 @@ router.get(
         });
       }
 
-      // Marquer comme lu
-      if (!message.lu) {
-        message.lu = true;
+      // Marquer comme lu par cet admin (gestion partagée)
+      const userId = req.user.id || req.user._id;
+      const dejaLu = message.lu && message.lu.some((l) => {
+        const luUserId = l.user?._id?.toString() || l.user?.toString();
+        return luUserId === userId.toString();
+      });
+      
+      if (!dejaLu) {
+        if (!message.lu) {
+          message.lu = [];
+        }
+        message.lu.push({
+          user: userId,
+          luAt: new Date()
+        });
         await message.save();
       }
 
@@ -280,11 +315,39 @@ router.patch(
         });
       }
 
-      if (req.body.lu !== undefined) message.lu = req.body.lu;
+      // Gérer le marquage lu/non lu partagé
+      if (req.body.lu !== undefined) {
+        const userId = req.user.id || req.user._id;
+        if (req.body.lu === true) {
+          // Marquer comme lu par cet admin
+          const dejaLu = message.lu && Array.isArray(message.lu) && message.lu.some((l) => {
+            const luUserId = l.user?._id?.toString() || l.user?.toString();
+            return luUserId === userId.toString();
+          });
+          if (!dejaLu) {
+            if (!message.lu || !Array.isArray(message.lu)) {
+              message.lu = [];
+            }
+            message.lu.push({
+              user: userId,
+              luAt: new Date()
+            });
+          }
+        } else {
+          // Marquer comme non lu (retirer de la liste)
+          if (message.lu && Array.isArray(message.lu)) {
+            message.lu = message.lu.filter((l) => {
+              const luUserId = l.user?._id?.toString() || l.user?.toString();
+              return luUserId !== userId.toString();
+            });
+          }
+        }
+      }
       if (req.body.repondu !== undefined) message.repondu = req.body.repondu;
       if (req.body.reponse !== undefined) message.reponse = req.body.reponse;
 
       await message.save();
+      await message.populate('lu.user', 'firstName lastName email');
 
       res.json({
         success: true,
@@ -320,7 +383,16 @@ router.get(
         });
       }
 
-      const document = message.documents.id(req.params.docId);
+      // Si docId est un index numérique, utiliser l'index du tableau
+      let document;
+      if (!isNaN(req.params.docId)) {
+        const index = parseInt(req.params.docId);
+        if (message.documents && message.documents[index]) {
+          document = message.documents[index];
+        }
+      } else {
+        document = message.documents.id(req.params.docId);
+      }
 
       if (!document) {
         return res.status(404).json({
@@ -342,6 +414,118 @@ router.get(
       res.status(500).json({
         success: false,
         message: 'Erreur serveur',
+        error: error.message
+      });
+    }
+  }
+);
+
+// @route   POST /api/contact/:id/create-dossier
+// @desc    Créer un dossier depuis un message de contact (admin seulement)
+// @access  Private/Admin
+router.post(
+  '/:id/create-dossier',
+  require('../middleware/auth').protect,
+  require('../middleware/auth').authorize('admin', 'superadmin'),
+  [
+    body('titre').trim().notEmpty().withMessage('Le titre est requis'),
+    body('categorie').trim().notEmpty().withMessage('La catégorie est requise'),
+    body('type').trim().notEmpty().withMessage('Le type est requis'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation',
+          errors: errors.array()
+        });
+      }
+
+      const message = await Message.findById(req.params.id);
+      if (!message) {
+        return res.status(404).json({
+          success: false,
+          message: 'Message non trouvé'
+        });
+      }
+
+      const Dossier = require('../models/Dossier');
+      const { sendNotificationSMS } = require('../sendSMS');
+
+      // Extraire nom et prénom du message
+      const nameParts = (message.name || '').split(' ');
+      const clientPrenom = nameParts[0] || '';
+      const clientNom = nameParts.slice(1).join(' ') || '';
+
+      // Créer le dossier avec les données du message
+      const dossierData = {
+        titre: req.body.titre,
+        description: req.body.description || `Dossier créé depuis le message de contact: "${message.subject}"\n\n${message.message}`,
+        categorie: req.body.categorie,
+        type: req.body.type,
+        statut: req.body.statut || 'recu',
+        priorite: req.body.priorite || 'normale',
+        clientNom: req.body.clientNom || clientNom,
+        clientPrenom: req.body.clientPrenom || clientPrenom,
+        clientEmail: req.body.clientEmail || message.email,
+        clientTelephone: req.body.clientTelephone || message.phone || '',
+        notes: `Dossier créé depuis le message de contact ID: ${message._id}\nSujet: ${message.subject}\nDate du message: ${message.createdAt}`,
+        createdFromContactMessage: message._id, // Lier le dossier au message
+      };
+
+      const newDossier = await Dossier.create(dossierData);
+
+      // Marquer le message comme traité (optionnel)
+      message.repondu = true;
+      await message.save();
+
+      // Envoyer une notification SMS si un numéro de téléphone est disponible
+      try {
+        const phoneNumber = message.phone || req.body.clientTelephone;
+        if (phoneNumber) {
+          await sendNotificationSMS(
+            phoneNumber,
+            `Votre demande a été reçue et un dossier a été créé. Référence: ${newDossier._id}. L'équipe Paw Legal vous contactera prochainement.`
+          );
+          console.log(`✅ SMS envoyé à ${phoneNumber} pour la création du dossier ${newDossier._id}`);
+        }
+      } catch (smsError) {
+        console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);
+        // Ne pas bloquer la création du dossier si le SMS échoue
+      }
+
+      // Notifier tous les admins de la création du dossier
+      try {
+        const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } });
+        for (const admin of admins) {
+          await Notification.create({
+            user: admin._id,
+            type: 'dossier_created',
+            titre: 'Dossier créé depuis un message de contact',
+            message: `Un nouveau dossier "${req.body.titre}" a été créé depuis le message de ${message.name} (${message.email})`,
+            lien: `/admin/dossiers/${newDossier._id}`,
+            metadata: {
+              dossierId: newDossier._id.toString(),
+              messageId: message._id.toString(),
+            }
+          });
+        }
+      } catch (notifError) {
+        console.error('⚠️ Erreur lors de l\'envoi des notifications:', notifError);
+      }
+
+      res.json({
+        success: true,
+        message: 'Dossier créé avec succès',
+        dossier: newDossier
+      });
+    } catch (error) {
+      console.error('Erreur lors de la création du dossier:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la création du dossier',
         error: error.message
       });
     }

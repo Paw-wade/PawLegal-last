@@ -227,7 +227,13 @@ export default function ClientMessageDetailPage() {
 
   const isMessageRead = (msg: any) => {
     const userId = (session?.user as any)?.id;
-    return msg.lu?.some((l: any) => l.user?.toString() === userId?.toString());
+    if (!msg.lu || !Array.isArray(msg.lu)) {
+      return false;
+    }
+    return msg.lu.some((l: any) => {
+      const luUserId = l?.user?._id?.toString?.() || l?.user?.toString?.();
+      return luUserId && userId && luUserId.toString() === userId.toString();
+    });
   };
 
   if (status === 'loading' || isLoading) {
@@ -303,7 +309,7 @@ export default function ClientMessageDetailPage() {
                 </span>
                 <span>•</span>
                 <span>{formatDate(message.createdAt)}</span>
-                {!isMessageRead(message) && (
+                {isReceived && !isMessageRead(message) && (
                   <>
                     <span>•</span>
                     <span className="px-2 py-1 rounded-full bg-primary text-white text-xs font-semibold">
