@@ -199,6 +199,8 @@ router.post('/init-defaults', async (req, res) => {
     const createdTemplates = [];
     const existingTemplates = [];
 
+    const userId = req.user.id || req.user._id;
+    
     for (const templateData of defaultTemplates) {
       const existing = await SmsTemplate.findOne({ code: templateData.code });
       if (existing) {
@@ -206,8 +208,8 @@ router.post('/init-defaults', async (req, res) => {
       } else {
         const template = await SmsTemplate.create({
           ...templateData,
-          createdBy: req.user.id,
-          updatedBy: req.user.id
+          createdBy: userId,
+          updatedBy: userId
         });
         createdTemplates.push(template);
       }

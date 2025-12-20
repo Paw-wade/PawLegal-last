@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { contactAPI } from '@/lib/api';
 import { Header } from '@/components/layout/Header';
@@ -49,6 +50,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className = '', .
 Textarea.displayName = 'Textarea';
 
 export default function ContactPage() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +183,10 @@ export default function ContactPage() {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+        // Rediriger vers la page de création de compte après 1.5 secondes
+        setTimeout(() => {
+          router.push('/auth/signup');
+        }, 1500);
       } else {
         setError(data.message || 'Une erreur est survenue');
       }

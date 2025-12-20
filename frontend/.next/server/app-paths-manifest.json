@@ -1,7 +1,5 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/icon.svg/route": "app/icon.svg/route.js",
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/admin/sms/page": "app/admin/sms/page.js",
-  "/admin/taches/page": "app/admin/taches/page.js"
+  "/admin/page": "app/admin/page.js"
 }

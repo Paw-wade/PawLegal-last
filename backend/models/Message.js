@@ -52,7 +52,7 @@ const messageSchema = new mongoose.Schema({
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: false // Rendre optionnel pour éviter les erreurs avec les anciens messages
     },
     luAt: {
       type: Date,

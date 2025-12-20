@@ -112,6 +112,20 @@ router.post(
 
       console.log('✅ Nouveau message de contact enregistré:', newMessage._id);
 
+      // Envoyer un SMS de confirmation au client si un numéro de téléphone est fourni
+      if (phone && phone.trim()) {
+        try {
+          const { sendSMS } = require('../sendSMS');
+          const smsMessage = `Merci de nous avoir contactés.\n\nNous vous invitons à créer un compte sur notre site afin de faciliter le suivi de votre demande.\n\nÀ très bientôt.`;
+          
+          await sendSMS(phone, smsMessage);
+          console.log(`✅ SMS de confirmation envoyé à ${phone}`);
+        } catch (smsError) {
+          console.error('⚠️ Erreur lors de l\'envoi du SMS de confirmation:', smsError);
+          // Ne pas bloquer l'envoi du message si le SMS échoue
+        }
+      }
+
       // Notifier tous les admins
       try {
         const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } });
@@ -241,6 +255,15 @@ router.get(
   require('../middleware/auth').authorize('admin', 'superadmin'),
   async (req, res) => {
     try {
+      // Valider que l'ID est un ObjectId valide
+      const mongoose = require('mongoose');
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID de message invalide'
+        });
+      }
+
       const message = await Message.findById(req.params.id);
 
       if (!message) {
@@ -250,23 +273,39 @@ router.get(
         });
       }
 
+      // Nettoyer les entrées lu invalides (sans user) - utiliser markModified pour forcer la sauvegarde
+      if (message.lu && Array.isArray(message.lu)) {
+        const cleanedLu = message.lu.filter(l => l && l.user && (l.user._id || l.user));
+        if (cleanedLu.length !== message.lu.length) {
+          message.lu = cleanedLu;
+          message.markModified('lu');
+        }
+      } else {
+        message.lu = [];
+        message.markModified('lu');
+      }
+
       // Marquer comme lu par cet admin (gestion partagée)
       const userId = req.user.id || req.user._id;
-      const dejaLu = message.lu && message.lu.some((l) => {
+      const dejaLu = message.lu && message.lu.length > 0 && message.lu.some((l) => {
         const luUserId = l.user?._id?.toString() || l.user?.toString();
-        return luUserId === userId.toString();
+        return luUserId && userId && luUserId.toString() === userId.toString();
       });
       
       if (!dejaLu) {
-        if (!message.lu) {
+        if (!message.lu || !Array.isArray(message.lu)) {
           message.lu = [];
         }
         message.lu.push({
           user: userId,
           luAt: new Date()
         });
+        message.markModified('lu');
         await message.save();
       }
+
+      // Populate après la sauvegarde
+      await message.populate('lu.user', 'firstName lastName email');
 
       res.json({
         success: true,
@@ -306,6 +345,15 @@ router.patch(
         });
       }
 
+      // Valider que l'ID est un ObjectId valide
+      const mongoose = require('mongoose');
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID de message invalide'
+        });
+      }
+
       const message = await Message.findById(req.params.id);
 
       if (!message) {
@@ -318,11 +366,23 @@ router.patch(
       // Gérer le marquage lu/non lu partagé
       if (req.body.lu !== undefined) {
         const userId = req.user.id || req.user._id;
+        // Nettoyer les entrées lu invalides (sans user)
+        if (message.lu && Array.isArray(message.lu)) {
+          const cleanedLu = message.lu.filter(l => l && l.user && (l.user._id || l.user));
+          if (cleanedLu.length !== message.lu.length) {
+            message.lu = cleanedLu;
+            message.markModified('lu');
+          }
+        } else {
+          message.lu = [];
+          message.markModified('lu');
+        }
+
         if (req.body.lu === true) {
           // Marquer comme lu par cet admin
-          const dejaLu = message.lu && Array.isArray(message.lu) && message.lu.some((l) => {
+          const dejaLu = message.lu && message.lu.length > 0 && message.lu.some((l) => {
             const luUserId = l.user?._id?.toString() || l.user?.toString();
-            return luUserId === userId.toString();
+            return luUserId && userId && luUserId.toString() === userId.toString();
           });
           if (!dejaLu) {
             if (!message.lu || !Array.isArray(message.lu)) {
@@ -332,15 +392,15 @@ router.patch(
               user: userId,
               luAt: new Date()
             });
+            message.markModified('lu');
           }
         } else {
           // Marquer comme non lu (retirer de la liste)
-          if (message.lu && Array.isArray(message.lu)) {
-            message.lu = message.lu.filter((l) => {
-              const luUserId = l.user?._id?.toString() || l.user?.toString();
-              return luUserId !== userId.toString();
-            });
-          }
+          message.lu = message.lu.filter((l) => {
+            const luUserId = l.user?._id?.toString() || l.user?.toString();
+            return luUserId && userId && luUserId.toString() !== userId.toString();
+          });
+          message.markModified('lu');
         }
       }
       if (req.body.repondu !== undefined) message.repondu = req.body.repondu;

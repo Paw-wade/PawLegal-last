@@ -1,21 +1,5 @@
 {
   "pages": {
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
-    "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
-    ],
-    "/auth/signin/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/auth/signin/page.js"
-    ],
     "/admin/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -26,50 +10,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/admin/layout.js"
     ],
-    "/admin/sms/page": [
+    "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/admin/sms/page.js"
-    ],
-    "/admin/creneaux/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/creneaux/page.js"
-    ],
-    "/admin/rendez-vous/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/rendez-vous/page.js"
-    ],
-    "/admin/taches/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/taches/page.js"
-    ],
-    "/admin/corbeille/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/corbeille/page.js"
-    ],
-    "/admin/utilisateurs/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/utilisateurs/page.js"
-    ],
-    "/admin/dossiers/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/dossiers/page.js"
-    ],
-    "/admin/cms/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/cms/page.js"
-    ],
-    "/_not-found/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
     ]
   }
 }
