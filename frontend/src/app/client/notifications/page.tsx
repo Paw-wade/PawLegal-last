@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { notificationsAPI } from '@/lib/api';
+import { DocumentRequestNotificationModal } from '@/components/DocumentRequestNotificationModal';
 
 function Button({ children, variant = 'default', size = 'default', className = '', ...props }: any) {
   const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
@@ -25,11 +26,29 @@ function Button({ children, variant = 'default', size = 'default', className = '
 export default function NotificationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | NotificationCategoryKey>('all');
+  const [selectedDocumentRequestNotification, setSelectedDocumentRequestNotification] = useState<any>(null);
+  const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
+  const [selectedDossierId, setSelectedDossierId] = useState<string>('');
+
+  // Gérer les query params pour filtrer par dossier
+  useEffect(() => {
+    const dossierIdParam = searchParams.get('dossierId');
+    const filterParam = searchParams.get('filter');
+    
+    if (dossierIdParam) {
+      setSelectedDossierId(dossierIdParam);
+    }
+    
+    if (filterParam === 'unread') {
+      setFilter('unread');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -110,6 +129,8 @@ export default function NotificationsPage() {
       dossier_assigned: '👤',
       dossier_cancelled: '❌',
       document_uploaded: '📄',
+      document_request: '📄',
+      document_received: '📥',
       appointment_created: '📅',
       appointment_updated: '📅',
       appointment_cancelled: '❌',
@@ -128,6 +149,8 @@ export default function NotificationsPage() {
       dossier_assigned: 'bg-purple-50 border-l-4 border-purple-500',
       dossier_cancelled: 'bg-orange-50 border-l-4 border-orange-500',
       document_uploaded: 'bg-indigo-50 border-l-4 border-indigo-500',
+      document_request: 'bg-orange-50 border-l-4 border-orange-500',
+      document_received: 'bg-green-50 border-l-4 border-green-500',
       appointment_created: 'bg-teal-50 border-l-4 border-teal-500',
       appointment_updated: 'bg-teal-50 border-l-4 border-teal-500',
       appointment_cancelled: 'bg-red-50 border-l-4 border-red-500',
@@ -170,7 +193,18 @@ export default function NotificationsPage() {
   if (!session) return null;
 
   const unreadCount = notifications.filter(n => !n.lu).length;
-  const filteredNotifications = filter === 'unread' ? notifications.filter(n => !n.lu) : notifications;
+  let filteredNotifications = filter === 'unread' ? notifications.filter(n => !n.lu) : notifications;
+
+  // Filtrer par dossier si sélectionné
+  if (selectedDossierId) {
+    filteredNotifications = filteredNotifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === selectedDossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === selectedDossierId.toString())
+      );
+    });
+  }
 
   const categorizedNotifications: Record<NotificationCategoryKey, any[]> = {
     dossiers: [],
@@ -375,6 +409,19 @@ export default function NotificationsPage() {
                         </div>
 
                         <div className="flex gap-2 flex-wrap mt-3">
+                          {notification.type === 'document_request' && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedDocumentRequestNotification(notification);
+                                setShowDocumentRequestModal(true);
+                              }}
+                              className="text-xs h-9 px-3 bg-primary hover:bg-primary/90 text-white"
+                            >
+                              📤 Envoyer le document
+                            </Button>
+                          )}
                           {notification.lien && (
                             <Link href={notification.lien}>
                               <Button variant="outline" size="sm" className="text-xs h-9 px-3">
@@ -410,6 +457,17 @@ export default function NotificationsPage() {
           </div>
         )}
       </main>
+
+      {/* Modal de demande de document */}
+      <DocumentRequestNotificationModal
+        isOpen={showDocumentRequestModal}
+        onClose={() => {
+          setShowDocumentRequestModal(false);
+          setSelectedDocumentRequestNotification(null);
+          loadNotifications();
+        }}
+        notification={selectedDocumentRequestNotification}
+      />
     </div>
   );
 }

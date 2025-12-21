@@ -237,6 +237,8 @@ async function sendNotificationSMS(to, type, data = {}, options = {}) {
         dossier_updated: `Votre dossier "{{dossierTitle}}" a été mis à jour. Statut: {{statut}}. Paw Legal.`,
         dossier_status_changed: `Votre dossier "{{dossierTitle}}" a changé de statut: {{statut}}. Paw Legal.`,
         document_uploaded: `Un nouveau document a été ajouté à votre dossier "{{dossierTitle}}". Paw Legal.`,
+        document_request: `{{isUrgentText}}Document requis pour votre dossier {{dossierNumero}}. Type: {{documentType}}. Connectez-vous pour envoyer. Paw Legal.`,
+        document_received: `Document "{{documentName}}" reçu pour le dossier {{dossierNumero}}. Paw Legal.`,
         message_received: `Vous avez reçu un nouveau message de {{senderName}}. Connectez-vous pour le consulter. Paw Legal.`,
         task_assigned: `Une nouvelle tâche vous a été assignée: {{taskTitle}}. Paw Legal.`,
         task_reminder: `Rappel: La tâche "{{taskTitle}}" est due le {{dateEcheance}}. Paw Legal.`,

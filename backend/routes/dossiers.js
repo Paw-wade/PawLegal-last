@@ -170,32 +170,142 @@ router.post(
         }
       }
 
-      // Si le dossier est créé depuis un rendez-vous, notifier les admins
-      if (rendezVousId && finalUserId) {
+      // Si le dossier est créé depuis un rendez-vous, notifier les admins et le client
+      if (rendezVousId) {
         try {
           const RendezVous = require('../models/RendezVous');
           const rendezVous = await RendezVous.findById(rendezVousId);
+          const { sendNotificationSMS, formatPhoneNumber } = require('../sendSMS');
           
-          if (rendezVous && user) {
-            // Notifier tous les admins actifs
-            const admins = await User.find({ 
-              role: { $in: ['admin', 'superadmin'] },
-              isActive: true 
-            });
-            
-            for (const admin of admins) {
-              await createNotification(
-                admin._id,
-                'dossier_created',
-                'Nouveau dossier créé depuis un rendez-vous',
-                `Un nouveau dossier "${dossier.titre}" a été créé par ${user.firstName} ${user.lastName} suite au rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')}.`,
-                '/admin/dossiers',
-                {
-                  dossierId: dossier._id.toString(),
-                  rendezVousId: rendezVousId.toString(),
-                  userId: finalUserId.toString()
+          if (rendezVous) {
+            // Notifier le client (utilisateur connecté ou coordonnées du rendez-vous)
+            if (finalUserId && user) {
+              // Client connecté - notification et SMS
+              try {
+                await createNotification(
+                  finalUserId,
+                  'dossier_created',
+                  'Nouveau dossier créé',
+                  `Un nouveau dossier "${dossier.titre}" a été créé suite à votre rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')} à ${rendezVous.heure}.`,
+                  '/client/dossiers',
+                  {
+                    dossierId: dossier._id.toString(),
+                    rendezVousId: rendezVousId.toString()
+                  }
+                );
+                console.log(`✅ Notification créée pour le client: ${user.email}`);
+
+                // Envoyer un SMS au client si le téléphone est disponible
+                if (user.phone) {
+                  try {
+                    const formattedPhone = formatPhoneNumber(user.phone);
+                    if (formattedPhone) {
+                      await sendNotificationSMS(formattedPhone, 'dossier_created', {
+                        dossierTitle: dossier.titre,
+                        dossierId: dossier.numero || dossier._id.toString(),
+                        appointmentDate: new Date(rendezVous.date).toLocaleDateString('fr-FR'),
+                        appointmentTime: rendezVous.heure
+                      }, {
+                        userId: finalUserId.toString(),
+                        context: 'dossier',
+                        contextId: dossier._id.toString()
+                      });
+                      console.log(`✅ SMS envoyé au client: ${formattedPhone}`);
+                    }
+                  } catch (smsError) {
+                    console.error('⚠️ Erreur lors de l\'envoi du SMS au client:', smsError);
+                  }
                 }
-              );
+              } catch (clientNotifError) {
+                console.error('Erreur lors de la création de la notification client:', clientNotifError);
+              }
+            } else if (clientEmail) {
+              // Client non connecté - chercher par email ou créer une notification pour l'email
+              try {
+                const userByEmail = await User.findOne({ email: clientEmail.toLowerCase() });
+                if (userByEmail) {
+                  await createNotification(
+                    userByEmail._id,
+                    'dossier_created',
+                    'Nouveau dossier créé',
+                    `Un nouveau dossier "${dossier.titre}" a été créé suite à votre rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')} à ${rendezVous.heure}.`,
+                    '/client/dossiers',
+                    {
+                      dossierId: dossier._id.toString(),
+                      rendezVousId: rendezVousId.toString()
+                    }
+                  );
+                  console.log(`✅ Notification créée pour le client: ${clientEmail}`);
+
+                  // Envoyer un SMS si le téléphone est disponible
+                  if (userByEmail.phone) {
+                    try {
+                      const formattedPhone = formatPhoneNumber(userByEmail.phone);
+                      if (formattedPhone) {
+                        await sendNotificationSMS(formattedPhone, 'dossier_created', {
+                          dossierTitle: dossier.titre,
+                          dossierId: dossier.numero || dossier._id.toString(),
+                          appointmentDate: new Date(rendezVous.date).toLocaleDateString('fr-FR'),
+                          appointmentTime: rendezVous.heure
+                        }, {
+                          userId: userByEmail._id.toString(),
+                          context: 'dossier',
+                          contextId: dossier._id.toString()
+                        });
+                        console.log(`✅ SMS envoyé au client: ${formattedPhone}`);
+                      }
+                    } catch (smsError) {
+                      console.error('⚠️ Erreur lors de l\'envoi du SMS au client:', smsError);
+                    }
+                  }
+                } else if (clientTelephone) {
+                  // Client non inscrit mais avec téléphone - envoyer SMS uniquement
+                  try {
+                    const formattedPhone = formatPhoneNumber(clientTelephone);
+                    if (formattedPhone) {
+                      await sendNotificationSMS(formattedPhone, 'dossier_created', {
+                        dossierTitle: dossier.titre,
+                        dossierId: dossier.numero || dossier._id.toString(),
+                        appointmentDate: new Date(rendezVous.date).toLocaleDateString('fr-FR'),
+                        appointmentTime: rendezVous.heure
+                      }, {
+                        context: 'dossier',
+                        contextId: dossier._id.toString(),
+                        clientEmail: clientEmail
+                      });
+                      console.log(`✅ SMS envoyé au client non inscrit: ${formattedPhone}`);
+                    }
+                  } catch (smsError) {
+                    console.error('⚠️ Erreur lors de l\'envoi du SMS au client non inscrit:', smsError);
+                  }
+                }
+              } catch (clientNotifError) {
+                console.error('Erreur lors de la notification du client:', clientNotifError);
+              }
+            }
+
+            // Notifier tous les admins actifs
+            if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+              const admins = await User.find({ 
+                role: { $in: ['admin', 'superadmin'] },
+                isActive: true,
+                _id: { $ne: req.user._id } // Exclure l'admin qui a créé le dossier
+              });
+              
+              for (const admin of admins) {
+                await createNotification(
+                  admin._id,
+                  'dossier_created',
+                  'Nouveau dossier créé depuis un rendez-vous',
+                  `Un nouveau dossier "${dossier.titre}" a été créé ${finalUserId && user ? `pour ${user.firstName} ${user.lastName}` : `pour ${clientNom} ${clientPrenom}`} suite au rendez-vous du ${new Date(rendezVous.date).toLocaleDateString('fr-FR')}.`,
+                  '/admin/dossiers',
+                  {
+                    dossierId: dossier._id.toString(),
+                    rendezVousId: rendezVousId.toString(),
+                    userId: finalUserId ? finalUserId.toString() : null
+                  }
+                );
+              }
             }
           }
         } catch (notifError) {

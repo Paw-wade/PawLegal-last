@@ -96,11 +96,25 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
   };
 
   const handleOpenDossier = () => {
-    if (!message?.dossierId) return;
+    // Extraire l'ID du dossier (peut être un objet ou une string)
+    const dossierId = message?.dossierId 
+      ? (typeof message.dossierId === 'object' 
+          ? (message.dossierId._id || message.dossierId.id || message.dossierId)
+          : message.dossierId)
+      : null;
+    
+    if (!dossierId) {
+      console.warn('Aucun dossierId trouvé dans le message');
+      return;
+    }
+    
     const basePath = typeof window !== 'undefined' && window.location.pathname.includes('/admin') 
       ? '/admin' 
       : '/client';
-    router.push(`${basePath}/dossiers/${message.dossierId}`);
+    
+    // Convertir en string pour l'URL
+    const dossierIdString = dossierId.toString();
+    router.push(`${basePath}/dossiers/${dossierIdString}`);
     onClose();
   };
 
@@ -201,12 +215,19 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-500/20 to-orange-600/20 rounded-full flex items-center justify-center">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-500/20 to-orange-600/20 rounded-full flex items-center justify-center flex-shrink-0">
               <span className="text-3xl">✉️</span>
             </div>
-            <div>
-              <h3 className="text-2xl font-bold text-gray-900">Nouveau message</h3>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-2xl font-bold text-gray-900">Nouveau message</h3>
+                {isContactMessage && (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">
+                    Envoyé depuis le formulaire de contact
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500 mt-1">
                 {isContactMessage 
                   ? 'Vous avez reçu un nouveau message via le formulaire de contact'
@@ -223,7 +244,7 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+            className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 flex-shrink-0"
             aria-label="Fermer"
           >
             ×
@@ -232,30 +253,89 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
 
         {/* Content */}
         <div className="space-y-4 mb-6 flex-1 overflow-y-auto pr-2 min-h-0">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expéditeur</p>
-            <p className="text-base font-semibold text-gray-900">{expediteurName}</p>
-          </div>
+          {/* Informations complètes pour les messages de contact */}
+          {isContactMessage ? (
+            <>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">📋</span>
+                  <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Informations de l'expéditeur
+                  </h4>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Nom complet</p>
+                    <p className="text-sm font-semibold text-gray-900">{message.name || 'Non renseigné'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Prénom</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {message.name?.split(' ')[0] || 'Non renseigné'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Nom de famille</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {message.name?.split(' ').slice(1).join(' ') || 'Non renseigné'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Adresse e-mail</p>
+                    <a 
+                      href={`mailto:${message.email}`}
+                      className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {message.email || 'Non renseigné'}
+                      <span className="text-xs">✉️</span>
+                    </a>
+                  </div>
+                  {message.phone && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Numéro de téléphone</p>
+                      <a 
+                        href={`tel:${message.phone}`}
+                        className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        {message.phone}
+                        <span className="text-xs">📞</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sujet</p>
-            <p className="text-base font-semibold text-gray-900">
-              {isContactMessage ? message.subject : message.sujet}
-            </p>
-          </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sujet</p>
+                <p className="text-base font-semibold text-gray-900">{message.subject}</p>
+              </div>
 
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message</p>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {isContactMessage ? message.message : message.contenu}
-            </p>
-          </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message</p>
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {message.message}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expéditeur</p>
+                <p className="text-base font-semibold text-gray-900">{expediteurName}</p>
+              </div>
 
-          {isContactMessage && message.phone && (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Téléphone</p>
-              <p className="text-sm text-gray-700">{message.phone}</p>
-            </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sujet</p>
+                <p className="text-base font-semibold text-gray-900">{message.sujet}</p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message</p>
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {message.contenu}
+                </p>
+              </div>
+            </>
           )}
 
           {(() => {
@@ -382,7 +462,7 @@ export function MessageNotificationModal({ isOpen, onClose, message }: MessageNo
               className="flex-1 min-w-[120px] px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
             >
               <span className="text-sm">📁</span>
-              <span className="truncate">Ouvrir le dossier</span>
+              <span className="truncate">Voir le dossier</span>
             </button>
           )}
 

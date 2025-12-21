@@ -466,6 +466,54 @@ router.patch(
         }
       }
 
+      // Créer une notification pour tous les administrateurs
+      try {
+        const User = require('../models/User');
+        const Notification = require('../models/Notification');
+        
+        const admins = await User.find({ 
+          role: { $in: ['admin', 'superadmin'] },
+          isActive: { $ne: false }
+        }).select('_id');
+
+        const clientName = rendezVous.user 
+          ? `${rendezVous.user.firstName || ''} ${rendezVous.user.lastName || ''}`.trim() || rendezVous.user.email
+          : `${rendezVous.prenom || ''} ${rendezVous.nom || ''}`.trim() || rendezVous.email || 'Client';
+
+        const dateFormatted = new Date(rendezVous.date).toLocaleDateString('fr-FR', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+
+        // Créer une notification pour chaque admin
+        const adminNotifications = admins.map(admin => ({
+          user: admin._id,
+          type: 'appointment_cancelled',
+          titre: `🚫 Rendez-vous annulé - ${clientName}`,
+          message: `Le client ${clientName} a annulé son rendez-vous prévu le ${dateFormatted} à ${rendezVous.heure || 'heure non spécifiée'}.\n\nMotif: ${rendezVous.motif || 'Non spécifié'}\n${rendezVous.description ? `Description: ${rendezVous.description}` : ''}`,
+          lien: '/admin/rendez-vous',
+          metadata: {
+            appointmentId: rendezVous._id.toString(),
+            clientName: clientName,
+            date: rendezVous.date,
+            heure: rendezVous.heure,
+            motif: rendezVous.motif,
+            description: rendezVous.description,
+            oldStatut,
+            newStatut: 'annule'
+          }
+        }));
+
+        if (adminNotifications.length > 0) {
+          await Notification.insertMany(adminNotifications);
+          console.log(`✅ Notifications d'annulation envoyées à ${adminNotifications.length} administrateur(s)`);
+        }
+      } catch (adminNotifError) {
+        console.error('⚠️ Erreur lors de la création des notifications pour les admins:', adminNotifError);
+      }
+
       res.json({
         success: true,
         message: 'Rendez-vous annulé avec succès',

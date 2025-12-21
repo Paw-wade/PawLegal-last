@@ -101,6 +101,12 @@ const dossierSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'RendezVous'
   }],
+  // Lien vers le message de contact d'origine (si le dossier a été créé depuis un message de contact)
+  createdFromContactMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+    required: false
+  },
   notes: {
     type: String,
     trim: true

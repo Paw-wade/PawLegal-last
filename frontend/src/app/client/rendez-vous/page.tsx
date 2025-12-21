@@ -587,46 +587,7 @@ function RendezVousPageContent() {
 
                     {/* Actions */}
                     <div className="pt-3 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {canMarkAsDone && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={`text-xs h-8 ${rdv.effectue 
-                                ? 'border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400' 
-                                : 'border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400'}`}
-                              onClick={() => handleMarkAsDone(appointmentId, !rdv.effectue)}
-                              disabled={markingAsDone === appointmentId}
-                            >
-                              {markingAsDone === appointmentId 
-                                ? '...' 
-                                : rdv.effectue 
-                                ? '❌ Marquer non effectué' 
-                                : '✅ Marquer effectué'}
-                            </Button>
-                          )}
-                          {rdv.effectue && canMarkAsDone && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs h-8 border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
-                              onClick={() => {
-                                setAppointmentForDossier(rdv);
-                                setDossierFormData({
-                                  titre: `Dossier suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')}`,
-                                  description: `Dossier créé suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')} à ${rdv.heure}.\n\nMotif: ${rdv.motif || 'N/A'}\n${rdv.description ? `Description: ${rdv.description}` : ''}`,
-                                  categorie: 'autre',
-                                  type: '',
-                                  priorite: 'normale'
-                                });
-                                setShowCreateDossierModal(true);
-                              }}
-                            >
-                              📁 Créer un dossier
-                            </Button>
-                          )}
-                        </div>
+                      <div className="flex items-center justify-end">
                         <div className="flex items-center gap-2">
                           {canCancel && (
                             <>

@@ -135,6 +135,7 @@ export default function ComptePage() {
   useEffect(() => {
     // Charger le profil automatiquement lorsque l'utilisateur est authentifié
     // Le formulaire sera pré-rempli avec toutes les données existantes
+    // Les préférences SMS sont chargées directement dans loadProfile() pour éviter un double appel API
     if (status === 'authenticated' && session) {
       loadProfile();
     }
@@ -197,6 +198,29 @@ export default function ComptePage() {
         
         console.log('📝 Données pré-remplies:', preFilledData);
         setProfileData(preFilledData);
+        
+        // Charger aussi les préférences SMS depuis les mêmes données
+        if (user.smsPreferences) {
+          setSmsPreferences({
+            enabled: user.smsPreferences.enabled !== false,
+            types: {
+              appointment_confirmed: user.smsPreferences.types?.appointment_confirmed !== false,
+              appointment_cancelled: user.smsPreferences.types?.appointment_cancelled !== false,
+              appointment_updated: user.smsPreferences.types?.appointment_updated !== false,
+              appointment_reminder: user.smsPreferences.types?.appointment_reminder !== false,
+              dossier_created: user.smsPreferences.types?.dossier_created !== false,
+              dossier_updated: user.smsPreferences.types?.dossier_updated !== false,
+              dossier_status_changed: user.smsPreferences.types?.dossier_status_changed !== false,
+              document_uploaded: user.smsPreferences.types?.document_uploaded !== false,
+              message_received: user.smsPreferences.types?.message_received !== false,
+              task_assigned: user.smsPreferences.types?.task_assigned !== false,
+              task_reminder: user.smsPreferences.types?.task_reminder !== false,
+              account_security: user.smsPreferences.types?.account_security !== false,
+              otp: true, // Toujours activé pour sécurité
+            }
+          });
+          console.log('✅ Préférences SMS chargées depuis le profil');
+        }
       } else {
         console.error('❌ Erreur: réponse non réussie', response.data);
         setError('Impossible de charger le profil');
@@ -206,6 +230,39 @@ export default function ComptePage() {
       setError(error.response?.data?.message || 'Erreur lors du chargement du profil');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadSmsPreferences = async () => {
+    try {
+      const response = await userAPI.getProfile();
+      if (response.data.success) {
+        const user = response.data.user || response.data.data;
+        if (user.smsPreferences) {
+          setSmsPreferences({
+            enabled: user.smsPreferences.enabled !== false,
+            types: {
+              appointment_confirmed: user.smsPreferences.types?.appointment_confirmed !== false,
+              appointment_cancelled: user.smsPreferences.types?.appointment_cancelled !== false,
+              appointment_updated: user.smsPreferences.types?.appointment_updated !== false,
+              appointment_reminder: user.smsPreferences.types?.appointment_reminder !== false,
+              dossier_created: user.smsPreferences.types?.dossier_created !== false,
+              dossier_updated: user.smsPreferences.types?.dossier_updated !== false,
+              dossier_status_changed: user.smsPreferences.types?.dossier_status_changed !== false,
+              document_uploaded: user.smsPreferences.types?.document_uploaded !== false,
+              message_received: user.smsPreferences.types?.message_received !== false,
+              task_assigned: user.smsPreferences.types?.task_assigned !== false,
+              task_reminder: user.smsPreferences.types?.task_reminder !== false,
+              account_security: user.smsPreferences.types?.account_security !== false,
+              otp: true, // Toujours activé pour sécurité
+            }
+          });
+          console.log('✅ Préférences SMS chargées:', user.smsPreferences);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur lors du chargement des préférences SMS:', error);
+      // Ne pas afficher d'erreur, utiliser les valeurs par défaut
     }
   };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { messagesAPI, dossiersAPI } from '@/lib/api';
 
@@ -58,6 +58,7 @@ function Textarea({ className = '', ...props }: any) {
 export default function MessagesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +84,21 @@ export default function MessagesPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [selectedExpediteurId, setSelectedExpediteurId] = useState<string>('');
   const [selectedDestinataireId, setSelectedDestinataireId] = useState<string>('');
+
+  // Gérer les query params pour pré-sélectionner le dossier et ouvrir le modal
+  useEffect(() => {
+    const dossierIdParam = searchParams.get('dossierId');
+    const actionParam = searchParams.get('action');
+    
+    if (dossierIdParam) {
+      setSelectedDossierId(dossierIdParam);
+      
+      // Si action=send, ouvrir le modal de composition
+      if (actionParam === 'send') {
+        setShowComposeModal(true);
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {

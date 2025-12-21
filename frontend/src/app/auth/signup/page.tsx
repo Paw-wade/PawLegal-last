@@ -232,14 +232,21 @@ export default function SignupPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors de l\'envoi de l\'OTP:', err);
+      console.error('Détails de l\'erreur:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
       
       if (err.response?.data?.message) {
         setError(err.response.data.message);
       } else if (err.response?.data?.errors) {
         const errorMessages = err.response.data.errors.map((e: any) => e.msg || e.message).join(', ');
         setError(errorMessages);
+      } else if (err.message) {
+        setError(`Erreur: ${err.message}`);
       } else {
-        setError('Une erreur est survenue lors de l\'envoi du code. Veuillez réessayer.');
+        setError('Erreur lors de l\'envoi du SMS. Veuillez réessayer.');
       }
     } finally {
       setIsLoading(false);

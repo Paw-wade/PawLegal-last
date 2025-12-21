@@ -111,6 +111,15 @@ try {
   console.log('⚠️ Route /api/user/documents non trouvée');
 }
 
+try {
+  if (require.resolve('./routes/document-requests')) {
+    app.use('/api/document-requests', require('./routes/document-requests'));
+    console.log('✅ Route /api/document-requests enregistrée');
+  }
+} catch (e) {
+  console.log('⚠️ Route /api/document-requests non trouvée');
+}
+
 // Route /api/user doit être montée APRÈS les routes spécifiques
 app.use('/api/user', require('./routes/user'));
 console.log('✅ Route /api/user enregistrée'); // Debug log

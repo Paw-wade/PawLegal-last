@@ -130,12 +130,16 @@ api.interceptors.response.use(
     // Ignorer silencieusement les 404 pour les clés CMS manquantes (comportement attendu)
     // Cette vérification doit être faite AVANT tous les logs d'erreur
     const isCmsKeyNotFound = error.response?.status === 404 && 
-                             error.config?.url?.includes('/content/value') &&
-                             error.response?.data?.message === 'Clé non trouvée';
+                             error.config?.url?.includes('/content/value');
     
     if (isCmsKeyNotFound) {
       // Ne pas logger cette erreur - c'est un comportement attendu quand une clé CMS n'existe pas encore
-      return Promise.reject(error);
+      // Créer une erreur silencieuse qui ne sera pas loggée
+      const silentError = new Error('CMS key not found');
+      (silentError as any).isCmsNotFound = true;
+      (silentError as any).response = error.response;
+      (silentError as any).config = error.config;
+      return Promise.reject(silentError);
     }
     
     // Gérer les erreurs de connexion (backend non disponible)
@@ -402,6 +406,21 @@ export const contactAPI = {
   // Admin - Télécharger un document
   downloadDocument: (messageId: string, docId: string) =>
     api.get(`/contact/${messageId}/document/${docId}`, { responseType: 'blob' }),
+  
+  // Admin - Créer un dossier depuis un message de contact
+  createDossierFromMessage: (messageId: string, data: {
+    titre: string;
+    description?: string;
+    categorie: string;
+    type: string;
+    statut?: string;
+    priorite?: string;
+    clientNom?: string;
+    clientPrenom?: string;
+    clientEmail?: string;
+    clientTelephone?: string;
+  }) =>
+    api.post(`/contact/${messageId}/create-dossier`, data),
 };
 
 export const permissionsAPI = {
@@ -807,11 +826,14 @@ export const cmsAPI = {
       }
       return null;
     } catch (error: any) {
-      // Si la clé n'existe pas, on renvoie null pour laisser le fallback côté composant
-      if (error?.response?.status === 404) {
+      // Si la clé n'existe pas (404) ou si c'est une erreur CMS silencieuse, on renvoie null
+      if (error?.response?.status === 404 || error?.isCmsNotFound) {
         return null;
       }
-      console.error('❌ Erreur lors de la récupération du texte CMS:', error);
+      // Ne logger que les erreurs non-404
+      if (error?.response?.status !== 404 && !error?.isCmsNotFound) {
+        console.error('❌ Erreur lors de la récupération du texte CMS:', error);
+      }
       return null;
     }
   },
@@ -917,14 +939,56 @@ export const smsTemplatesAPI = {
     return api.delete(`/sms-templates/${id}`);
   },
   
-  // Tester un template
+  // Tester un template (prévisualisation uniquement)
   testTemplate: (id: string, variables: Record<string, any>) => {
     return api.post(`/sms-templates/${id}/test`, { variables });
+  },
+  
+  // Envoyer un SMS de test réel
+  sendTestSMS: (id: string, phone: string, variables: Record<string, any>) => {
+    return api.post(`/sms-templates/${id}/send-test`, { phone, variables });
   },
   
   // Initialiser les templates par défaut
   initDefaults: () => {
     return api.post('/sms-templates/init-defaults');
+  },
+};
+
+export const documentRequestsAPI = {
+  // Créer une demande de document (admin)
+  createRequest: (data: {
+    dossierId: string;
+    documentType: string;
+    documentTypeLabel: string;
+    message?: string;
+    isUrgent?: boolean;
+  }) => {
+    return api.post('/document-requests', data);
+  },
+
+  // Récupérer les demandes de documents
+  getRequests: (params?: {
+    dossierId?: string;
+    status?: 'pending' | 'sent' | 'received';
+    userId?: string;
+  }) => {
+    return api.get('/document-requests', { params });
+  },
+
+  // Récupérer une demande par ID
+  getRequest: (id: string) => {
+    return api.get(`/document-requests/${id}`);
+  },
+
+  // Téléverser un document en réponse à une demande
+  uploadDocument: (requestId: string, documentId: string) => {
+    return api.post(`/document-requests/${requestId}/upload`, { documentId });
+  },
+
+  // Mettre à jour le statut d'une demande (admin)
+  updateStatus: (id: string, status: 'pending' | 'sent' | 'received') => {
+    return api.patch(`/document-requests/${id}/status`, { status });
   },
 };
 

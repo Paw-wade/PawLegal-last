@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { documentsAPI, dossiersAPI } from '@/lib/api';
@@ -17,14 +17,16 @@ function Button({ children, variant = 'default', className = '', disabled, ...pr
   return <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
 }
 
-function Input({ className = '', ...props }: any) {
+const Input = React.forwardRef<HTMLInputElement, any>(({ className = '', ...props }, ref) => {
   return (
     <input
+      ref={ref}
       className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       {...props}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 function Label({ htmlFor, children, className = '' }: any) {
   return (
@@ -44,7 +46,6 @@ export default function DocumentsPage() {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState({
     nom: '',
     description: '',
@@ -54,17 +55,18 @@ export default function DocumentsPage() {
   const [dossiers, setDossiers] = useState<any[]>([]);
   const [isLoadingDossiers, setIsLoadingDossiers] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<any | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [dossierFilter, setDossierFilter] = useState<string>('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
     } else if (status === 'authenticated') {
-      // S'assurer que le token est stocké dans localStorage
       if (session && (session.user as any)?.accessToken && typeof window !== 'undefined') {
         const token = (session.user as any).accessToken;
         if (!localStorage.getItem('token')) {
           localStorage.setItem('token', token);
-          console.log('🔑 Token stocké dans localStorage depuis la session');
         }
       }
       loadDocuments();
@@ -90,36 +92,14 @@ export default function DocumentsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      console.log('📄 Chargement des documents pour l\'utilisateur:', session?.user?.email);
-      
-      // Vérifier que le token est disponible
-      if (typeof window !== 'undefined') {
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        if (!token && session && (session.user as any)?.accessToken) {
-          localStorage.setItem('token', (session.user as any).accessToken);
-          console.log('🔑 Token stocké dans localStorage depuis la session');
-        }
-        if (!token) {
-          console.warn('⚠️ Aucun token trouvé pour charger les documents');
-        }
-      }
-      
       const response = await documentsAPI.getMyDocuments();
-      console.log('📄 Réponse API documents:', response.data);
-      
       if (response.data.success) {
         setDocuments(response.data.documents || []);
-        console.log('✅ Documents chargés:', response.data.documents?.length || 0);
       } else {
         setError('Erreur lors du chargement des documents');
       }
     } catch (err: any) {
-      console.error('❌ Erreur lors du chargement des documents:', err);
-      console.error('❌ Détails de l\'erreur:', {
-        status: err.response?.status,
-        message: err.response?.data?.message,
-        data: err.response?.data
-      });
+      console.error('Erreur lors du chargement des documents:', err);
       setError(err.response?.data?.message || 'Erreur lors du chargement des documents');
     } finally {
       setIsLoading(false);
@@ -128,26 +108,15 @@ export default function DocumentsPage() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      // Auto-remplir le nom si vide
-      if (!uploadData.nom) {
-        setUploadData({ ...uploadData, nom: file.name });
-      }
-      // Effacer les erreurs précédentes
-      setError(null);
-    } else {
-      setSelectedFile(null);
+    if (file && !uploadData.nom) {
+      setUploadData({ ...uploadData, nom: file.name });
     }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Vérifier d'abord le fichier dans l'état, puis dans la référence
-    const file = selectedFile || fileInputRef.current?.files?.[0];
-    
-    if (!file) {
+    if (!fileInputRef.current?.files?.[0]) {
       setError('Veuillez sélectionner un fichier');
       return;
     }
@@ -163,7 +132,7 @@ export default function DocumentsPage() {
 
     try {
       const formData = new FormData();
-      formData.append('document', file);
+      formData.append('document', fileInputRef.current.files[0]);
       formData.append('nom', uploadData.nom.trim());
       formData.append('description', uploadData.description.trim());
       formData.append('categorie', uploadData.categorie);
@@ -172,19 +141,30 @@ export default function DocumentsPage() {
       }
 
       const response = await documentsAPI.uploadDocument(formData);
+      console.log('📄 Réponse téléversement:', response.data);
+      
       if (response.data.success) {
         setSuccess('Document téléversé avec succès !');
         setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
-        setSelectedFile(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
         setShowUploadForm(false);
-        loadDocuments();
+        // Attendre un peu avant de recharger pour s'assurer que le document est bien enregistré
+        setTimeout(() => {
+          loadDocuments();
+        }, 500);
         setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(response.data.message || 'Erreur lors du téléversement du document');
       }
     } catch (err: any) {
-      console.error('Erreur lors du téléversement:', err);
+      console.error('❌ Erreur lors du téléversement:', err);
+      console.error('❌ Détails de l\'erreur:', {
+        status: err.response?.status,
+        message: err.response?.data?.message,
+        data: err.response?.data
+      });
       setError(err.response?.data?.message || 'Erreur lors du téléversement du document');
     } finally {
       setUploading(false);
@@ -194,7 +174,6 @@ export default function DocumentsPage() {
   const handleDownload = async (documentId: string, nom: string) => {
     try {
       const response = await documentsAPI.downloadDocument(documentId);
-      // Créer un blob et télécharger
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -236,11 +215,22 @@ export default function DocumentsPage() {
   };
 
   const getFileIcon = (typeMime: string) => {
-    if (typeMime.includes('pdf')) return '📄';
-    if (typeMime.includes('image')) return '🖼️';
-    if (typeMime.includes('word') || typeMime.includes('document')) return '📝';
-    if (typeMime.includes('excel') || typeMime.includes('spreadsheet')) return '📊';
+    if (typeMime?.includes('pdf')) return '📄';
+    if (typeMime?.includes('image')) return '🖼️';
+    if (typeMime?.includes('word') || typeMime?.includes('document')) return '📝';
+    if (typeMime?.includes('excel') || typeMime?.includes('spreadsheet')) return '📊';
     return '📎';
+  };
+
+  const getCategoryLabel = (categorie: string) => {
+    const labels: Record<string, string> = {
+      identite: 'Identité',
+      titre_sejour: 'Titre de séjour',
+      contrat: 'Contrat',
+      facture: 'Facture',
+      autre: 'Autre'
+    };
+    return labels[categorie] || categorie;
   };
 
   if (status === 'loading') {
@@ -254,29 +244,33 @@ export default function DocumentsPage() {
     );
   }
 
-  if (!session) return null;
+  if (!session) {
+    return null;
+  }
+
+  const filteredDocuments = documents.filter((doc) => {
+    const matchesSearch = !searchTerm || 
+      doc.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      doc.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !categoryFilter || doc.categorie === categoryFilter;
+    const matchesDossier = !dossierFilter || 
+      (doc.dossierId && (
+        (typeof doc.dossierId === 'object' && doc.dossierId._id?.toString() === dossierFilter) ||
+        doc.dossierId.toString() === dossierFilter
+      ));
+    return matchesSearch && matchesCategory && matchesDossier;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Documents</h1>
-            <p className="text-muted-foreground">Tous vos documents en un seul endroit</p>
+            <p className="text-muted-foreground">Gérez et consultez tous vos documents</p>
           </div>
-          <Button onClick={() => {
-            if (showUploadForm) {
-              // Réinitialiser le formulaire si on ferme
-              setSelectedFile(null);
-              setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
-              if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-              }
-              setError(null);
-            }
-            setShowUploadForm(!showUploadForm);
-          }}>
-            {showUploadForm ? 'Annuler' : '+ Téléverser un document'}
+          <Button onClick={() => setShowUploadForm(!showUploadForm)}>
+            {showUploadForm ? 'Annuler' : '📤 Téléverser un document'}
           </Button>
         </div>
 
@@ -306,14 +300,6 @@ export default function DocumentsPage() {
                   accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                   className="mt-1"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Types acceptés: PDF, images (JPG, PNG), Word, Excel. Taille max: 10 MB
-                </p>
-                {selectedFile && (
-                  <p className="text-xs text-green-600 mt-1">
-                    ✓ Fichier sélectionné: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                  </p>
-                )}
               </div>
               <div>
                 <Label htmlFor="nom">Nom du document *</Label>
@@ -323,7 +309,7 @@ export default function DocumentsPage() {
                   onChange={(e) => setUploadData({ ...uploadData, nom: e.target.value })}
                   required
                   className="mt-1"
-                  placeholder="Ex: Passeport, Contrat de travail..."
+                  placeholder="Ex: Passeport, Contrat..."
                 />
               </div>
               <div>
@@ -363,23 +349,18 @@ export default function DocumentsPage() {
                   <option value="">Aucun dossier</option>
                   {dossiers.map((dossier) => (
                     <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
-                      {dossier.titre || 'Dossier sans titre'} {dossier.categorie ? `(${dossier.categorie})` : ''}
+                      {dossier.titre || 'Dossier sans titre'} {dossier.numero ? `(${dossier.numero})` : ''}
                     </option>
                   ))}
                 </select>
-                {isLoadingDossiers && (
-                  <p className="text-xs text-muted-foreground mt-1">Chargement des dossiers...</p>
-                )}
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => {
                   setShowUploadForm(false);
-                  setSelectedFile(null);
                   setUploadData({ nom: '', description: '', categorie: 'autre', dossierId: '' });
                   if (fileInputRef.current) {
                     fileInputRef.current.value = '';
                   }
-                  setError(null);
                 }} disabled={uploading}>
                   Annuler
                 </Button>
@@ -391,66 +372,158 @@ export default function DocumentsPage() {
           </div>
         )}
 
-        {isLoading ? (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Chargement des documents...</p>
+        <div className="bg-white rounded-lg shadow-lg p-8">
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="search">Rechercher</Label>
+              <Input
+                id="search"
+                placeholder="Nom, description..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="category-filter">Catégorie</Label>
+              <select
+                id="category-filter"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
+              >
+                <option value="">Toutes les catégories</option>
+                <option value="identite">Identité</option>
+                <option value="titre_sejour">Titre de séjour</option>
+                <option value="contrat">Contrat</option>
+                <option value="facture">Facture</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="dossier-filter">Dossier</Label>
+              <select
+                id="dossier-filter"
+                value={dossierFilter}
+                onChange={(e) => setDossierFilter(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
+                disabled={isLoadingDossiers}
+              >
+                <option value="">Tous les dossiers</option>
+                {dossiers.map((dossier) => (
+                  <option key={dossier._id || dossier.id} value={dossier._id || dossier.id}>
+                    {dossier.titre || 'Dossier sans titre'} {dossier.numero ? `(${dossier.numero})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        ) : documents.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <p className="text-muted-foreground mb-4">Vous n'avez pas encore de document</p>
-            <Button onClick={() => setShowUploadForm(true)}>Téléverser mon premier document</Button>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {documents.map((doc) => (
-              <div key={doc._id || doc.id} className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{getFileIcon(doc.typeMime)}</span>
-                    <div>
-                      <h3 className="font-semibold text-lg">{doc.nom}</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {formatFileSize(doc.taille)} • {new Date(doc.createdAt).toLocaleDateString('fr-FR')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {doc.description && (
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{doc.description}</p>
+
+          {isLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Chargement des documents...</p>
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">
+              {searchTerm || categoryFilter || dossierFilter 
+                ? 'Aucun document ne correspond aux filtres sélectionnés' 
+                : 'Aucun document trouvé'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-4 font-semibold text-sm">Document</th>
+                    <th className="text-left p-4 font-semibold text-sm">Catégorie</th>
+                    <th className="text-left p-4 font-semibold text-sm">Dossier</th>
+                    <th className="text-left p-4 font-semibold text-sm">Taille</th>
+                    <th className="text-left p-4 font-semibold text-sm">Date</th>
+                    <th className="text-left p-4 font-semibold text-sm">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDocuments.map((doc: any) => (
+                    <tr key={doc._id || doc.id} className="border-b hover:bg-muted/20 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{getFileIcon(doc.typeMime)}</span>
+                          <div>
+                            <p className="font-medium text-sm">{doc.nom}</p>
+                            {doc.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-1">{doc.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium">
+                          {getCategoryLabel(doc.categorie || 'autre')}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {doc.dossierId ? (
+                          typeof doc.dossierId === 'object' 
+                            ? (doc.dossierId.titre || 'Dossier') + (doc.dossierId.numero ? ` (${doc.dossierId.numero})` : '')
+                            : 'Dossier'
+                        ) : '—'}
+                      </td>
+                      <td className="p-4 text-sm text-muted-foreground">{formatFileSize(doc.taille)}</td>
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {new Date(doc.createdAt).toLocaleDateString('fr-FR')}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPreviewDocument(doc)}
+                            className="text-xs"
+                            title="Prévisualiser"
+                          >
+                            👁️
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownload(doc._id || doc.id, doc.nom)}
+                            className="text-xs"
+                            title="Télécharger"
+                          >
+                            📥
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(doc._id || doc.id)}
+                            className="text-xs"
+                            title="Supprimer"
+                          >
+                            🗑️
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {!isLoading && filteredDocuments.length > 0 && (
+            <div className="mt-4 text-sm text-muted-foreground">
+              <p>
+                {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} trouvé{filteredDocuments.length > 1 ? 's' : ''}
+                {(searchTerm || categoryFilter || dossierFilter) && filteredDocuments.length !== documents.length && (
+                  <span> (sur {documents.length} au total)</span>
                 )}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setPreviewDocument(doc)}
-                    title="Prévisualiser"
-                  >
-                    👁️ Prévisualiser
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => handleDownload(doc._id || doc.id, doc.nom)}
-                    title="Télécharger"
-                  >
-                    📥 Télécharger
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleDelete(doc._id || doc.id)}
-                    title="Supprimer"
-                  >
-                    🗑️
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              </p>
+            </div>
+          )}
+        </div>
       </main>
 
-      {/* Modal de prévisualisation */}
       {previewDocument && (
         <DocumentPreview
           document={previewDocument}

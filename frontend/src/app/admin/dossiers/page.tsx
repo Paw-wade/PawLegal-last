@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { dossiersAPI, userAPI } from '@/lib/api';
+import { dossiersAPI, userAPI, documentRequestsAPI, notificationsAPI, messagesAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
@@ -155,6 +155,7 @@ export default function AdminDossiersPage() {
   const [dossiers, setDossiers] = useState<any[]>([]);
   const [utilisateurs, setUtilisateurs] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]); // Membres de l'équipe (admins/superadmins)
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -186,6 +187,15 @@ export default function AdminDossiersPage() {
   const [showStatutModal, setShowStatutModal] = useState<{ dossierId: string; dossierTitre: string; currentStatut: string; newStatut: string } | null>(null);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'favorable' | 'unfavorable'>('all');
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [showDocumentRequestModal, setShowDocumentRequestModal] = useState<any>(null);
+  const [documentRequestData, setDocumentRequestData] = useState({
+    documentType: '',
+    documentTypeLabel: '',
+    message: '',
+    isUrgent: false
+  });
+  const [documentRequests, setDocumentRequests] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -200,8 +210,54 @@ export default function AdminDossiersPage() {
       loadDossiers();
       loadUsers();
       loadTeamMembers();
+      loadNotifications();
     }
   }, [session, status]);
+
+  const loadNotifications = async () => {
+    try {
+      const response = await notificationsAPI.getNotifications({
+        limit: 200
+      });
+      if (response.data.success) {
+        setNotifications(response.data.notifications || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des notifications:', err);
+    }
+  };
+
+  const getLastNotificationForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      );
+    });
+    
+    if (dossierNotifications.length === 0) return null;
+    
+    dossierNotifications.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+    
+    return dossierNotifications[0];
+  };
+
+  const getUnreadNotificationsCountForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      ) && !notif.lu;
+    });
+    
+    return dossierNotifications.length;
+  };
 
   const loadDossiers = async () => {
     setIsLoading(true);
@@ -209,7 +265,26 @@ export default function AdminDossiersPage() {
     try {
       const response = await dossiersAPI.getAllDossiers({ search: searchTerm || undefined });
       if (response.data.success) {
-        setDossiers(response.data.dossiers || []);
+        const dossiersList = response.data.dossiers || [];
+        setDossiers(dossiersList);
+        
+        // Charger les demandes de documents pour chaque dossier
+        const requestsMap: Record<string, any[]> = {};
+        await Promise.all(
+          dossiersList.map(async (dossier: any) => {
+            try {
+              const requestsResponse = await documentRequestsAPI.getRequests({
+                dossierId: dossier._id || dossier.id
+              });
+              if (requestsResponse.data.success) {
+                requestsMap[dossier._id || dossier.id] = requestsResponse.data.documentRequests || [];
+              }
+            } catch (err) {
+              console.error(`Erreur lors du chargement des demandes pour le dossier ${dossier._id}:`, err);
+            }
+          })
+        );
+        setDocumentRequests(requestsMap);
       } else {
         setError('Erreur lors du chargement des dossiers');
       }
@@ -219,6 +294,8 @@ export default function AdminDossiersPage() {
     } finally {
       setIsLoading(false);
     }
+    // Recharger les notifications après le chargement des dossiers
+    loadNotifications();
   };
 
   const loadUsers = async () => {
@@ -574,6 +651,24 @@ export default function AdminDossiersPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes scroll-text {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+        .animate-scroll-text {
+          animation: scroll-text 15s linear infinite;
+          display: inline-block;
+          padding-left: 100%;
+        }
+        .animate-scroll-text:hover {
+          animation-play-state: paused;
+        }
+      `}} />
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -932,22 +1027,39 @@ export default function AdminDossiersPage() {
         {/* Liste des dossiers */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
           {/* Barre de recherche et filtres */}
-          <div className="mb-5 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-            <div className="flex-1 w-full sm:max-w-md">
-              <input
-                type="text"
-                placeholder="🔍 Rechercher un dossier..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setTimeout(() => loadDossiers(), 500);
-                }}
-                className="flex h-10 w-full rounded-lg border border-gray-300 bg-background px-4 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-              />
+          <div className="mb-5 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+              <div className="flex-1 w-full sm:max-w-md">
+                <input
+                  type="text"
+                  placeholder="🔍 Rechercher un dossier..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setTimeout(() => loadDossiers(), 500);
+                  }}
+                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-background px-4 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                />
+              </div>
+              <div className="w-full sm:w-64">
+                <select
+                  value={userFilter}
+                  onChange={(e) => setUserFilter(e.target.value)}
+                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-background px-4 py-2 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                >
+                  <option value="all">👤 Tous les utilisateurs</option>
+                  <option value="no_user">👤 Sans utilisateur</option>
+                  {utilisateurs.map((user: any) => (
+                    <option key={user._id || user.id} value={(user._id || user.id)?.toString()}>
+                      {`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={loadDossiers} variant="outline" size="sm" className="whitespace-nowrap">
+                🔄 Actualiser
+              </Button>
             </div>
-            <Button onClick={loadDossiers} variant="outline" size="sm" className="whitespace-nowrap">
-              🔄 Actualiser
-            </Button>
           </div>
 
           {isLoading ? (
@@ -1032,27 +1144,45 @@ export default function AdminDossiersPage() {
               {/* Indicateur de filtre actif et réinitialisation */}
               <div className="flex items-center justify-between mb-4 text-xs text-muted-foreground">
                 <div>
-                  {statusFilter === 'all' ? (
+                  {statusFilter === 'all' && userFilter === 'all' ? (
                     <span>Tous les dossiers sont affichés.</span>
                   ) : (
                     <span>
                       Filtre appliqué :{' '}
                       <span className="font-semibold text-primary">
-                        {statusFilter === 'pending' && 'En attente'}
-                        {statusFilter === 'in_progress' && 'En cours'}
-                        {statusFilter === 'favorable' && 'Favorables'}
-                        {statusFilter === 'unfavorable' && 'Défavorables'}
+                        {statusFilter !== 'all' && (
+                          <>
+                            {statusFilter === 'pending' && 'En attente'}
+                            {statusFilter === 'in_progress' && 'En cours'}
+                            {statusFilter === 'favorable' && 'Favorables'}
+                            {statusFilter === 'unfavorable' && 'Défavorables'}
+                          </>
+                        )}
+                        {statusFilter !== 'all' && userFilter !== 'all' && ' • '}
+                        {userFilter !== 'all' && (
+                          <>
+                            {userFilter === 'no_user' ? 'Sans utilisateur' : (
+                              (() => {
+                                const selectedUser = utilisateurs.find((u: any) => (u._id || u.id)?.toString() === userFilter);
+                                return selectedUser ? `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim() || selectedUser.email : 'Utilisateur';
+                              })()
+                            )}
+                          </>
+                        )}
                       </span>
                     </span>
                   )}
                 </div>
-                {statusFilter !== 'all' && (
+                {(statusFilter !== 'all' || userFilter !== 'all') && (
                   <button
                     type="button"
-                    onClick={() => setStatusFilter('all')}
+                    onClick={() => {
+                      setStatusFilter('all');
+                      setUserFilter('all');
+                    }}
                     className="px-2 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
                   >
-                    Réinitialiser le filtre
+                    Réinitialiser les filtres
                   </button>
                 )}
               </div>
@@ -1060,18 +1190,29 @@ export default function AdminDossiersPage() {
               {/* Liste des dossiers en cartes */}
               {(() => {
                 const filteredDossiers = dossiers.filter((d: any) => {
+                  // Filtre par statut
                   if (statusFilter === 'pending') {
-                    return d.statut === 'recu' || d.statut === 'en_attente_onboarding';
+                    if (!(d.statut === 'recu' || d.statut === 'en_attente_onboarding')) return false;
+                  } else if (statusFilter === 'in_progress') {
+                    if (!(d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet')) return false;
+                  } else if (statusFilter === 'favorable') {
+                    if (!(d.statut === 'decision_favorable' || d.statut === 'gain_cause')) return false;
+                  } else if (statusFilter === 'unfavorable') {
+                    if (!(d.statut === 'decision_defavorable' || d.statut === 'refuse' || d.statut === 'rejet')) return false;
                   }
-                  if (statusFilter === 'in_progress') {
-                    return d.statut === 'en_cours_instruction' || d.statut === 'dossier_complet';
+
+                  // Filtre par utilisateur
+                  if (userFilter !== 'all') {
+                    const dossierUserId = d.user?._id?.toString() || d.user?.toString() || d.userId?.toString();
+                    if (userFilter === 'no_user') {
+                      // Filtrer les dossiers sans utilisateur connecté
+                      if (dossierUserId) return false;
+                    } else {
+                      // Filtrer par utilisateur spécifique
+                      if (dossierUserId !== userFilter) return false;
+                    }
                   }
-                  if (statusFilter === 'favorable') {
-                    return d.statut === 'decision_favorable' || d.statut === 'gain_cause';
-                  }
-                  if (statusFilter === 'unfavorable') {
-                    return d.statut === 'decision_defavorable' || d.statut === 'refuse' || d.statut === 'rejet';
-                  }
+
                   return true;
                 });
 
@@ -1079,25 +1220,28 @@ export default function AdminDossiersPage() {
                   return (
                     <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
                       <p className="text-sm text-muted-foreground mb-3">
-                        Aucun dossier ne correspond au filtre sélectionné.
+                        Aucun dossier ne correspond aux filtres sélectionnés.
                       </p>
                       <button
                         type="button"
-                        onClick={() => setStatusFilter('all')}
+                        onClick={() => {
+                          setStatusFilter('all');
+                          setUserFilter('all');
+                        }}
                         className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary/90"
                       >
-                        Réinitialiser le filtre
+                        Réinitialiser les filtres
                       </button>
                     </div>
                   );
                 }
 
                 return (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                  <div className="space-y-4">
                     {filteredDossiers.map((dossier) => (
                   <div
                     key={dossier._id || dossier.id}
-                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${
+                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${
                       dossier.statut === 'recu' || dossier.statut === 'en_attente_onboarding'
                         ? 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200'
                         : dossier.statut === 'decision_favorable' || dossier.statut === 'gain_cause'
@@ -1158,6 +1302,14 @@ export default function AdminDossiersPage() {
 
                     {/* Informations du dossier */}
                     <div className="space-y-2 mb-3">
+                      {(dossier.numero || dossier.numeroDossier) && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-primary font-semibold">🔢</span>
+                          <span className="text-primary font-semibold">
+                            N° {dossier.numero || dossier.numeroDossier}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-start gap-2 text-sm">
                         <span className="text-muted-foreground mt-0.5">📋</span>
                         <div className="flex-1 min-w-0">
@@ -1214,26 +1366,145 @@ export default function AdminDossiersPage() {
                       )}
                     </div>
 
-                    {/* Actions */}
-                    <div className="pt-3 border-t border-gray-200 space-y-2">
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditDossier(dossier)}
-                          className="flex-1 text-xs h-8"
-                        >
-                          ✏️ Modifier
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => setShowDeleteConfirm(dossier._id || dossier.id)}
-                          className="text-xs h-8 px-3"
-                        >
-                          🗑️
-                        </Button>
+                    {/* Demandes de documents */}
+                    {documentRequests[dossier._id || dossier.id] && documentRequests[dossier._id || dossier.id].length > 0 && (
+                      <div className="mb-3 pb-3 border-b border-gray-200">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Demandes de documents</p>
+                        <div className="space-y-1.5">
+                          {documentRequests[dossier._id || dossier.id].slice(0, 2).map((request: any) => (
+                            <div
+                              key={request._id || request.id}
+                              className={`flex items-center justify-between p-2 rounded-md text-xs ${
+                                request.isUrgent ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className={request.isUrgent ? 'text-red-600' : 'text-blue-600'}>
+                                  {request.isUrgent ? '🔴' : '📄'}
+                                </span>
+                                <span className={`font-medium truncate ${request.isUrgent ? 'text-red-800' : 'text-blue-800'}`}>
+                                  {request.documentTypeLabel}
+                                </span>
+                              </div>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ml-2 ${
+                                request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                request.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {request.status === 'pending' ? 'En attente' :
+                                 request.status === 'sent' ? 'Envoyé' : 'Reçu'}
+                              </span>
+                            </div>
+                          ))}
+                          {documentRequests[dossier._id || dossier.id].length > 2 && (
+                            <p className="text-xs text-muted-foreground text-center pt-1">
+                              +{documentRequests[dossier._id || dossier.id].length - 2} autre(s)
+                            </p>
+                          )}
+                        </div>
                       </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="pt-3 border-t border-gray-200">
+                      <div className="flex items-center justify-between gap-4 mb-2">
+                        <div className="flex-1 min-w-0">
+                          {/* Dernière notification défilante */}
+                          {(() => {
+                            const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
+                            if (lastNotification) {
+                              return (
+                                <div className="relative overflow-hidden bg-blue-50/50 rounded-md px-3 py-2 border border-blue-200/50 group">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs">🔔</span>
+                                    <div className="flex-1 min-w-0 overflow-hidden">
+                                      <div className="animate-scroll-text whitespace-nowrap group-hover:animation-pause">
+                                        <span className="text-xs text-blue-900 font-medium">
+                                          {lastNotification.titre || lastNotification.message || 'Nouvelle notification'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex gap-3 text-xs text-muted-foreground">
+                                {dossier.documents && dossier.documents.length > 0 && (
+                                  <span>📄 {dossier.documents.length}</span>
+                                )}
+                                {dossier.messages && dossier.messages.length > 0 && (
+                                  <span>💬 {dossier.messages.length}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {(() => {
+                            const unreadCount = getUnreadNotificationsCountForDossier(dossier._id || dossier.id);
+                            return (
+                              <Link href={`/admin/notifications?dossierId=${dossier._id || dossier.id}&filter=unread`}>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className={`text-xs h-8 relative ${unreadCount > 0 ? 'bg-orange-50 border-orange-300 hover:bg-orange-100' : ''}`}
+                                  title="Voir les notifications non lues"
+                                >
+                                  🔔 Notifications
+                                  {unreadCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                                      {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
+                                  )}
+                                </Button>
+                              </Link>
+                            );
+                          })()}
+                          <Link href={`/admin/messages?dossierId=${dossier._id || dossier.id}&action=view`}>
+                            <Button variant="outline" size="sm" className="text-xs h-8" title="Voir les discussions">
+                              💬 Discussions
+                            </Button>
+                          </Link>
+                          <Link href={`/admin/messages?dossierId=${dossier._id || dossier.id}&action=send`}>
+                            <Button size="sm" className="text-xs h-8" title="Envoyer un message">
+                              ✉️ Message
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditDossier(dossier)}
+                            className="text-xs h-8"
+                          >
+                            ✏️ Modifier
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setShowDeleteConfirm(dossier._id || dossier.id)}
+                            className="text-xs h-8 px-3"
+                          >
+                            🗑️
+                          </Button>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          setShowDocumentRequestModal(dossier);
+                          setDocumentRequestData({
+                            documentType: '',
+                            documentTypeLabel: '',
+                            message: '',
+                            isUrgent: false
+                          });
+                        }}
+                        className="w-full text-xs h-8 bg-blue-500 hover:bg-blue-600 text-white"
+                      >
+                        📄 Demander un document
+                      </Button>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-xs text-muted-foreground mb-1 block">
@@ -1408,6 +1679,163 @@ export default function AdminDossiersPage() {
                 {isLoading ? 'Mise à jour...' : 'Confirmer le changement'}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de demande de document */}
+      {showDocumentRequestModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Demander un document</h3>
+            <p className="text-muted-foreground mb-4">
+              Dossier : <strong>{showDocumentRequestModal.titre}</strong> {showDocumentRequestModal.numero && `(${showDocumentRequestModal.numero})`}
+            </p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!documentRequestData.documentType || !documentRequestData.documentTypeLabel) {
+                setError('Veuillez sélectionner un type de document');
+                return;
+              }
+              setIsLoading(true);
+              setError(null);
+              try {
+                await documentRequestsAPI.createRequest({
+                  dossierId: showDocumentRequestModal._id || showDocumentRequestModal.id,
+                  documentType: documentRequestData.documentType,
+                  documentTypeLabel: documentRequestData.documentTypeLabel,
+                  message: documentRequestData.message,
+                  isUrgent: documentRequestData.isUrgent
+                });
+                setShowDocumentRequestModal(null);
+                setDocumentRequestData({
+                  documentType: '',
+                  documentTypeLabel: '',
+                  message: '',
+                  isUrgent: false
+                });
+                // Recharger les dossiers pour afficher les nouvelles demandes
+                loadDossiers();
+              } catch (err: any) {
+                console.error('Erreur lors de la création de la demande:', err);
+                setError(err.response?.data?.message || 'Erreur lors de la création de la demande');
+              } finally {
+                setIsLoading(false);
+              }
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="documentType" className="mb-2 block">
+                    Type de document *
+                  </Label>
+                  <select
+                    id="documentType"
+                    value={documentRequestData.documentType}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      const labels: Record<string, string> = {
+                        identite: 'Pièce d\'identité',
+                        titre_sejour: 'Titre de séjour',
+                        contrat: 'Contrat de travail',
+                        facture: 'Facture',
+                        passeport: 'Passeport',
+                        justificatif_domicile: 'Justificatif de domicile',
+                        avis_imposition: 'Avis d\'imposition',
+                        autre: 'Autre'
+                      };
+                      setDocumentRequestData({
+                        ...documentRequestData,
+                        documentType: type,
+                        documentTypeLabel: labels[type] || 'Autre'
+                      });
+                    }}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    required
+                  >
+                    <option value="">Sélectionner un type</option>
+                    <option value="identite">Pièce d'identité</option>
+                    <option value="titre_sejour">Titre de séjour</option>
+                    <option value="contrat">Contrat de travail</option>
+                    <option value="facture">Facture</option>
+                    <option value="passeport">Passeport</option>
+                    <option value="justificatif_domicile">Justificatif de domicile</option>
+                    <option value="avis_imposition">Avis d'imposition</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </div>
+
+                {documentRequestData.documentType === 'autre' && (
+                  <div>
+                    <Label htmlFor="documentTypeLabel" className="mb-2 block">
+                      Précisez le type de document *
+                    </Label>
+                    <Input
+                      id="documentTypeLabel"
+                      value={documentRequestData.documentTypeLabel}
+                      onChange={(e) => setDocumentRequestData({ ...documentRequestData, documentTypeLabel: e.target.value })}
+                      placeholder="Ex: Certificat de scolarité, Attestation de salaire..."
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="message" className="mb-2 block">
+                    Message ou précisions (optionnel)
+                  </Label>
+                  <Textarea
+                    id="message"
+                    value={documentRequestData.message}
+                    onChange={(e) => setDocumentRequestData({ ...documentRequestData, message: e.target.value })}
+                    placeholder="Ajoutez des précisions sur le document demandé..."
+                    rows={4}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isUrgent"
+                    checked={documentRequestData.isUrgent}
+                    onChange={(e) => setDocumentRequestData({ ...documentRequestData, isUrgent: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <Label htmlFor="isUrgent" className="cursor-pointer">
+                    🔴 Marquer comme urgent
+                  </Label>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowDocumentRequestModal(null);
+                      setDocumentRequestData({
+                        documentType: '',
+                        documentTypeLabel: '',
+                        message: '',
+                        isUrgent: false
+                      });
+                      setError(null);
+                    }}
+                    disabled={isLoading}
+                  >
+                    Annuler
+                  </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? 'Envoi...' : 'Envoyer la demande'}
+                  </Button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

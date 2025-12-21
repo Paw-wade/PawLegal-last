@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { dossiersAPI } from '@/lib/api';
+import { dossiersAPI, notificationsAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 
 // Mapping des catégories pour l'affichage
@@ -98,6 +98,7 @@ export default function DossiersPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [dossiers, setDossiers] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,9 +127,11 @@ export default function DossiersPage() {
         }
       }
       loadDossiers();
+      loadNotifications();
     } else if (token) {
       // Si on a un token mais pas de session, charger quand même les dossiers
       loadDossiers();
+      loadNotifications();
     }
   }, [session, status, router]);
 
@@ -137,11 +140,58 @@ export default function DossiersPage() {
     const interval = setInterval(() => {
       if (session || localStorage.getItem('token')) {
         loadDossiers();
+        loadNotifications();
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
 
     return () => clearInterval(interval);
   }, [session]);
+
+  const loadNotifications = async () => {
+    try {
+      const response = await notificationsAPI.getNotifications({
+        limit: 200
+      });
+      if (response.data.success) {
+        setNotifications(response.data.notifications || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des notifications:', err);
+    }
+  };
+
+  const getLastNotificationForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      );
+    });
+    
+    if (dossierNotifications.length === 0) return null;
+    
+    // Trier par date de création (plus récente en premier)
+    dossierNotifications.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+    
+    return dossierNotifications[0];
+  };
+
+  const getUnreadNotificationsCountForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      ) && !notif.lu;
+    });
+    
+    return dossierNotifications.length;
+  };
 
   const loadDossiers = async () => {
     setIsLoading(true);
@@ -202,6 +252,24 @@ export default function DossiersPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes scroll-text {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+        .animate-scroll-text {
+          animation: scroll-text 15s linear infinite;
+          display: inline-block;
+          padding-left: 100%;
+        }
+        .animate-scroll-text:hover {
+          animation-play-state: paused;
+        }
+      `}} />
       <main className="container mx-auto px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -239,12 +307,12 @@ export default function DossiersPage() {
           </div>
         ) : (
           <>
-            {/* Liste des dossiers en cartes - Style identique au dashboard admin */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {/* Liste des dossiers en pleine largeur */}
+            <div className="space-y-4">
               {dossiers.map((dossier) => (
                 <div
                   key={dossier._id || dossier.id}
-                  className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${
+                  className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${
                     dossier.statut === 'recu' || dossier.statut === 'en_attente_onboarding'
                       ? 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200'
                       : dossier.statut === 'decision_favorable' || dossier.statut === 'gain_cause'
@@ -257,9 +325,11 @@ export default function DossiersPage() {
                   {/* En-tête de la carte */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0 pr-2">
-                      <h3 className="font-bold text-base text-foreground mb-1 line-clamp-2 leading-tight">
-                        {dossier.titre || 'Sans titre'}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
+                          {dossier.titre || 'Sans titre'}
+                        </h3>
+                      </div>
                       {dossier.description && (
                         <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                           {dossier.description}
@@ -280,6 +350,14 @@ export default function DossiersPage() {
 
                   {/* Informations du dossier */}
                   <div className="space-y-2 mb-3">
+                    {(dossier.numero || dossier.numeroDossier) && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-primary font-semibold">🔢</span>
+                        <span className="text-primary font-semibold">
+                          N° {dossier.numero || dossier.numeroDossier}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-start gap-2 text-sm">
                       <span className="text-muted-foreground mt-0.5">📋</span>
                       <div className="flex-1 min-w-0">
@@ -315,20 +393,76 @@ export default function DossiersPage() {
 
                   {/* Actions */}
                   <div className="pt-3 border-t border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-3 text-xs text-muted-foreground">
-                        {dossier.documents && dossier.documents.length > 0 && (
-                          <span>📄 {dossier.documents.length}</span>
-                        )}
-                        {dossier.messages && dossier.messages.length > 0 && (
-                          <span>💬 {dossier.messages.length}</span>
-                        )}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        {/* Dernière notification défilante */}
+                        {(() => {
+                          const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
+                          if (lastNotification) {
+                            return (
+                              <div className="relative overflow-hidden bg-blue-50/50 rounded-md px-3 py-2 border border-blue-200/50">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs">🔔</span>
+                                  <div className="flex-1 min-w-0 overflow-hidden">
+                                    <div className="animate-scroll-text whitespace-nowrap">
+                                      <span className="text-xs text-blue-900 font-medium">
+                                        {lastNotification.title || lastNotification.message || 'Nouvelle notification'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex gap-3 text-xs text-muted-foreground">
+                              {dossier.documents && dossier.documents.length > 0 && (
+                                <span>📄 {dossier.documents.length}</span>
+                              )}
+                              {dossier.messages && dossier.messages.length > 0 && (
+                                <span>💬 {dossier.messages.length}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
-                      <Link href={`/client/dossiers/${dossier._id || dossier.id}`}>
-                        <Button variant="outline" size="sm" className="text-xs h-8">
-                          Voir les détails
-                        </Button>
-                      </Link>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {(() => {
+                          const unreadCount = getUnreadNotificationsCountForDossier(dossier._id || dossier.id);
+                          return (
+                            <Link href={`/client/notifications?dossierId=${dossier._id || dossier.id}&filter=unread`}>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className={`text-xs h-8 relative ${unreadCount > 0 ? 'bg-orange-50 border-orange-300 hover:bg-orange-100' : ''}`}
+                                title="Voir les notifications non lues"
+                              >
+                                🔔 Notifications
+                                {unreadCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                  </span>
+                                )}
+                              </Button>
+                            </Link>
+                          );
+                        })()}
+                        <Link href={`/client/messages?dossierId=${dossier._id || dossier.id}&action=view`}>
+                          <Button variant="outline" size="sm" className="text-xs h-8" title="Voir les discussions">
+                            💬 Discussions
+                          </Button>
+                        </Link>
+                        <Link href={`/client/messages?dossierId=${dossier._id || dossier.id}&action=send`}>
+                          <Button size="sm" className="text-xs h-8" title="Envoyer un message">
+                            ✉️ Message
+                          </Button>
+                        </Link>
+                        <Link href={`/client/dossiers/${dossier._id || dossier.id}`}>
+                          <Button variant="outline" size="sm" className="text-xs h-8">
+                            Détails
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>

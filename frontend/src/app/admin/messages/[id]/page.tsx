@@ -466,17 +466,79 @@ export default function AdminMessageDetailPage() {
             </div>
           )}
 
-          <div className="prose max-w-none mb-6">
-            <p className="whitespace-pre-wrap text-foreground">
-              {isContactMessage ? message.message : message.contenu}
-            </p>
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Contenu du message
+            </h3>
+            <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="whitespace-pre-wrap text-foreground leading-relaxed">
+                {isContactMessage ? message.message : message.contenu}
+              </p>
+            </div>
           </div>
 
-          {/* Informations supplémentaires pour les messages de contact */}
-          {isContactMessage && message.phone && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-md">
-              <p className="text-xs text-muted-foreground mb-1">Téléphone</p>
-              <p className="text-sm font-semibold">{message.phone}</p>
+          {/* Informations complètes pour les messages de contact */}
+          {isContactMessage && (
+            <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">📋</span>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+                  Informations de l'expéditeur
+                </h3>
+                <span className="ml-auto px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">
+                  Envoyé depuis le formulaire de contact
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Nom complet</p>
+                    <p className="text-sm font-semibold text-foreground">{message.name || 'Non renseigné'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Prénom</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {message.name?.split(' ')[0] || 'Non renseigné'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Nom de famille</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {message.name?.split(' ').slice(1).join(' ') || 'Non renseigné'}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Adresse e-mail</p>
+                    <a 
+                      href={`mailto:${message.email}`}
+                      className="text-sm font-semibold text-primary hover:underline flex items-center gap-1"
+                    >
+                      {message.email || 'Non renseigné'}
+                      <span className="text-xs">✉️</span>
+                    </a>
+                  </div>
+                  {message.phone && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Numéro de téléphone</p>
+                      <a 
+                        href={`tel:${message.phone}`}
+                        className="text-sm font-semibold text-primary hover:underline flex items-center gap-1"
+                      >
+                        {message.phone}
+                        <span className="text-xs">📞</span>
+                      </a>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Date d'envoi</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatDate(message.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -688,6 +750,7 @@ export default function AdminMessageDetailPage() {
                     description: dossierFormData.description || `Dossier créé depuis le message de contact: "${message.subject}"\n\n${message.message}`,
                   };
                   
+                  const { contactAPI } = await import('@/lib/api');
                   const response = await contactAPI.createDossierFromMessage(message._id || message.id, dossierData);
                   if (response.data.success) {
                     alert('Dossier créé avec succès ! Une notification SMS a été envoyée.');

@@ -79,6 +79,21 @@ router.post(
       // Envoyer le SMS avec le code OTP
       try {
         const message = `Votre code de vérification Paw Legal est : ${code}. Valide pendant 10 minutes.`;
+        
+        // En mode développement, permettre de continuer sans SMS réel si Twilio n'est pas configuré
+        if (process.env.NODE_ENV === 'development' && process.env.ALLOW_OTP_WITHOUT_SMS === 'true') {
+          console.log(`⚠️ Mode développement: SMS simulé pour ${formattedPhone}`);
+          console.log(`📱 Code OTP généré: ${code} (valide 10 minutes)`);
+          
+          res.json({
+            success: true,
+            message: 'Code OTP généré avec succès (mode développement - SMS simulé)',
+            expiresAt: expiresAt.toISOString(),
+            code: code // Retourner le code en mode développement pour faciliter les tests
+          });
+          return;
+        }
+        
         await sendSMS(formattedPhone, message);
         
         console.log(`✅ Code OTP envoyé à ${formattedPhone}: ${code}`);
@@ -90,12 +105,31 @@ router.post(
         });
       } catch (smsError) {
         console.error('❌ Erreur lors de l\'envoi du SMS:', smsError);
+        console.error('❌ Détails de l\'erreur:', {
+          message: smsError.message,
+          code: smsError.code,
+          stack: process.env.NODE_ENV === 'development' ? smsError.stack : undefined
+        });
+        
         // Supprimer le code OTP si l'envoi du SMS échoue
         await OTP.findByIdAndDelete(otp._id);
         
+        // Message d'erreur plus détaillé selon le type d'erreur
+        let errorMessage = 'Erreur lors de l\'envoi du SMS. Veuillez réessayer.';
+        
+        if (smsError.message?.includes('Twilio n\'est pas configuré')) {
+          errorMessage = 'Le service SMS n\'est pas configuré. Veuillez contacter l\'administrateur.';
+        } else if (smsError.message?.includes('numéro de téléphone n\'est pas vérifié')) {
+          errorMessage = 'Ce numéro de téléphone n\'est pas vérifié. En mode test, seuls les numéros vérifiés peuvent recevoir des SMS.';
+        } else if (smsError.message?.includes('Numéro de téléphone invalide')) {
+          errorMessage = 'Le numéro de téléphone fourni est invalide. Veuillez vérifier le format.';
+        } else if (smsError.message) {
+          errorMessage = `Erreur SMS: ${smsError.message}`;
+        }
+        
         return res.status(500).json({
           success: false,
-          message: 'Erreur lors de l\'envoi du SMS. Veuillez réessayer.',
+          message: errorMessage,
           error: process.env.NODE_ENV === 'development' ? smsError.message : undefined
         });
       }

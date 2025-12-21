@@ -110,10 +110,12 @@ router.post('/init-defaults', async (req, res) => {
         code: 'dossier_created',
         name: 'Création de dossier',
         description: 'Message envoyé lors de la création d\'un dossier',
-        message: 'Votre dossier "{{dossierTitle}}" a été créé. Référence: {{dossierId}}. Paw Legal.',
+        message: 'Bonjour, votre dossier "{{dossierTitle}}" a été créé suite à votre rendez-vous du {{appointmentDate}} à {{appointmentTime}}. Référence: {{dossierId}}. Paw Legal.',
         variables: [
           { name: 'dossierTitle', description: 'Titre du dossier', example: 'Demande de titre de séjour' },
-          { name: 'dossierId', description: 'Identifiant du dossier', example: 'DOS-2024-001' }
+          { name: 'dossierId', description: 'Identifiant du dossier', example: 'DOS-2024-001' },
+          { name: 'appointmentDate', description: 'Date du rendez-vous', example: '15 janvier 2024' },
+          { name: 'appointmentTime', description: 'Heure du rendez-vous', example: '14:30' }
         ],
         category: 'dossier',
         isActive: true,
@@ -152,6 +154,34 @@ router.post('/init-defaults', async (req, res) => {
         message: 'Un nouveau document a été ajouté à votre dossier "{{dossierTitle}}". Paw Legal.',
         variables: [
           { name: 'dossierTitle', description: 'Titre du dossier', example: 'Demande de titre de séjour' }
+        ],
+        category: 'dossier',
+        isActive: true,
+        isSystem: true
+      },
+      {
+        code: 'document_request',
+        name: 'Demande de document',
+        description: 'Message envoyé lorsqu\'un document est demandé au client',
+        message: '{{isUrgentText}}Document requis pour votre dossier {{dossierNumero}}. Type: {{documentType}}. Connectez-vous pour envoyer. Paw Legal.',
+        variables: [
+          { name: 'dossierNumero', description: 'Numéro du dossier', example: 'DOS-2024-001' },
+          { name: 'documentType', description: 'Type de document demandé', example: 'Passeport' },
+          { name: 'isUrgent', description: 'Indique si la demande est urgente', example: 'true' },
+          { name: 'isUrgentText', description: 'Texte "🔴 URGENT: " si urgent, vide sinon', example: '🔴 URGENT: ' }
+        ],
+        category: 'dossier',
+        isActive: true,
+        isSystem: true
+      },
+      {
+        code: 'document_received',
+        name: 'Document reçu',
+        description: 'Message envoyé à l\'admin lorsqu\'un document est reçu',
+        message: 'Document "{{documentName}}" reçu pour le dossier {{dossierNumero}}. Paw Legal.',
+        variables: [
+          { name: 'documentName', description: 'Nom du document', example: 'Passeport' },
+          { name: 'dossierNumero', description: 'Numéro du dossier', example: 'DOS-2024-001' }
         ],
         category: 'dossier',
         isActive: true,
@@ -354,13 +384,8 @@ router.put(
         });
       }
 
-      // Empêcher la modification des templates système
-      if (template.isSystem) {
-        return res.status(403).json({
-          success: false,
-          message: 'Les templates système ne peuvent pas être modifiés'
-        });
-      }
+      // Permettre la modification des templates système (mais garder isSystem à true)
+      // Les templates système peuvent être modifiés mais pas supprimés
 
       // Vérifier si le code est modifié et s'il existe déjà
       if (req.body.code && req.body.code !== template.code) {
@@ -381,7 +406,17 @@ router.put(
       if (variables !== undefined) template.variables = variables;
       if (category) template.category = category;
       if (isActive !== undefined) template.isActive = isActive;
-      if (req.body.code) template.code = req.body.code;
+      // Permettre la modification du code même pour les templates système
+      if (req.body.code && req.body.code !== template.code) {
+        const existingTemplate = await SmsTemplate.findOne({ code: req.body.code });
+        if (existingTemplate) {
+          return res.status(400).json({
+            success: false,
+            message: 'Un template avec ce code existe déjà'
+          });
+        }
+        template.code = req.body.code;
+      }
       template.updatedBy = req.user.id;
 
       await template.save();
@@ -442,12 +477,12 @@ router.delete('/:id', async (req, res) => {
 });
 
 // @route   POST /api/sms-templates/:id/test
-// @desc    Tester un template SMS avec des variables
+// @desc    Tester un template SMS avec des variables (prévisualisation uniquement)
 // @access  Private/Admin
 router.post(
   '/:id/test',
   [
-    body('variables').isObject().withMessage('Les variables doivent être un objet')
+    body('variables').optional().isObject().withMessage('Les variables doivent être un objet')
   ],
   async (req, res) => {
     try {
@@ -489,6 +524,79 @@ router.post(
       res.status(500).json({
         success: false,
         message: 'Erreur serveur',
+        error: error.message
+      });
+    }
+  }
+);
+
+// @route   POST /api/sms-templates/:id/send-test
+// @desc    Envoyer un SMS de test réel avec un template
+// @access  Private/Admin
+router.post(
+  '/:id/send-test',
+  [
+    body('phone').trim().notEmpty().withMessage('Le numéro de téléphone est requis'),
+    body('variables').optional().isObject().withMessage('Les variables doivent être un objet')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erreurs de validation',
+          errors: errors.array()
+        });
+      }
+
+      const template = await SmsTemplate.findById(req.params.id);
+
+      if (!template) {
+        return res.status(404).json({
+          success: false,
+          message: 'Template non trouvé'
+        });
+      }
+
+      if (!template.isActive) {
+        return res.status(400).json({
+          success: false,
+          message: 'Le template est inactif. Activez-le avant de l\'envoyer.'
+        });
+      }
+
+      const { sendNotificationSMS } = require('../sendSMS');
+      const { phone, variables = {} } = req.body;
+
+      // Envoyer le SMS de test
+      const result = await sendNotificationSMS(
+        phone,
+        template.code,
+        variables,
+        {
+          context: 'manual',
+          sentBy: req.user.id,
+          skipPreferences: true // Toujours envoyer les SMS de test
+        }
+      );
+
+      res.json({
+        success: true,
+        message: 'SMS de test envoyé avec succès',
+        result: {
+          to: phone,
+          templateCode: template.code,
+          templateName: template.name,
+          message: result.message || 'Message envoyé',
+          status: result.status || 'sent'
+        }
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi du SMS de test:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'envoi du SMS de test',
         error: error.message
       });
     }

@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { DossierDetailView } from '@/components/DossierDetailView';
-import { dossiersAPI, notificationsAPI, messagesAPI } from '@/lib/api';
+import { dossiersAPI, notificationsAPI, messagesAPI, documentRequestsAPI } from '@/lib/api';
+import { DocumentRequestNotificationModal } from '@/components/DocumentRequestNotificationModal';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
@@ -32,6 +33,10 @@ export default function DossierDetailPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [documentRequests, setDocumentRequests] = useState<any[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [selectedDocumentRequestNotification, setSelectedDocumentRequestNotification] = useState<any>(null);
+  const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -55,9 +60,11 @@ export default function DossierDetailPage() {
       loadDossier();
       loadNotifications();
       loadMessagesForDossier();
+      loadDocumentRequests();
     } else if (token) {
       loadDossier();
       loadNotifications();
+      loadDocumentRequests();
     }
   }, [session, status, router, dossierId]);
 
@@ -68,11 +75,30 @@ export default function DossierDetailPage() {
         loadDossier();
         loadNotifications();
         loadMessagesForDossier();
+        loadDocumentRequests();
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
 
     return () => clearInterval(interval);
   }, [session, dossierId]);
+
+  const loadDocumentRequests = async () => {
+    if (!dossierId) return;
+    setIsLoadingRequests(true);
+    try {
+      const response = await documentRequestsAPI.getRequests({
+        dossierId: dossierId,
+        status: 'pending'
+      });
+      if (response.data.success) {
+        setDocumentRequests(response.data.documentRequests || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des demandes de documents:', err);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
 
   const loadDossier = async () => {
     if (!dossierId) return;
@@ -318,6 +344,80 @@ export default function DossierDetailPage() {
               </div>
             </div>
 
+            {/* Demandes de documents en attente */}
+            {documentRequests.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">📄 Documents demandés</h2>
+                <div className="space-y-3">
+                  {documentRequests.map((request: any) => (
+                    <div
+                      key={request._id || request.id}
+                      className={`border-l-4 rounded-lg p-4 ${
+                        request.isUrgent
+                          ? 'bg-red-50 border-red-500'
+                          : 'bg-blue-50 border-blue-500'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">{request.isUrgent ? '🔴' : '📄'}</span>
+                            <h3 className="font-semibold text-base">
+                              {request.documentTypeLabel}
+                            </h3>
+                            {request.isUrgent && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-semibold">
+                                URGENT
+                              </span>
+                            )}
+                          </div>
+                          {request.message && (
+                            <p className="text-sm text-muted-foreground mt-1">{request.message}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Demandé le {new Date(request.createdAt).toLocaleDateString('fr-FR', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          // Créer une notification factice pour le modal
+                          const notification = {
+                            _id: request._id,
+                            id: request.id,
+                            type: 'document_request',
+                            titre: request.isUrgent
+                              ? `🔴 Demande urgente de document - Dossier ${dossier?.numero || dossierId}`
+                              : `📄 Demande de document - Dossier ${dossier?.numero || dossierId}`,
+                            message: `Un document de type "${request.documentTypeLabel}" est requis pour votre dossier.`,
+                            data: {
+                              documentRequestId: request._id || request.id,
+                              dossierId: dossierId,
+                              dossierNumero: dossier?.numero,
+                              documentType: request.documentType,
+                              documentTypeLabel: request.documentTypeLabel,
+                              isUrgent: request.isUrgent
+                            }
+                          };
+                          setSelectedDocumentRequestNotification(notification);
+                          setShowDocumentRequestModal(true);
+                        }}
+                        className="mt-3 w-full"
+                      >
+                        📤 Envoyer le document
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Historique des notifications */}
             {notifications.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg p-6">
@@ -440,6 +540,17 @@ export default function DossierDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* Modal de demande de document */}
+      <DocumentRequestNotificationModal
+        isOpen={showDocumentRequestModal}
+        onClose={() => {
+          setShowDocumentRequestModal(false);
+          setSelectedDocumentRequestNotification(null);
+          loadDocumentRequests();
+        }}
+        notification={selectedDocumentRequestNotification}
+      />
     </div>
   );
 }

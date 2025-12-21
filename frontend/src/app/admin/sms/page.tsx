@@ -88,6 +88,9 @@ export default function AdminSmsPage() {
   const [variables, setVariables] = useState<Array<{ name: string; description: string; example: string }>>([]);
   const [testVariables, setTestVariables] = useState<Record<string, string>>({});
   const [testResult, setTestResult] = useState<string>('');
+  const [testPhone, setTestPhone] = useState<string>('');
+  const [testingTemplate, setTestingTemplate] = useState<SmsTemplate | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   
   // History state
   const [history, setHistory] = useState<SmsHistory[]>([]);
@@ -235,11 +238,70 @@ export default function AdminSmsPage() {
 
   const handleTestTemplate = async (template: SmsTemplate) => {
     try {
-      const res = await smsTemplatesAPI.testTemplate(template._id, testVariables);
-      setTestResult(res.data.testMessage);
+      setTestingTemplate(template);
+      setTestVariables({});
+      setTestResult('');
+      setTestPhone('');
+      // Pré-remplir les variables avec les exemples si disponibles
+      if (template.variables && template.variables.length > 0) {
+        const initialVars: Record<string, string> = {};
+        template.variables.forEach(v => {
+          if (v.example) {
+            initialVars[v.name] = v.example;
+          }
+        });
+        setTestVariables(initialVars);
+        // Générer un aperçu immédiat
+        const res = await smsTemplatesAPI.testTemplate(template._id, initialVars);
+        setTestResult(res.data.testMessage);
+      }
     } catch (error: any) {
       console.error('Erreur lors du test:', error);
       alert(error.response?.data?.message || 'Erreur lors du test');
+    }
+  };
+
+  const handlePreviewTest = async () => {
+    if (!testingTemplate) return;
+    try {
+      const res = await smsTemplatesAPI.testTemplate(testingTemplate._id, testVariables);
+      setTestResult(res.data.testMessage);
+    } catch (error: any) {
+      console.error('Erreur lors de la prévisualisation:', error);
+      alert(error.response?.data?.message || 'Erreur lors de la prévisualisation');
+    }
+  };
+
+  const handleSendTestSMS = async () => {
+    if (!testingTemplate) return;
+    if (!testPhone.trim()) {
+      alert('Veuillez saisir un numéro de téléphone');
+      return;
+    }
+    if (!testResult) {
+      alert('Veuillez d\'abord générer un aperçu du message');
+      return;
+    }
+    if (!confirm(`Êtes-vous sûr de vouloir envoyer ce SMS de test au numéro ${testPhone} ?`)) {
+      return;
+    }
+    try {
+      setIsSendingTest(true);
+      const res = await smsTemplatesAPI.sendTestSMS(testingTemplate._id, testPhone, testVariables);
+      alert('✅ SMS de test envoyé avec succès !');
+      setTestingTemplate(null);
+      setTestResult('');
+      setTestVariables({});
+      setTestPhone('');
+      // Recharger l'historique pour voir le SMS envoyé
+      if (activeTab === 'history') {
+        loadHistory();
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de l\'envoi du SMS:', error);
+      alert(error.response?.data?.message || 'Erreur lors de l\'envoi du SMS');
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -255,6 +317,8 @@ export default function AdminSmsPage() {
     setVariables([]);
     setTestVariables({});
     setTestResult('');
+    setTestPhone('');
+    setTestingTemplate(null);
   };
 
   const startEdit = (template: SmsTemplate) => {
@@ -471,15 +535,13 @@ export default function AdminSmsPage() {
                             )}
                           </div>
                           <div className="flex gap-2 ml-4">
+                            <Button variant="outline" className="text-xs px-3 py-1" onClick={() => startEdit(template)}>
+                              ✏️ Modifier
+                            </Button>
                             {!template.isSystem && (
-                              <>
-                                <Button variant="outline" className="text-xs px-3 py-1" onClick={() => startEdit(template)}>
-                                  ✏️ Modifier
-                                </Button>
-                                <Button variant="danger" className="text-xs px-3 py-1" onClick={() => handleDeleteTemplate(template._id)}>
-                                  🗑️ Supprimer
-                                </Button>
-                              </>
+                              <Button variant="danger" className="text-xs px-3 py-1" onClick={() => handleDeleteTemplate(template._id)}>
+                                🗑️ Supprimer
+                              </Button>
                             )}
                             <Button variant="outline" className="text-xs px-3 py-1" onClick={() => handleTestTemplate(template)}>
                               🧪 Tester
@@ -689,7 +751,7 @@ export default function AdminSmsPage() {
                       value={formData.code}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                       placeholder="appointment_confirmed"
-                      disabled={!!editingTemplate}
+                      disabled={!!editingTemplate && editingTemplate.isSystem}
                     />
                   </div>
                   <div>
@@ -805,48 +867,104 @@ export default function AdminSmsPage() {
         )}
 
         {/* Test Modal */}
-        {testResult && (
+        {testingTemplate && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Test du template</h2>
+                <h2 className="text-2xl font-bold">Test du template: {testingTemplate.name}</h2>
                 <button
-                  onClick={() => setTestResult('')}
+                  onClick={() => {
+                    setTestingTemplate(null);
+                    setTestResult('');
+                    setTestVariables({});
+                    setTestPhone('');
+                  }}
                   className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
                 >
                   ×
                 </button>
               </div>
               <div className="p-6 space-y-4">
-                <div>
-                  <Label>Variables de test</Label>
-                  <div className="space-y-2">
-                    {variables.filter(v => v.name.trim()).map((v) => (
-                      <div key={v.name}>
-                        <Label htmlFor={`test-${v.name}`} className="text-xs">
-                          {v.name} {v.example && `(ex: ${v.example})`}
-                        </Label>
-                        <Input
-                          id={`test-${v.name}`}
-                          value={testVariables[v.name] || ''}
-                          onChange={(e) => setTestVariables({ ...testVariables, [v.name]: e.target.value })}
-                          placeholder={v.example || `Valeur pour ${v.name}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {testResult && (
+                {/* Variables de test */}
+                {testingTemplate.variables && testingTemplate.variables.length > 0 && (
                   <div>
-                    <Label>Résultat</Label>
-                    <div className="bg-gray-50 p-4 rounded border font-mono text-sm">
-                      {testResult}
+                    <Label>Variables de test</Label>
+                    <div className="space-y-2">
+                      {testingTemplate.variables.filter(v => v.name.trim()).map((v) => (
+                        <div key={v.name}>
+                          <Label htmlFor={`test-${v.name}`} className="text-xs">
+                            {v.name} {v.example && `(ex: ${v.example})`}
+                          </Label>
+                          <Input
+                            id={`test-${v.name}`}
+                            value={testVariables[v.name] || ''}
+                            onChange={(e) => {
+                              const newVars = { ...testVariables, [v.name]: e.target.value };
+                              setTestVariables(newVars);
+                            }}
+                            placeholder={v.example || `Valeur pour ${v.name}`}
+                          />
+                        </div>
+                      ))}
                     </div>
+                    <Button 
+                      variant="outline" 
+                      className="mt-2 text-xs"
+                      onClick={handlePreviewTest}
+                    >
+                      🔍 Générer l'aperçu
+                    </Button>
                   </div>
                 )}
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setTestResult('')}>
+
+                {/* Aperçu du message */}
+                {testResult && (
+                  <div>
+                    <Label>Aperçu du message</Label>
+                    <div className="bg-gray-50 p-4 rounded border font-mono text-sm whitespace-pre-wrap">
+                      {testResult}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Longueur: {testResult.length} caractères
+                    </p>
+                  </div>
+                )}
+
+                {/* Numéro de téléphone pour l'envoi réel */}
+                <div>
+                  <Label htmlFor="test-phone">Numéro de téléphone pour l'envoi de test *</Label>
+                  <Input
+                    id="test-phone"
+                    type="tel"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="+33612345678 ou 0612345678"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Format: +33612345678 ou 0612345678 (format français)
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 justify-end pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setTestingTemplate(null);
+                      setTestResult('');
+                      setTestVariables({});
+                      setTestPhone('');
+                    }}
+                  >
                     Fermer
+                  </Button>
+                  <Button 
+                    variant="default"
+                    onClick={handleSendTestSMS}
+                    disabled={!testPhone.trim() || !testResult || isSendingTest}
+                  >
+                    {isSendingTest ? 'Envoi...' : '📤 Envoyer le SMS de test'}
                   </Button>
                 </div>
               </div>

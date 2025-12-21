@@ -342,22 +342,27 @@ export function Header({ variant = 'home', showNav = true, navItems, onMenuClick
                 </svg>
               </button>
             )}
-            {/* Logo - visible sauf sur les pages admin (déjà présent dans la sidebar) */}
-            {variant !== 'admin' && (
+            {/* Logo - visible UNIQUEMENT sur la page d'accueil (variant === 'home') */}
+            {/* Sur les pages client et admin, le logo est déjà dans la sidebar, donc on ne l'affiche PAS ici */}
+            {variant === 'home' && (
               <>
                 <Link
                   href="/"
-                  className={`font-bold text-orange-500 hover:text-orange-600 transition-colors ${
-                    variant === 'home' ? 'text-xl' : 'text-lg'
-                  }`}
+                  className="font-bold text-orange-500 hover:text-orange-600 transition-colors text-xl"
                 >
                   Paw Legal
                 </Link>
                 <div className="h-4 w-px bg-gray-300"></div>
                 <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
-                  {variant === 'client' ? subtitleClient : subtitleHome}
+                  {subtitleHome}
                 </p>
               </>
+            )}
+            {/* Sur les pages client, afficher uniquement le sous-titre (le logo est dans la sidebar) */}
+            {variant === 'client' && (
+              <p className="text-[9px] text-gray-600 font-normal leading-tight whitespace-nowrap">
+                {subtitleClient}
+              </p>
             )}
             {/* Sur les pages admin, afficher uniquement le sous-titre */}
             {variant === 'admin' && (

@@ -785,7 +785,7 @@ export default function AdminMessagesPage() {
                               )}
                               {isContactMessage && (
                                 <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">
-                                  Contact
+                                  Envoyé depuis le formulaire de contact
                                 </span>
                               )}
                             </div>

@@ -550,14 +550,15 @@ router.post(
             'dossier_created',
             {
               dossierTitle: newDossier.titre || 'Votre dossier',
-              dossierId: newDossier._id.toString()
+              dossierId: newDossier.numero || newDossier._id.toString()
             },
             {
               context: 'dossier',
-              contextId: newDossier._id.toString()
+              contextId: newDossier._id.toString(),
+              skipPreferences: true // Toujours envoyer ce SMS car c'est une confirmation importante
             }
           );
-          console.log(`✅ SMS envoyé à ${phoneNumber} pour la création du dossier ${newDossier._id}`);
+          console.log(`✅ SMS envoyé à ${phoneNumber} pour la création du dossier ${newDossier.numero || newDossier._id}`);
         }
       } catch (smsError) {
         console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);

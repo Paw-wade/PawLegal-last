@@ -75,6 +75,7 @@ router.get('/', async (req, res) => {
     console.log('📄 Récupération des documents pour l\'utilisateur:', targetUserId, 'Rôle:', req.user.role, req.impersonateUserId ? '[IMPERSONATION]' : '');
     
     const documents = await Document.find({ user: targetUserId })
+      .populate('dossierId', 'titre numero categorie statut')
       .sort({ createdAt: -1 });
 
     console.log('✅ Documents trouvés:', documents.length, 'pour l\'utilisateur:', targetUserEmail);

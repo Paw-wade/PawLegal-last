@@ -8,8 +8,9 @@ import { ReservationWidget } from '@/components/ReservationWidget';
 import { ReservationBadge } from '@/components/ReservationBadge';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { AppointmentBadgeModal } from '@/components/AppointmentBadgeModal';
-import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI } from '@/lib/api';
-import { getStatutColor, getStatutLabel } from '@/lib/dossierUtils';
+import { DocumentRequestNotificationModal } from '@/components/DocumentRequestNotificationModal';
+import { dossiersAPI, documentsAPI, appointmentsAPI, userAPI, messagesAPI, notificationsAPI, documentRequestsAPI } from '@/lib/api';
+import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 import { useCmsText } from '@/lib/contentClient';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
@@ -34,6 +35,7 @@ function ClientDashboardContent() {
   });
   const [isWidgetOpen, setIsWidgetOpen] = useState(false);
   const [recentDossiers, setRecentDossiers] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [unreadMessage, setUnreadMessage] = useState<any>(null);
@@ -46,6 +48,8 @@ function ClientDashboardContent() {
   const [recentAppointments, setRecentAppointments] = useState<any[]>([]);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [documentRequestNotification, setDocumentRequestNotification] = useState<any>(null);
+  const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
 
   // Textes CMS pour le header du dashboard client
   const dashboardTitleClient = useCmsText(
@@ -122,13 +126,75 @@ function ClientDashboardContent() {
       loadStats();
       loadUserProfile();
       checkUnreadMessages();
+      checkDocumentRequestNotifications();
+      loadNotifications();
     } else if (token) {
       // Si on a un token mais pas de session, charger quand même les stats
       loadStats();
       loadUserProfile();
       checkUnreadMessages();
+      checkDocumentRequestNotifications();
+      loadNotifications();
     }
   }, [session, status, router, searchParams, isImpersonating]);
+
+  const loadNotifications = async () => {
+    try {
+      const response = await notificationsAPI.getNotifications({
+        limit: 200
+      });
+      if (response.data.success) {
+        setNotifications(response.data.notifications || []);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des notifications:', err);
+    }
+  };
+
+  const getLastNotificationForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      );
+    });
+    
+    if (dossierNotifications.length === 0) return null;
+    
+    dossierNotifications.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+    
+    return dossierNotifications[0];
+  };
+
+  const getUnreadNotificationsCountForDossier = (dossierId: string) => {
+    const dossierNotifications = notifications.filter((notif) => {
+      const notifDossierId = notif.data?.dossierId || notif.dossierId;
+      return notifDossierId && (
+        notifDossierId.toString() === dossierId.toString() ||
+        (typeof notifDossierId === 'object' && notifDossierId._id?.toString() === dossierId.toString())
+      ) && !notif.lu;
+    });
+    
+    return dossierNotifications.length;
+  };
+
+  const getCategorieLabel = (categorie: string) => {
+    const categories: Record<string, string> = {
+      sejour_titres: 'Séjour et titres de séjour',
+      contentieux_administratif: 'Contentieux administratif',
+      asile: 'Asile',
+      regroupement_familial: 'Regroupement familial',
+      nationalite_francaise: 'Nationalité française',
+      eloignement_urgence: 'Éloignement et urgence',
+      autre: 'Autre'
+    };
+    return categories[categorie] || categorie;
+  };
 
   const loadImpersonatedUser = async (userId: string) => {
     try {
@@ -230,6 +296,76 @@ function ClientDashboardContent() {
     }
   };
 
+  // Vérifier les notifications de demandes de documents
+  const checkDocumentRequestNotifications = async () => {
+    try {
+      // D'abord, vérifier s'il y a des demandes de documents en attente réelles pour l'utilisateur connecté
+      const documentRequestsResponse = await documentRequestsAPI.getRequests({ 
+        status: 'pending' 
+      });
+      
+      // Si aucune demande en attente, ne pas afficher le modal
+      if (!documentRequestsResponse.data.success || 
+          !documentRequestsResponse.data.documentRequests || 
+          documentRequestsResponse.data.documentRequests.length === 0) {
+        console.log('ℹ️ Aucune demande de document en attente trouvée');
+        return;
+      }
+
+      // Prendre la demande la plus récente
+      const latestRequest = documentRequestsResponse.data.documentRequests[0];
+      
+      // Vérifier que la demande existe vraiment et est bien en attente
+      if (!latestRequest || latestRequest.status !== 'pending') {
+        console.log('ℹ️ La demande de document n\'est plus en attente');
+        return;
+      }
+
+      // Vérifier s'il y a une notification non lue correspondante
+      const notificationsResponse = await notificationsAPI.getNotifications({
+        type: 'document_request',
+        lu: false,
+        limit: 10
+      });
+
+      if (notificationsResponse.data.success && notificationsResponse.data.notifications) {
+        // Trouver la notification correspondant à cette demande de document
+        const matchingNotification = notificationsResponse.data.notifications.find(
+          (notif: any) => {
+            const notifRequestId = notif.metadata?.documentRequestId || notif.data?.documentRequestId;
+            const requestId = latestRequest._id || latestRequest.id;
+            return notifRequestId && requestId && notifRequestId.toString() === requestId.toString();
+          }
+        );
+
+        if (matchingNotification) {
+          // Créer un objet notification enrichi avec les données de la demande
+          const enrichedNotification = {
+            ...matchingNotification,
+            data: {
+              ...matchingNotification.data,
+              documentRequestId: latestRequest._id || latestRequest.id,
+              dossierId: latestRequest.dossier?._id || latestRequest.dossier,
+              dossierNumero: latestRequest.dossier?.numero || latestRequest.dossier?._id?.toString().slice(-6),
+              documentType: latestRequest.documentType,
+              documentTypeLabel: latestRequest.documentTypeLabel,
+              isUrgent: latestRequest.isUrgent,
+            }
+          };
+          console.log('✅ Demande de document valide trouvée, affichage du modal');
+          setDocumentRequestNotification(enrichedNotification);
+          setShowDocumentRequestModal(true);
+        } else {
+          console.log('ℹ️ Aucune notification non lue correspondante trouvée pour la demande');
+        }
+      } else {
+        console.log('ℹ️ Aucune notification de type document_request trouvée');
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors de la vérification des notifications de demandes de documents:', error);
+    }
+  };
+
   // Rafraîchissement automatique toutes les 30 secondes pour les mises à jour en temps réel
   useEffect(() => {
     const interval = setInterval(() => {
@@ -240,6 +376,7 @@ function ClientDashboardContent() {
           loadStatsForUser(impersonateUserId);
         } else {
           loadStats();
+          loadNotifications();
         }
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
@@ -435,6 +572,24 @@ function ClientDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes scroll-text {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+        .animate-scroll-text {
+          animation: scroll-text 15s linear infinite;
+          display: inline-block;
+          padding-left: 100%;
+        }
+        .animate-scroll-text:hover {
+          animation-play-state: paused;
+        }
+      `}} />
       <main className="container mx-auto px-4 py-8">
         <div id="dashboard-top" className="scroll-mt-20"></div>
 
@@ -730,31 +885,38 @@ function ClientDashboardContent() {
           </div>
         </div>
 
-        {/* Dernières activités */}
+        {/* Mes Dossiers - Format complet */}
         <div className="bg-gradient-to-br from-white to-primary/5 rounded-2xl shadow-lg p-8 border border-primary/20">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/70 rounded-lg flex items-center justify-center">
-                <span className="text-xl">📊</span>
+                <span className="text-xl">📁</span>
               </div>
-              <h2 className="text-2xl font-bold text-foreground">Dernières activités</h2>
+              <h2 className="text-2xl font-bold text-foreground">Mes Dossiers</h2>
             </div>
-            <Link href="/client/dossiers" className="text-sm text-primary hover:underline font-semibold">
-              Voir tout →
-            </Link>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={loadStats} disabled={isLoading} size="sm">
+                Actualiser
+              </Button>
+              <Link href="/client/dossiers">
+                <Button variant="outline" size="sm">
+                  Voir tout →
+                </Button>
+              </Link>
+            </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {isLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Chargement des activités...</p>
+                <p className="text-muted-foreground">Chargement des dossiers...</p>
               </div>
             ) : recentDossiers.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-4xl">📋</span>
                 </div>
-                <p className="text-muted-foreground mb-4 font-medium">Aucune activité récente</p>
+                <p className="text-muted-foreground mb-4 font-medium">Aucun dossier</p>
                 <Link href="/dossiers/create">
                   <Button className="bg-gradient-to-r from-primary to-primary/70 hover:from-primary/90 hover:to-primary/80 shadow-md">
                     Créer mon premier dossier
@@ -762,41 +924,146 @@ function ClientDashboardContent() {
                 </Link>
               </div>
             ) : (
-              <div className="space-y-3">
-                {recentDossiers.map((dossier) => {
-                  const formatDate = (date: string | Date) => {
-                    const d = new Date(date);
-                    const now = new Date();
-                    const diffTime = Math.abs(now.getTime() - d.getTime());
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    if (diffDays === 0) return "Aujourd'hui";
-                    if (diffDays === 1) return "Hier";
-                    if (diffDays < 7) return `Il y a ${diffDays} jours`;
-                    if (diffDays < 30) return `Il y a ${Math.floor(diffDays / 7)} semaine${Math.floor(diffDays / 7) > 1 ? 's' : ''}`;
-                    return d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
-                  };
+              recentDossiers.map((dossier) => (
+                <div
+                  key={dossier._id || dossier.id}
+                  className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${
+                    dossier.statut === 'recu' || dossier.statut === 'en_attente_onboarding'
+                      ? 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200'
+                      : dossier.statut === 'decision_favorable' || dossier.statut === 'gain_cause'
+                      ? 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-200'
+                      : dossier.statut === 'decision_defavorable' || dossier.statut === 'refuse' || dossier.statut === 'rejet'
+                      ? 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200'
+                      : 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200'
+                  }`}
+                >
+                  {/* En-tête de la carte */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
+                        {dossier.titre || 'Sans titre'}
+                      </h3>
+                      {dossier.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                          {dossier.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
+                        {getStatutLabel(dossier.statut)}
+                      </span>
+                      {dossier.priorite && (
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getPrioriteColor(dossier.priorite)}`}>
+                          {dossier.priorite}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                  return (
-                    <Link key={dossier._id || dossier.id} href={`/client/dossiers/${dossier._id || dossier.id}`}>
-                      <div className="flex items-center gap-4 p-4 rounded-xl bg-white border-2 border-primary/20 hover:border-primary/40 hover:shadow-md transition-all duration-200 cursor-pointer">
-                        <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-sm">
-                          <span className="text-xl">📁</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-foreground mb-1 line-clamp-1">{dossier.titre}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Créé {formatDate(dossier.createdAt)}
-                          </p>
-                        </div>
-                        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
-                          {getStatutLabel(dossier.statut)}
+                  {/* Informations du dossier */}
+                  <div className="space-y-2 mb-3">
+                    {(dossier.numero || dossier.numeroDossier) && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-primary font-semibold">🔢</span>
+                        <span className="text-primary font-semibold">
+                          N° {dossier.numero || dossier.numeroDossier}
                         </span>
                       </div>
-                    </Link>
-                  );
-                })}
-              </div>
+                    )}
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-muted-foreground mt-0.5">📋</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground text-xs">{getCategorieLabel(dossier.categorie || 'autre')}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>📅</span>
+                      <span>
+                        {dossier.createdAt ? new Date(dossier.createdAt).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        }) : '-'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-3 border-t border-gray-200">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        {(() => {
+                          const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
+                          if (lastNotification) {
+                            return (
+                              <div className="relative overflow-hidden bg-blue-50/50 rounded-md px-3 py-2 border border-blue-200/50">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs">🔔</span>
+                                  <div className="flex-1 min-w-0 overflow-hidden">
+                                    <div className="animate-scroll-text whitespace-nowrap">
+                                      <span className="text-xs text-blue-900 font-medium">
+                                        {lastNotification.title || lastNotification.message || 'Nouvelle notification'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex gap-3 text-xs text-muted-foreground">
+                              {dossier.documents && dossier.documents.length > 0 && (
+                                <span>📄 {dossier.documents.length}</span>
+                              )}
+                              {dossier.messages && dossier.messages.length > 0 && (
+                                <span>💬 {dossier.messages.length}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {(() => {
+                          const unreadCount = getUnreadNotificationsCountForDossier(dossier._id || dossier.id);
+                          return (
+                            <Link href={`/client/notifications?dossierId=${dossier._id || dossier.id}&filter=unread`}>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className={`text-xs h-8 relative ${unreadCount > 0 ? 'bg-orange-50 border-orange-300 hover:bg-orange-100' : ''}`}
+                                title="Voir les notifications non lues"
+                              >
+                                🔔 Notifications
+                                {unreadCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                  </span>
+                                )}
+                              </Button>
+                            </Link>
+                          );
+                        })()}
+                        <Link href={`/client/messages?dossierId=${dossier._id || dossier.id}&action=view`}>
+                          <Button variant="outline" size="sm" className="text-xs h-8" title="Voir les discussions">
+                            💬 Discussions
+                          </Button>
+                        </Link>
+                        <Link href={`/client/messages?dossierId=${dossier._id || dossier.id}&action=send`}>
+                          <Button size="sm" className="text-xs h-8" title="Envoyer un message">
+                            ✉️ Message
+                          </Button>
+                        </Link>
+                        <Link href={`/client/dossiers/${dossier._id || dossier.id}`}>
+                          <Button variant="outline" size="sm" className="text-xs h-8">
+                            Détails
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -842,6 +1109,18 @@ function ClientDashboardContent() {
           onUpdate={() => {
             loadStats();
           }}
+        />
+
+        {/* Modal de demande de document */}
+        <DocumentRequestNotificationModal
+          isOpen={showDocumentRequestModal}
+          onClose={() => {
+            setShowDocumentRequestModal(false);
+            setDocumentRequestNotification(null);
+            // Recharger les stats après fermeture
+            loadStats();
+          }}
+          notification={documentRequestNotification}
         />
            </div>
          );

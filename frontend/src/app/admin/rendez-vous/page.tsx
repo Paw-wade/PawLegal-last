@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { appointmentsAPI } from '@/lib/api';
+import { appointmentsAPI, dossiersAPI } from '@/lib/api';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 
 function Button({ children, variant = 'default', className = '', ...props }: any) {
@@ -49,6 +49,77 @@ function Label({ htmlFor, children, className = '' }: any) {
   return <label htmlFor={htmlFor} className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>;
 }
 
+const categories = {
+  sejour_titres: {
+    label: 'Séjour et titres de séjour',
+    types: [
+      { value: 'premier_titre_etudiant', label: 'Demande de premier titre de séjour (étudiant)' },
+      { value: 'premier_titre_salarie', label: 'Demande de premier titre de séjour (salarié)' },
+      { value: 'premier_titre_vie_privée', label: 'Demande de premier titre de séjour (vie privée et familiale)' },
+      { value: 'premier_titre_malade', label: 'Demande de premier titre de séjour (étranger malade)' },
+      { value: 'premier_titre_retraite', label: 'Demande de premier titre de séjour (retraité)' },
+      { value: 'premier_titre_visiteur', label: 'Demande de premier titre de séjour (visiteur)' },
+      { value: 'renouvellement_titre', label: 'Renouvellement d\'un titre de séjour' },
+      { value: 'changement_statut', label: 'Changement de statut' },
+      { value: 'carte_talent', label: 'Carte Talent' },
+      { value: 'carte_resident', label: 'Demande de carte de résident ou de carte de 10 ans' },
+      { value: 'regularisation_travail', label: 'Régularisation par le travail' },
+      { value: 'regularisation_humanitaire', label: 'Régularisation pour motifs humanitaires' },
+    ]
+  },
+  contentieux_administratif: {
+    label: 'Contentieux administratif',
+    types: [
+      { value: 'recours_gracieux', label: 'Recours gracieux contre un refus de titre' },
+      { value: 'recours_hierarchique', label: 'Recours hiérarchique contre un refus de titre' },
+      { value: 'recours_absence_reponse', label: 'Recours contentieux - Absence de réponse à une demande de titre' },
+      { value: 'recours_refus_sejour', label: 'Recours contentieux - Refus de séjour' },
+      { value: 'recours_refus_enregistrement', label: 'Recours contentieux - Refus d\'enregistrement de la demande' },
+    ]
+  },
+  asile: {
+    label: 'Asile',
+    types: [
+      { value: 'demande_asile', label: 'Demande d\'asile' },
+      { value: 'recours_cnda', label: 'Recours CNDA' },
+    ]
+  },
+  regroupement_familial: {
+    label: 'Regroupement familial',
+    types: [
+      { value: 'preparation_dossier_regroupement', label: 'Préparation du dossier de regroupement familial' },
+    ]
+  },
+  nationalite_francaise: {
+    label: 'Nationalité française',
+    types: [
+      { value: 'acquisition_nationalite', label: 'Acquisition de la nationalité française' },
+    ]
+  },
+  eloignement_urgence: {
+    label: 'Éloignement et urgence',
+    types: [
+      { value: 'contestation_oqtf', label: 'Contestation d\'une OQTF' },
+    ]
+  },
+  autre: {
+    label: 'Autre',
+    types: [
+      { value: 'autre', label: 'Autre demande' },
+    ]
+  }
+};
+
+const getCategorieLabel = (categorie: string) => {
+  return categories[categorie as keyof typeof categories]?.label || categorie;
+};
+
+const getTypeLabel = (categorie: string, type: string) => {
+  const categorieTypes = categories[categorie as keyof typeof categories]?.types || [];
+  const typeObj = categorieTypes.find(t => t.value === type);
+  return typeObj?.label || type;
+};
+
 export default function AdminRendezVousPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -57,6 +128,7 @@ export default function AdminRendezVousPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'en_attente' | 'confirme' | 'annule' | 'termine'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [editingRdv, setEditingRdv] = useState<any | null>(null);
   // Fonction pour obtenir la date du jour au format YYYY-MM-DD
   const getTodayDate = () => new Date().toISOString().split('T')[0];
@@ -70,6 +142,16 @@ export default function AdminRendezVousPage() {
     notes: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCreateDossierModal, setShowCreateDossierModal] = useState(false);
+  const [appointmentForDossier, setAppointmentForDossier] = useState<any | null>(null);
+  const [isCreatingDossier, setIsCreatingDossier] = useState(false);
+  const [dossierFormData, setDossierFormData] = useState({
+    titre: '',
+    description: '',
+    categorie: 'autre',
+    type: '',
+    priorite: 'normale'
+  });
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -521,16 +603,30 @@ export default function AdminRendezVousPage() {
                             id={`effectue-${rdv._id || rdv.id}`}
                             checked={rdv.effectue || false}
                             onChange={async (e) => {
-                              try {
-                                const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { 
-                                  effectue: e.target.checked 
+                              if (e.target.checked) {
+                                // Si on coche "effectué", proposer d'ouvrir un dossier
+                                setAppointmentForDossier(rdv);
+                                setDossierFormData({
+                                  titre: `Dossier suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')}`,
+                                  description: `Dossier créé suite au rendez-vous du ${new Date(rdv.date).toLocaleDateString('fr-FR')} à ${rdv.heure}.\n\nMotif: ${rdv.motif || 'N/A'}\n${rdv.description ? `Description: ${rdv.description}` : ''}`,
+                                  categorie: 'autre',
+                                  type: '',
+                                  priorite: 'normale'
                                 });
-                                if (response.data.success) {
-                                  await loadAppointments();
+                                setShowCreateDossierModal(true);
+                              } else {
+                                // Si on décoche, simplement mettre à jour
+                                try {
+                                  const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { 
+                                    effectue: false 
+                                  });
+                                  if (response.data.success) {
+                                    await loadAppointments();
+                                  }
+                                } catch (err: any) {
+                                  console.error('Erreur lors de la mise à jour:', err);
+                                  setError(err.response?.data?.message || 'Erreur lors de la mise à jour');
                                 }
-                              } catch (err: any) {
-                                console.error('Erreur lors de la mise à jour:', err);
-                                setError(err.response?.data?.message || 'Erreur lors de la mise à jour');
                               }
                             }}
                             className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
@@ -767,6 +863,167 @@ export default function AdminRendezVousPage() {
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de création de dossier depuis un rendez-vous */}
+      {showCreateDossierModal && appointmentForDossier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => {
+          if (!isCreatingDossier) {
+            setShowCreateDossierModal(false);
+            setAppointmentForDossier(null);
+          }
+        }}>
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto mx-4 p-6 animate-in fade-in zoom-in duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Rendez-vous effectué</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Souhaitez-vous ouvrir un dossier pour ce client ?
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (!isCreatingDossier) {
+                    setShowCreateDossierModal(false);
+                    setAppointmentForDossier(null);
+                  }
+                }}
+                disabled={isCreatingDossier}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            {success && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-sm text-green-600">{success}</p>
+              </div>
+            )}
+
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h3 className="font-semibold text-sm mb-2">Informations du client :</h3>
+              <div className="text-sm space-y-1">
+                <p><strong>Nom :</strong> {appointmentForDossier.prenom || ''} {appointmentForDossier.nom || ''}</p>
+                <p><strong>Email :</strong> {appointmentForDossier.email || 'Non renseigné'}</p>
+                <p><strong>Téléphone :</strong> {appointmentForDossier.telephone || 'Non renseigné'}</p>
+                <p><strong>Date du rendez-vous :</strong> {new Date(appointmentForDossier.date).toLocaleDateString('fr-FR')} à {appointmentForDossier.heure}</p>
+                <p><strong>Motif :</strong> {appointmentForDossier.motif || 'Non renseigné'}</p>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateDossierFromAppointment(true);
+            }} className="space-y-4">
+              <div>
+                <Label htmlFor="dossier-titre">Titre du dossier *</Label>
+                <Input
+                  id="dossier-titre"
+                  type="text"
+                  value={dossierFormData.titre}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, titre: e.target.value })}
+                  required
+                  disabled={isCreatingDossier}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="dossier-description">Description</Label>
+                <Textarea
+                  id="dossier-description"
+                  value={dossierFormData.description}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, description: e.target.value })}
+                  rows={4}
+                  disabled={isCreatingDossier}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="dossier-categorie">Catégorie *</Label>
+                  <select
+                    id="dossier-categorie"
+                    value={dossierFormData.categorie}
+                    onChange={(e) => {
+                      setDossierFormData({ 
+                        ...dossierFormData, 
+                        categorie: e.target.value,
+                        type: '' // Réinitialiser le type quand on change de catégorie
+                      });
+                    }}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    required
+                    disabled={isCreatingDossier}
+                  >
+                    {Object.entries(categories).map(([key, cat]) => (
+                      <option key={key} value={key}>{cat.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="dossier-type">Type *</Label>
+                  <select
+                    id="dossier-type"
+                    value={dossierFormData.type}
+                    onChange={(e) => setDossierFormData({ ...dossierFormData, type: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    required
+                    disabled={isCreatingDossier || !dossierFormData.categorie}
+                  >
+                    <option value="">Sélectionnez un type</option>
+                    {categories[dossierFormData.categorie as keyof typeof categories]?.types.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="dossier-priorite">Priorité</Label>
+                <select
+                  id="dossier-priorite"
+                  value={dossierFormData.priorite}
+                  onChange={(e) => setDossierFormData({ ...dossierFormData, priorite: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  disabled={isCreatingDossier}
+                >
+                  <option value="basse">Basse</option>
+                  <option value="normale">Normale</option>
+                  <option value="haute">Haute</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleCreateDossierFromAppointment(false)}
+                  disabled={isCreatingDossier}
+                >
+                  Marquer effectué sans dossier
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isCreatingDossier || !dossierFormData.titre || !dossierFormData.categorie || !dossierFormData.type}
+                >
+                  {isCreatingDossier ? 'Création...' : 'Créer le dossier'}
                 </Button>
               </div>
             </form>
