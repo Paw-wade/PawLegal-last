@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { documentsAPI, dossiersAPI } from '@/lib/api';
+import Link from 'next/link';
 import { DocumentPreview } from '@/components/DocumentPreview';
 
 function Button({ children, variant = 'default', className = '', disabled, ...props }: any) {
@@ -54,6 +55,7 @@ export default function AdminDocumentsPage() {
   const [isLoadingDossiers, setIsLoadingDossiers] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [previewDocument, setPreviewDocument] = useState<any | null>(null);
+  const [dossierInfoMap, setDossierInfoMap] = useState<Record<string, any>>({});
 
   useEffect(() => {
     if (status === 'unauthenticated') {

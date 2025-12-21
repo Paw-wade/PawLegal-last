@@ -149,6 +149,102 @@ const categories = {
   }
 };
 
+// Liste complète des types de documents pour les titres de séjour et visas
+const documentTypesList = [
+  // Documents d'identité
+  { value: 'passeport', label: 'Passeport', category: 'identite' },
+  { value: 'carte_identite', label: 'Carte d\'identité', category: 'identite' },
+  { value: 'acte_naissance', label: 'Acte de naissance', category: 'identite' },
+  { value: 'acte_mariage', label: 'Acte de mariage', category: 'identite' },
+  { value: 'acte_divorce', label: 'Acte de divorce', category: 'identite' },
+  { value: 'livret_familial', label: 'Livret de famille', category: 'identite' },
+  
+  // Titres de séjour
+  { value: 'titre_sejour_valide', label: 'Titre de séjour en cours de validité', category: 'titre_sejour' },
+  { value: 'titre_sejour_expire', label: 'Titre de séjour expiré', category: 'titre_sejour' },
+  { value: 'recepisse_demande_titre', label: 'Récépissé de demande de titre de séjour', category: 'titre_sejour' },
+  { value: 'carte_sejour_temporaire', label: 'Carte de séjour temporaire', category: 'titre_sejour' },
+  { value: 'carte_resident', label: 'Carte de résident', category: 'titre_sejour' },
+  { value: 'carte_resident_permanent', label: 'Carte de résident permanent (10 ans)', category: 'titre_sejour' },
+  
+  // Visas
+  { value: 'visa_court_sejour', label: 'Visa de court séjour (Schengen)', category: 'visa' },
+  { value: 'visa_long_sejour', label: 'Visa de long séjour', category: 'visa' },
+  { value: 'visa_etudiant', label: 'Visa étudiant', category: 'visa' },
+  { value: 'visa_travailleur', label: 'Visa travailleur', category: 'visa' },
+  { value: 'visa_familial', label: 'Visa familial', category: 'visa' },
+  { value: 'visa_transit', label: 'Visa de transit', category: 'visa' },
+  
+  // Documents professionnels
+  { value: 'contrat_travail', label: 'Contrat de travail', category: 'professionnel' },
+  { value: 'attestation_emploi', label: 'Attestation d\'emploi', category: 'professionnel' },
+  { value: 'fiche_paie', label: 'Fiches de paie (3 derniers mois)', category: 'professionnel' },
+  { value: 'avis_imposition', label: 'Avis d\'imposition', category: 'professionnel' },
+  { value: 'declaration_revenus', label: 'Déclaration de revenus', category: 'professionnel' },
+  { value: 'justificatif_ca', label: 'Justificatif de chiffre d\'affaires (auto-entrepreneur)', category: 'professionnel' },
+  
+  // Documents de logement
+  { value: 'justificatif_domicile', label: 'Justificatif de domicile (moins de 3 mois)', category: 'logement' },
+  { value: 'quittance_loyer', label: 'Quittance de loyer', category: 'logement' },
+  { value: 'facture_electricite', label: 'Facture d\'électricité', category: 'logement' },
+  { value: 'facture_gaz', label: 'Facture de gaz', category: 'logement' },
+  { value: 'facture_eau', label: 'Facture d\'eau', category: 'logement' },
+  { value: 'attestation_hebergement', label: 'Attestation d\'hébergement', category: 'logement' },
+  
+  // Documents de ressources
+  { value: 'releve_bancaire', label: 'Relevés bancaires (3 derniers mois)', category: 'ressources' },
+  { value: 'attestation_bancaire', label: 'Attestation bancaire', category: 'ressources' },
+  { value: 'justificatif_ressources', label: 'Justificatif de ressources', category: 'ressources' },
+  { value: 'pension_retraite', label: 'Pension de retraite', category: 'ressources' },
+  { value: 'allocation_chomage', label: 'Allocation chômage', category: 'ressources' },
+  { value: 'allocation_familiale', label: 'Allocations familiales', category: 'ressources' },
+  
+  // Documents de santé
+  { value: 'certificat_medical', label: 'Certificat médical', category: 'sante' },
+  { value: 'attestation_cmu', label: 'Attestation CMU/AME', category: 'sante' },
+  { value: 'carte_vitale', label: 'Carte Vitale', category: 'sante' },
+  
+  // Documents d'études
+  { value: 'diplome', label: 'Diplôme', category: 'etudes' },
+  { value: 'attestation_scolarite', label: 'Attestation de scolarité', category: 'etudes' },
+  { value: 'releve_notes', label: 'Relevé de notes', category: 'etudes' },
+  { value: 'inscription_universite', label: 'Inscription universitaire', category: 'etudes' },
+  
+  // Documents familiaux
+  { value: 'acte_mariage_fr', label: 'Acte de mariage (traduit et légalisé)', category: 'familial' },
+  { value: 'acte_naissance_enfant', label: 'Acte de naissance des enfants', category: 'familial' },
+  { value: 'livret_familial_fr', label: 'Livret de famille français', category: 'familial' },
+  { value: 'justificatif_ressources_famille', label: 'Justificatif de ressources familiales', category: 'familial' },
+  
+  // Autres documents
+  { value: 'casier_judiciaire', label: 'Casier judiciaire', category: 'autre' },
+  { value: 'traduction_assermentee', label: 'Traduction assermentée', category: 'autre' },
+  { value: 'legalisation', label: 'Légalisation/Apostille', category: 'autre' },
+  { value: 'autre', label: 'Autre document', category: 'autre' }
+];
+
+// Grouper par catégorie pour l'affichage
+const documentTypesByCategory = documentTypesList.reduce((acc, doc) => {
+  if (!acc[doc.category]) {
+    acc[doc.category] = [];
+  }
+  acc[doc.category].push(doc);
+  return acc;
+}, {} as Record<string, typeof documentTypesList>);
+
+const categoryLabels: Record<string, string> = {
+  identite: '📄 Documents d\'identité',
+  titre_sejour: '🪪 Titres de séjour',
+  visa: '✈️ Visas',
+  professionnel: '💼 Documents professionnels',
+  logement: '🏠 Documents de logement',
+  ressources: '💰 Documents de ressources',
+  sante: '🏥 Documents de santé',
+  etudes: '📚 Documents d\'études',
+  familial: '👨‍👩‍👧‍👦 Documents familiaux',
+  autre: '📋 Autres documents'
+};
+
 export default function AdminDossiersPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -190,12 +286,14 @@ export default function AdminDossiersPage() {
   const [userFilter, setUserFilter] = useState<string>('all');
   const [showDocumentRequestModal, setShowDocumentRequestModal] = useState<any>(null);
   const [documentRequestData, setDocumentRequestData] = useState({
-    documentType: '',
-    documentTypeLabel: '',
+    selectedDocumentTypes: [] as string[],
     message: '',
     isUrgent: false
   });
   const [documentRequests, setDocumentRequests] = useState<Record<string, any[]>>({});
+  const [expandedDocumentDropdowns, setExpandedDocumentDropdowns] = useState<Set<string>>(new Set());
+  const [selectedDocumentForPreview, setSelectedDocumentForPreview] = useState<any>(null);
+  const [showDocumentPreviewModal, setShowDocumentPreviewModal] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -269,6 +367,7 @@ export default function AdminDossiersPage() {
         setDossiers(dossiersList);
         
         // Charger les demandes de documents pour chaque dossier
+        // Ignorer silencieusement les erreurs 404 (route peut ne pas être disponible si le serveur n'est pas redémarré)
         const requestsMap: Record<string, any[]> = {};
         await Promise.all(
           dossiersList.map(async (dossier: any) => {
@@ -279,8 +378,12 @@ export default function AdminDossiersPage() {
               if (requestsResponse.data.success) {
                 requestsMap[dossier._id || dossier.id] = requestsResponse.data.documentRequests || [];
               }
-            } catch (err) {
-              console.error(`Erreur lors du chargement des demandes pour le dossier ${dossier._id}:`, err);
+            } catch (err: any) {
+              // Ignorer silencieusement les erreurs 404 pour cette route
+              // (la route sera disponible après redémarrage du serveur backend)
+              if (err.response?.status !== 404) {
+                console.error(`Erreur lors du chargement des demandes pour le dossier ${dossier._id}:`, err);
+              }
             }
           })
         );
@@ -1239,9 +1342,10 @@ export default function AdminDossiersPage() {
                 return (
                   <div className="space-y-4">
                     {filteredDossiers.map((dossier) => (
-                  <div
+                  <Link
+                    href={`/admin/dossiers/${dossier._id || dossier.id}`}
                     key={dossier._id || dossier.id}
-                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${
+                    className={`block border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full cursor-pointer ${
                       dossier.statut === 'recu' || dossier.statut === 'en_attente_onboarding'
                         ? 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200'
                         : dossier.statut === 'decision_favorable' || dossier.statut === 'gain_cause'
@@ -1250,7 +1354,16 @@ export default function AdminDossiersPage() {
                         ? 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200'
                         : 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200'
                     }`}
+                    onClick={(e) => {
+                      // Empêcher la navigation si on clique sur un bouton ou un lien interne
+                      const target = e.target as HTMLElement;
+                      if (target.closest('button, a[href^="/"], select')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                    }}
                   >
+                    <div>
                     {/* En-tête de la carte */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0 pr-2">
@@ -1366,44 +1479,246 @@ export default function AdminDossiersPage() {
                       )}
                     </div>
 
-                    {/* Demandes de documents */}
-                    {documentRequests[dossier._id || dossier.id] && documentRequests[dossier._id || dossier.id].length > 0 && (
-                      <div className="mb-3 pb-3 border-b border-gray-200">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Demandes de documents</p>
-                        <div className="space-y-1.5">
-                          {documentRequests[dossier._id || dossier.id].slice(0, 2).map((request: any) => (
-                            <div
-                              key={request._id || request.id}
-                              className={`flex items-center justify-between p-2 rounded-md text-xs ${
-                                request.isUrgent ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className={request.isUrgent ? 'text-red-600' : 'text-blue-600'}>
-                                  {request.isUrgent ? '🔴' : '📄'}
-                                </span>
-                                <span className={`font-medium truncate ${request.isUrgent ? 'text-red-800' : 'text-blue-800'}`}>
-                                  {request.documentTypeLabel}
-                                </span>
-                              </div>
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ml-2 ${
-                                request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                request.status === 'sent' ? 'bg-green-100 text-green-800' :
-                                'bg-blue-100 text-blue-800'
-                              }`}>
-                                {request.status === 'pending' ? 'En attente' :
-                                 request.status === 'sent' ? 'Envoyé' : 'Reçu'}
-                              </span>
-                            </div>
-                          ))}
-                          {documentRequests[dossier._id || dossier.id].length > 2 && (
-                            <p className="text-xs text-muted-foreground text-center pt-1">
-                              +{documentRequests[dossier._id || dossier.id].length - 2} autre(s)
-                            </p>
-                          )}
+                    {/* Encadré Documents - Compact avec dropdown */}
+                    <div className="mb-3 pb-3 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Documents</span>
+                        <div className="relative">
+                          {(() => {
+                            const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
+                            const totalRequests = dossierRequests.length;
+                            const receivedCount = dossierRequests.filter((r: any) => r.status === 'received' || r.status === 'sent').length;
+                            const pendingCount = dossierRequests.filter((r: any) => r.status === 'pending').length;
+                            const isExpanded = expandedDocumentDropdowns.has(dossier._id || dossier.id);
+                            
+                            if (totalRequests === 0) {
+                              return (
+                                <span className="text-xs text-muted-foreground px-2 py-1">Aucun document</span>
+                              );
+                            }
+                            
+                            return (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const newExpanded = new Set(expandedDocumentDropdowns);
+                                    if (isExpanded) {
+                                      newExpanded.delete(dossier._id || dossier.id);
+                                    } else {
+                                      newExpanded.add(dossier._id || dossier.id);
+                                    }
+                                    setExpandedDocumentDropdowns(newExpanded);
+                                  }}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium transition-colors"
+                                  title="Voir les documents"
+                                >
+                                  <span className="text-gray-700">📄</span>
+                                  <span className="text-gray-700 font-semibold">{totalRequests}</span>
+                                  {pendingCount > 0 && (
+                                    <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] font-bold">
+                                      {pendingCount}
+                                    </span>
+                                  )}
+                                  {receivedCount > 0 && (
+                                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-bold">
+                                      {receivedCount}
+                                    </span>
+                                  )}
+                                  <span className="text-gray-400 text-[10px]">{isExpanded ? '▲' : '▼'}</span>
+                                </button>
+                                
+                                {/* Dropdown de la liste des documents */}
+                                {isExpanded && (
+                                  <div 
+                                    className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="p-2">
+                                      <div className="flex items-center justify-between mb-2 px-2 py-1 bg-gray-50 rounded">
+                                        <span className="text-xs font-semibold text-gray-700">Documents demandés</span>
+                                        <span className="text-xs text-gray-500">{totalRequests} total</span>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {dossierRequests.map((request: any) => {
+                                          const isReceived = request.status === 'received' || request.status === 'sent';
+                                          const isPending = request.status === 'pending';
+                                          
+                                          return (
+                                            <div
+                                              key={request._id || request.id}
+                                              className={`p-2 rounded-md border cursor-pointer hover:bg-gray-50 transition-colors ${
+                                                isPending ? 'border-yellow-200 bg-yellow-50/50' : 'border-green-200 bg-green-50/50'
+                                              }`}
+                                              onClick={async (e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
+                                                // Si le document est reçu, ouvrir la prévisualisation
+                                                if (isReceived && request.document) {
+                                                  try {
+                                                    // Charger les détails du document
+                                                    const docResponse = await documentsAPI.getAllDocuments();
+                                                    if (docResponse.data.success) {
+                                                      const allDocs = docResponse.data.documents || docResponse.data.data || [];
+                                                      const doc = allDocs.find((d: any) => 
+                                                        (d._id || d.id).toString() === (request.document._id || request.document).toString()
+                                                      );
+                                                      if (doc) {
+                                                        setSelectedDocumentForPreview(doc);
+                                                        setShowDocumentPreviewModal(true);
+                                                      }
+                                                    }
+                                                  } catch (err) {
+                                                    console.error('Erreur lors du chargement du document:', err);
+                                                  }
+                                                }
+                                              }}
+                                            >
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center gap-1.5 mb-1">
+                                                    <span className="text-sm">{isPending ? '⏳' : '✅'}</span>
+                                                    <span className={`text-xs font-semibold truncate ${
+                                                      isPending ? 'text-yellow-900' : 'text-green-900'
+                                                    }`}>
+                                                      {request.documentTypeLabel}
+                                                    </span>
+                                                    {request.isUrgent && (
+                                                      <span className="px-1 py-0.5 bg-red-100 text-red-800 rounded text-[9px] font-bold">
+                                                        URGENT
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  {request.message && (
+                                                    <p className="text-[10px] text-gray-600 line-clamp-1 ml-5">
+                                                      {request.message}
+                                                    </p>
+                                                  )}
+                                                  <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500">
+                                                    <span>📅 {new Date(request.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>
+                                                    {request.document && (
+                                                      <span className="text-green-600">📄 {request.document.nom}</span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+                                                  isPending 
+                                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' 
+                                                    : 'bg-green-100 text-green-800 border border-green-300'
+                                                }`}>
+                                                  {isPending ? 'En attente' : 'Reçu'}
+                                                </span>
+                                              </div>
+                                              
+                                              {/* Actions pour les documents reçus */}
+                                              {isReceived && request.document && (
+                                                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-200">
+                                                  <button
+                                                    onClick={async (e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      try {
+                                                        const docResponse = await documentsAPI.getAllDocuments();
+                                                        if (docResponse.data.success) {
+                                                          const allDocs = docResponse.data.documents || docResponse.data.data || [];
+                                                          const doc = allDocs.find((d: any) => 
+                                                            (d._id || d.id).toString() === (request.document._id || request.document).toString()
+                                                          );
+                                                          if (doc) {
+                                                            setSelectedDocumentForPreview(doc);
+                                                            setShowDocumentPreviewModal(true);
+                                                          }
+                                                        }
+                                                      } catch (err) {
+                                                        console.error('Erreur:', err);
+                                                      }
+                                                    }}
+                                                    className="flex-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-medium transition-colors"
+                                                  >
+                                                    👁️ Voir
+                                                  </button>
+                                                  <button
+                                                    onClick={async (e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      try {
+                                                        const docResponse = await documentsAPI.getAllDocuments();
+                                                        if (docResponse.data.success) {
+                                                          const allDocs = docResponse.data.documents || docResponse.data.data || [];
+                                                          const doc = allDocs.find((d: any) => 
+                                                            (d._id || d.id).toString() === (request.document._id || request.document).toString()
+                                                          );
+                                                          if (doc) {
+                                                            const response = await documentsAPI.downloadDocument(doc._id || doc.id);
+                                                            const blob = new Blob([response.data]);
+                                                            const url = window.URL.createObjectURL(blob);
+                                                            const link = document.createElement('a');
+                                                            link.href = url;
+                                                            link.download = doc.nom;
+                                                            document.body.appendChild(link);
+                                                            link.click();
+                                                            document.body.removeChild(link);
+                                                            window.URL.revokeObjectURL(url);
+                                                          }
+                                                        }
+                                                      } catch (err) {
+                                                        console.error('Erreur lors du téléchargement:', err);
+                                                        alert('Erreur lors du téléchargement du document');
+                                                      }
+                                                    }}
+                                                    className="flex-1 px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-[10px] font-medium transition-colors"
+                                                  >
+                                                    ⬇️ Télécharger
+                                                  </button>
+                                                  <button
+                                                    onClick={async (e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      try {
+                                                        const docResponse = await documentsAPI.getAllDocuments();
+                                                        if (docResponse.data.success) {
+                                                          const allDocs = docResponse.data.documents || docResponse.data.data || [];
+                                                          const doc = allDocs.find((d: any) => 
+                                                            (d._id || d.id).toString() === (request.document._id || request.document).toString()
+                                                          );
+                                                          if (doc) {
+                                                            const previewUrl = documentsAPI.getPreviewUrl(doc._id || doc.id);
+                                                            const printWindow = window.open(previewUrl, '_blank');
+                                                            if (printWindow) {
+                                                              printWindow.onload = () => {
+                                                                setTimeout(() => {
+                                                                  printWindow.print();
+                                                                }, 500);
+                                                              };
+                                                            }
+                                                          }
+                                                        }
+                                                      } catch (err) {
+                                                        console.error('Erreur lors de l\'impression:', err);
+                                                        alert('Erreur lors de l\'impression du document');
+                                                      }
+                                                    }}
+                                                    className="flex-1 px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-medium transition-colors"
+                                                  >
+                                                    🖨️ Imprimer
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
-                    )}
+                    </div>
 
                     {/* Actions */}
                     <div className="pt-3 border-t border-gray-200">
@@ -1495,8 +1810,7 @@ export default function AdminDossiersPage() {
                         onClick={() => {
                           setShowDocumentRequestModal(dossier);
                           setDocumentRequestData({
-                            documentType: '',
-                            documentTypeLabel: '',
+                            selectedDocumentTypes: [],
                             message: '',
                             isUrgent: false
                           });
@@ -1559,7 +1873,8 @@ export default function AdminDossiersPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                    </div>
+                  </Link>
                 ))}
                   </div>
                 );
@@ -1693,91 +2008,184 @@ export default function AdminDossiersPage() {
             </p>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              if (!documentRequestData.documentType || !documentRequestData.documentTypeLabel) {
-                setError('Veuillez sélectionner un type de document');
+              if (documentRequestData.selectedDocumentTypes.length === 0) {
+                setError('Veuillez sélectionner au moins un type de document');
                 return;
               }
               setIsLoading(true);
               setError(null);
               try {
-                await documentRequestsAPI.createRequest({
-                  dossierId: showDocumentRequestModal._id || showDocumentRequestModal.id,
-                  documentType: documentRequestData.documentType,
-                  documentTypeLabel: documentRequestData.documentTypeLabel,
-                  message: documentRequestData.message,
-                  isUrgent: documentRequestData.isUrgent
+                // Créer une demande pour chaque type de document sélectionné
+                const requests = documentRequestData.selectedDocumentTypes.map(async (docType) => {
+                  const docInfo = documentTypesList.find(d => d.value === docType);
+                  const documentTypeLabel = docInfo?.label || docType;
+                  
+                  // Utiliser le type de base pour l'enum backend (mapping)
+                  const baseTypeMap: Record<string, string> = {
+                    passeport: 'passeport',
+                    carte_identite: 'identite',
+                    acte_naissance: 'identite',
+                    acte_mariage: 'identite',
+                    acte_divorce: 'identite',
+                    livret_familial: 'identite',
+                    titre_sejour_valide: 'titre_sejour',
+                    titre_sejour_expire: 'titre_sejour',
+                    recepisse_demande_titre: 'titre_sejour',
+                    carte_sejour_temporaire: 'titre_sejour',
+                    carte_resident: 'titre_sejour',
+                    carte_resident_permanent: 'titre_sejour',
+                    visa_court_sejour: 'autre',
+                    visa_long_sejour: 'autre',
+                    visa_etudiant: 'autre',
+                    visa_travailleur: 'autre',
+                    visa_familial: 'autre',
+                    visa_transit: 'autre',
+                    contrat_travail: 'contrat',
+                    attestation_emploi: 'contrat',
+                    fiche_paie: 'autre',
+                    avis_imposition: 'avis_imposition',
+                    declaration_revenus: 'avis_imposition',
+                    justificatif_ca: 'autre',
+                    justificatif_domicile: 'justificatif_domicile',
+                    quittance_loyer: 'justificatif_domicile',
+                    facture_electricite: 'facture',
+                    facture_gaz: 'facture',
+                    facture_eau: 'facture',
+                    attestation_hebergement: 'justificatif_domicile',
+                    releve_bancaire: 'autre',
+                    attestation_bancaire: 'autre',
+                    justificatif_ressources: 'autre',
+                    pension_retraite: 'autre',
+                    allocation_chomage: 'autre',
+                    allocation_familiale: 'autre',
+                    certificat_medical: 'autre',
+                    attestation_cmu: 'autre',
+                    carte_vitale: 'autre',
+                    diplome: 'autre',
+                    attestation_scolarite: 'autre',
+                    releve_notes: 'autre',
+                    inscription_universite: 'autre',
+                    acte_mariage_fr: 'identite',
+                    acte_naissance_enfant: 'identite',
+                    livret_familial_fr: 'identite',
+                    justificatif_ressources_famille: 'autre',
+                    casier_judiciaire: 'autre',
+                    traduction_assermentee: 'autre',
+                    legalisation: 'autre',
+                    autre: 'autre'
+                  };
+                  
+                  const baseType = baseTypeMap[docType] || 'autre';
+                  
+                  console.log('📄 Création de demande de document:', {
+                    dossierId: showDocumentRequestModal._id || showDocumentRequestModal.id,
+                    documentType: baseType,
+                    documentTypeLabel: documentTypeLabel,
+                    message: documentRequestData.message,
+                    isUrgent: documentRequestData.isUrgent
+                  });
+                  
+                  return await documentRequestsAPI.createRequest({
+                    dossierId: showDocumentRequestModal._id || showDocumentRequestModal.id,
+                    documentType: baseType,
+                    documentTypeLabel: documentTypeLabel,
+                    message: documentRequestData.message,
+                    isUrgent: documentRequestData.isUrgent
+                  });
                 });
-                setShowDocumentRequestModal(null);
-                setDocumentRequestData({
-                  documentType: '',
-                  documentTypeLabel: '',
-                  message: '',
-                  isUrgent: false
-                });
-                // Recharger les dossiers pour afficher les nouvelles demandes
-                loadDossiers();
+                
+                const responses = await Promise.all(requests);
+                const allSuccess = responses.every(r => r.data.success);
+                
+                console.log('✅ Réponses de l\'API:', responses);
+                
+                if (allSuccess) {
+                  // Afficher un message de succès temporaire
+                  setError(null);
+                  const count = documentRequestData.selectedDocumentTypes.length;
+                  alert(`✅ ${count} demande(s) de document(s) créée(s) avec succès ! Le client a été notifié.`);
+                  
+                  setShowDocumentRequestModal(null);
+                  setDocumentRequestData({
+                    selectedDocumentTypes: [],
+                    message: '',
+                    isUrgent: false
+                  });
+                  // Recharger les dossiers pour afficher les nouvelles demandes
+                  await loadDossiers();
+                } else {
+                  const failedCount = responses.filter(r => !r.data.success).length;
+                  setError(`${failedCount} demande(s) n'a(ont) pas pu être créée(s). Veuillez réessayer.`);
+                }
               } catch (err: any) {
-                console.error('Erreur lors de la création de la demande:', err);
-                setError(err.response?.data?.message || 'Erreur lors de la création de la demande');
+                console.error('❌ Erreur lors de la création de la demande:', err);
+                console.error('❌ Détails de l\'erreur:', {
+                  message: err.message,
+                  response: err.response?.data,
+                  status: err.response?.status
+                });
+                
+                const errorMessage = err.response?.data?.message 
+                  || err.response?.data?.error 
+                  || err.message 
+                  || 'Erreur lors de la création de la demande. Veuillez réessayer.';
+                
+                setError(errorMessage);
+                
+                // Afficher aussi dans la console pour le débogage
+                alert(`❌ Erreur: ${errorMessage}`);
               } finally {
                 setIsLoading(false);
               }
             }}>
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="documentType" className="mb-2 block">
-                    Type de document *
+                  <Label className="mb-2 block">
+                    Types de documents à demander *
                   </Label>
-                  <select
-                    id="documentType"
-                    value={documentRequestData.documentType}
-                    onChange={(e) => {
-                      const type = e.target.value;
-                      const labels: Record<string, string> = {
-                        identite: 'Pièce d\'identité',
-                        titre_sejour: 'Titre de séjour',
-                        contrat: 'Contrat de travail',
-                        facture: 'Facture',
-                        passeport: 'Passeport',
-                        justificatif_domicile: 'Justificatif de domicile',
-                        avis_imposition: 'Avis d\'imposition',
-                        autre: 'Autre'
-                      };
-                      setDocumentRequestData({
-                        ...documentRequestData,
-                        documentType: type,
-                        documentTypeLabel: labels[type] || 'Autre'
-                      });
-                    }}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    required
-                  >
-                    <option value="">Sélectionner un type</option>
-                    <option value="identite">Pièce d'identité</option>
-                    <option value="titre_sejour">Titre de séjour</option>
-                    <option value="contrat">Contrat de travail</option>
-                    <option value="facture">Facture</option>
-                    <option value="passeport">Passeport</option>
-                    <option value="justificatif_domicile">Justificatif de domicile</option>
-                    <option value="avis_imposition">Avis d'imposition</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </div>
-
-                {documentRequestData.documentType === 'autre' && (
-                  <div>
-                    <Label htmlFor="documentTypeLabel" className="mb-2 block">
-                      Précisez le type de document *
-                    </Label>
-                    <Input
-                      id="documentTypeLabel"
-                      value={documentRequestData.documentTypeLabel}
-                      onChange={(e) => setDocumentRequestData({ ...documentRequestData, documentTypeLabel: e.target.value })}
-                      placeholder="Ex: Certificat de scolarité, Attestation de salaire..."
-                      required
-                    />
+                  <div className="border border-input rounded-md p-3 max-h-96 overflow-y-auto bg-background">
+                    {Object.entries(documentTypesByCategory).map(([category, docs]) => (
+                      <div key={category} className="mb-4 last:mb-0">
+                        <div className="font-semibold text-sm mb-2 text-primary">
+                          {categoryLabels[category] || category}
+                        </div>
+                        <div className="space-y-2 pl-2">
+                          {docs.map((doc) => (
+                            <label
+                              key={doc.value}
+                              className="flex items-center space-x-2 cursor-pointer hover:bg-accent/50 p-1 rounded"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={documentRequestData.selectedDocumentTypes.includes(doc.value)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setDocumentRequestData({
+                                      ...documentRequestData,
+                                      selectedDocumentTypes: [...documentRequestData.selectedDocumentTypes, doc.value]
+                                    });
+                                  } else {
+                                    setDocumentRequestData({
+                                      ...documentRequestData,
+                                      selectedDocumentTypes: documentRequestData.selectedDocumentTypes.filter(t => t !== doc.value)
+                                    });
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-primary focus:ring-primary"
+                              />
+                              <span className="text-sm">{doc.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
+                  {documentRequestData.selectedDocumentTypes.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {documentRequestData.selectedDocumentTypes.length} document(s) sélectionné(s)
+                    </p>
+                  )}
+                </div>
 
                 <div>
                   <Label htmlFor="message" className="mb-2 block">
@@ -1808,7 +2216,13 @@ export default function AdminDossiersPage() {
 
                 {error && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                    <p className="text-sm text-red-600">{error}</p>
+                    <p className="text-sm text-red-600 font-semibold">❌ Erreur</p>
+                    <p className="text-sm text-red-600 mt-1">{error}</p>
+                    {error.includes('utilisateur connecté') && (
+                      <p className="text-xs text-red-500 mt-2">
+                        💡 Astuce: Assurez-vous que le dossier a un utilisateur associé ou créez un compte pour le client.
+                      </p>
+                    )}
                   </div>
                 )}
 

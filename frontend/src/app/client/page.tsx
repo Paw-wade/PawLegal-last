@@ -48,8 +48,10 @@ function ClientDashboardContent() {
   const [recentAppointments, setRecentAppointments] = useState<any[]>([]);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
-  const [documentRequestNotification, setDocumentRequestNotification] = useState<any>(null);
+  const [documentRequests, setDocumentRequests] = useState<Record<string, any[]>>({});
+  const [selectedDocumentRequest, setSelectedDocumentRequest] = useState<any>(null);
   const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
+  const [documentRequestNotification, setDocumentRequestNotification] = useState<any>(null);
 
   // Textes CMS pour le header du dashboard client
   const dashboardTitleClient = useCmsText(
@@ -128,6 +130,7 @@ function ClientDashboardContent() {
       checkUnreadMessages();
       checkDocumentRequestNotifications();
       loadNotifications();
+      loadDocumentRequests();
     } else if (token) {
       // Si on a un token mais pas de session, charger quand même les stats
       loadStats();
@@ -135,6 +138,7 @@ function ClientDashboardContent() {
       checkUnreadMessages();
       checkDocumentRequestNotifications();
       loadNotifications();
+      loadDocumentRequests();
     }
   }, [session, status, router, searchParams, isImpersonating]);
 
@@ -194,6 +198,33 @@ function ClientDashboardContent() {
       autre: 'Autre'
     };
     return categories[categorie] || categorie;
+  };
+
+  const loadDocumentRequests = async () => {
+    try {
+      // Charger toutes les demandes de documents en attente pour les dossiers du client
+      const response = await documentRequestsAPI.getRequests({ status: 'pending' });
+      if (response.data.success) {
+        const requests = response.data.documentRequests || [];
+        const requestsMap: Record<string, any[]> = {};
+        requests.forEach((request: any) => {
+          const dossierId = request.dossier?._id || request.dossier || request.dossierId;
+          if (dossierId) {
+            const dossierIdStr = dossierId.toString();
+            if (!requestsMap[dossierIdStr]) {
+              requestsMap[dossierIdStr] = [];
+            }
+            requestsMap[dossierIdStr].push(request);
+          }
+        });
+        setDocumentRequests(requestsMap);
+      }
+    } catch (err: any) {
+      // Ignorer silencieusement les erreurs 404 (route peut ne pas être disponible si le serveur n'est pas redémarré)
+      if (err.response?.status !== 404) {
+        console.error('Erreur lors du chargement des demandes de documents:', err);
+      }
+    }
   };
 
   const loadImpersonatedUser = async (userId: string) => {
@@ -377,6 +408,7 @@ function ClientDashboardContent() {
         } else {
           loadStats();
           loadNotifications();
+          loadDocumentRequests();
         }
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
@@ -994,6 +1026,77 @@ function ClientDashboardContent() {
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         {(() => {
+                          // Vérifier d'abord s'il y a des demandes de documents en attente
+                          const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
+                          const pendingRequests = dossierRequests.filter((r: any) => r.status === 'pending');
+                          
+                          if (pendingRequests.length > 0) {
+                            const urgentRequests = pendingRequests.filter((r: any) => r.isUrgent);
+                            const hasUrgent = urgentRequests.length > 0;
+                            
+                            return (
+                              <div 
+                                className={`relative overflow-hidden rounded-md px-3 py-2 border cursor-pointer transition-all hover:shadow-md ${
+                                  hasUrgent 
+                                    ? 'bg-red-50/50 border-red-200/50 hover:bg-red-100/50' 
+                                    : 'bg-orange-50/50 border-orange-200/50 hover:bg-orange-100/50'
+                                }`}
+                                onClick={() => {
+                                  // Ouvrir le modal avec la première demande en attente (ou urgente si disponible)
+                                  const requestToShow = urgentRequests[0] || pendingRequests[0];
+                                  if (requestToShow) {
+                                    // Créer une notification factice pour le modal
+                                    const notification = {
+                                      _id: requestToShow._id,
+                                      id: requestToShow.id,
+                                      type: 'document_request',
+                                      titre: requestToShow.isUrgent
+                                        ? `🔴 Demande urgente de document - Dossier ${dossier.numero || dossier._id}`
+                                        : `📄 Demande de document - Dossier ${dossier.numero || dossier._id}`,
+                                      message: `Un document de type "${requestToShow.documentTypeLabel}" est requis pour votre dossier.`,
+                                      data: {
+                                        documentRequestId: requestToShow._id || requestToShow.id,
+                                        dossierId: dossier._id || dossier.id,
+                                        dossierNumero: dossier.numero,
+                                        documentType: requestToShow.documentType,
+                                        documentTypeLabel: requestToShow.documentTypeLabel,
+                                        isUrgent: requestToShow.isUrgent || false
+                                      }
+                                    };
+                                    setSelectedDocumentRequest(notification);
+                                    setShowDocumentRequestModal(true);
+                                  }
+                                }}
+                                title={`${pendingRequests.length} demande(s) de document(s) en attente${hasUrgent ? ' (urgente)' : ''}. Cliquez pour envoyer le document.`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs">{hasUrgent ? '🔴' : '📄'}</span>
+                                  <div className="flex-1 min-w-0 overflow-hidden">
+                                    <div className="animate-scroll-text whitespace-nowrap">
+                                      <span className={`text-xs font-medium ${
+                                        hasUrgent ? 'text-red-900' : 'text-orange-900'
+                                      }`}>
+                                        {hasUrgent 
+                                          ? `🔴 ${urgentRequests.length} demande(s) urgente(s) de document`
+                                          : `${pendingRequests.length} demande(s) de document en attente`
+                                        }
+                                        {pendingRequests.length > 1 && !hasUrgent && ` (${pendingRequests.length} demandes)`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {pendingRequests.length > 1 && (
+                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                                      hasUrgent ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'
+                                    }`}>
+                                      {pendingRequests.length}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Sinon, afficher la dernière notification défilante
                           const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
                           if (lastNotification) {
                             return (
@@ -1011,6 +1114,7 @@ function ClientDashboardContent() {
                               </div>
                             );
                           }
+                          
                           return (
                             <div className="flex gap-3 text-xs text-muted-foreground">
                               {dossier.documents && dossier.documents.length > 0 && (
@@ -1111,16 +1215,45 @@ function ClientDashboardContent() {
           }}
         />
 
-        {/* Modal de demande de document */}
+        {/* Modal de demande de document depuis les notifications automatiques */}
+        <DocumentRequestNotificationModal
+          isOpen={!!documentRequestNotification && !showDocumentRequestModal}
+          onClose={() => {
+            setDocumentRequestNotification(null);
+            // Recharger les stats après fermeture
+            loadStats();
+            loadDocumentRequests();
+            loadNotifications();
+          }}
+          notification={documentRequestNotification}
+          onDocumentSent={async () => {
+            // Recharger les données après l'envoi du document
+            await loadDocumentRequests();
+            await loadNotifications();
+            await checkDocumentRequestNotifications();
+            await loadStats();
+          }}
+        />
+        {/* Modal de demande de document depuis les badges de dossiers */}
         <DocumentRequestNotificationModal
           isOpen={showDocumentRequestModal}
           onClose={() => {
             setShowDocumentRequestModal(false);
-            setDocumentRequestNotification(null);
-            // Recharger les stats après fermeture
+            setSelectedDocumentRequest(null);
+            // Recharger les stats et les demandes après fermeture
             loadStats();
+            loadDocumentRequests();
+            loadNotifications();
+            checkDocumentRequestNotifications();
           }}
-          notification={documentRequestNotification}
+          notification={selectedDocumentRequest}
+          onDocumentSent={async () => {
+            // Recharger les données après l'envoi du document
+            await loadDocumentRequests();
+            await loadNotifications();
+            await checkDocumentRequestNotifications();
+            await loadStats();
+          }}
         />
            </div>
          );

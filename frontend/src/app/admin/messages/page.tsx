@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { messagesAPI, notificationsAPI, dossiersAPI } from '@/lib/api';
 
@@ -58,6 +58,7 @@ function Textarea({ className = '', ...props }: any) {
 export default function AdminMessagesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +89,18 @@ export default function AdminMessagesPage() {
   const [selectedDossierId, setSelectedDossierId] = useState<string>('');
   const [selectedExpediteurId, setSelectedExpediteurId] = useState<string>('');
   const [selectedDestinataireId, setSelectedDestinataireId] = useState<string>('');
+
+  // Lire les paramètres de l'URL pour filtrer par dossier
+  useEffect(() => {
+    const dossierIdParam = searchParams?.get('dossierId');
+    const actionParam = searchParams?.get('action');
+    
+    if (dossierIdParam) {
+      setSelectedDossierId(dossierIdParam);
+      // Si action=view, on veut voir les messages, donc on garde le filtre actuel
+      // Si action=send, on pourrait ouvrir le modal de composition, mais pour l'instant on filtre juste
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {

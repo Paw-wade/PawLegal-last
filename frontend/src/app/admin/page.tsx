@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageNotificationModal } from '@/components/MessageNotificationModal';
 import { AppointmentBadgeModal } from '@/components/AppointmentBadgeModal';
-import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI, dossiersAPI } from '@/lib/api';
+import { userAPI, appointmentsAPI, documentsAPI, tasksAPI, messagesAPI, dossiersAPI, documentRequestsAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
 import { useCmsText } from '@/lib/contentClient';
 
@@ -79,6 +79,12 @@ export default function AdminDashboardPage() {
   const [taskNotesError, setTaskNotesError] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [documentRequests, setDocumentRequests] = useState<any[]>([]);
+  const [isLoadingDocumentRequests, setIsLoadingDocumentRequests] = useState(false);
+  const [expandedDossiers, setExpandedDossiers] = useState<Set<string>>(new Set());
+  const [documentRequestFilter, setDocumentRequestFilter] = useState<'all' | 'pending' | 'received'>('all');
+  const [selectedDocument, setSelectedDocument] = useState<any>(null);
+  const [showDocumentViewer, setShowDocumentViewer] = useState(false);
 
   // Textes CMS pour le header du dashboard admin
   const dashboardTitle = useCmsText(
@@ -124,6 +130,7 @@ export default function AdminDashboardPage() {
     loadTeamMembers();
     checkUnreadMessages();
     loadNotifications();
+    loadDocumentRequests();
   }, [session, status]);
 
   // Vérifier les messages non lus à la connexion (internes + contact)
@@ -175,6 +182,78 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error('Erreur lors de la vérification des messages:', error);
+    }
+  };
+
+  const loadDocumentRequests = async () => {
+    setIsLoadingDocumentRequests(true);
+    try {
+      const response = await documentRequestsAPI.getRequests({});
+      if (response.data.success) {
+        // Populate les dossiers et clients pour chaque demande
+        const requests = await Promise.all(
+          (response.data.documentRequests || []).map(async (req: any) => {
+            try {
+              // Charger le dossier
+              let dossier = null;
+              if (req.dossier) {
+                try {
+                  const dossierResponse = await dossiersAPI.getDossierById(req.dossier._id || req.dossier);
+                  dossier = dossierResponse.data.success ? dossierResponse.data.dossier : null;
+                } catch (e) {
+                  console.error('Erreur lors du chargement du dossier:', e);
+                }
+              }
+              
+              // Charger le client (requestedFrom)
+              let client = null;
+              if (req.requestedFrom) {
+                try {
+                  const clientResponse = await userAPI.getUserById(req.requestedFrom._id || req.requestedFrom);
+                  if (clientResponse.data.success) {
+                    client = clientResponse.data.user;
+                  }
+                } catch (e) {
+                  // Client peut ne pas exister si c'est un dossier sans utilisateur connecté
+                }
+              }
+              
+              // Charger le document si disponible
+              let document = null;
+              if (req.document) {
+                try {
+                  // Utiliser getAllDocuments et filtrer par ID
+                  const allDocsResponse = await documentsAPI.getAllDocuments();
+                  if (allDocsResponse.data.success) {
+                    const allDocs = allDocsResponse.data.documents || allDocsResponse.data.data || [];
+                    document = allDocs.find((d: any) => 
+                      (d._id || d.id).toString() === (req.document._id || req.document).toString()
+                    );
+                  }
+                } catch (e) {
+                  console.error('Erreur lors du chargement du document:', e);
+                }
+              }
+              
+              return {
+                ...req,
+                dossier: dossier,
+                client: client,
+                document: document
+              };
+            } catch (error) {
+              console.error('Erreur lors du chargement des détails de la demande:', error);
+              return req;
+            }
+          })
+        );
+        
+        setDocumentRequests(requests);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des demandes de documents:', error);
+    } finally {
+      setIsLoadingDocumentRequests(false);
     }
   };
 
@@ -846,6 +925,308 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </Link>
+        </div>
+
+        {/* Section Documents demandés */}
+        <div className="mb-8">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-2xl">📂</span>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Documents demandés</h2>
+                  <p className="text-sm text-muted-foreground">Suivi des documents demandés aux clients</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={documentRequestFilter}
+                  onChange={(e) => setDocumentRequestFilter(e.target.value as 'all' | 'pending' | 'received')}
+                  className="px-3 py-2 border border-input rounded-md text-sm bg-background"
+                >
+                  <option value="all">Tous les statuts</option>
+                  <option value="pending">En attente</option>
+                  <option value="received">Reçus</option>
+                </select>
+                <Button
+                  variant="outline"
+                  onClick={loadDocumentRequests}
+                  disabled={isLoadingDocumentRequests}
+                  className="text-xs"
+                >
+                  {isLoadingDocumentRequests ? 'Chargement...' : 'Actualiser'}
+                </Button>
+              </div>
+            </div>
+
+            {isLoadingDocumentRequests ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Chargement des demandes...</p>
+              </div>
+            ) : documentRequests.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-4xl">📄</span>
+                </div>
+                <p className="text-muted-foreground font-medium">Aucune demande de document</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(() => {
+                  // Filtrer les demandes selon le filtre sélectionné
+                  let filteredRequests = documentRequests;
+                  if (documentRequestFilter === 'pending') {
+                    filteredRequests = documentRequests.filter((r: any) => r.status === 'pending');
+                  } else if (documentRequestFilter === 'received') {
+                    filteredRequests = documentRequests.filter((r: any) => r.status === 'received' || r.status === 'sent');
+                  }
+
+                  // Grouper par dossier
+                  const requestsByDossier = filteredRequests.reduce((acc: Record<string, any[]>, req: any) => {
+                    const dossierId = req.dossier?._id || req.dossier || 'unknown';
+                    if (!acc[dossierId]) {
+                      acc[dossierId] = [];
+                    }
+                    acc[dossierId].push(req);
+                    return acc;
+                  }, {});
+
+                  return Object.entries(requestsByDossier).map(([dossierId, requests]: [string, any[]]) => {
+                    const dossier = requests[0]?.dossier;
+                    const client = requests[0]?.client;
+                    const isExpanded = expandedDossiers.has(dossierId);
+
+                    return (
+                      <div
+                        key={dossierId}
+                        className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50/50"
+                      >
+                        {/* En-tête du dossier */}
+                        <div
+                          className="p-4 bg-white border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => {
+                            const newExpanded = new Set(expandedDossiers);
+                            if (isExpanded) {
+                              newExpanded.delete(dossierId);
+                            } else {
+                              newExpanded.add(dossierId);
+                            }
+                            setExpandedDossiers(newExpanded);
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <span className="text-lg">{isExpanded ? '📂' : '📁'}</span>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-base text-foreground truncate">
+                                  {dossier?.titre || `Dossier ${dossierId.slice(-6)}`}
+                                </h3>
+                                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                                  {dossier?.numero && (
+                                    <span>N° {dossier.numero}</span>
+                                  )}
+                                  {client ? (
+                                    <span>👤 {client.firstName} {client.lastName}</span>
+                                  ) : dossier?.clientEmail && (
+                                    <span>👤 {dossier.clientEmail}</span>
+                                  )}
+                                  <span>{requests.length} demande(s)</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Link 
+                                    href={`/admin/messages?dossierId=${dossierId}&action=view`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                  >
+                                    💬 Voir les messages
+                                  </Link>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                requests.filter((r: any) => r.status === 'pending').length > 0
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {requests.filter((r: any) => r.status === 'pending').length} en attente
+                              </span>
+                              <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Liste des demandes (arborescence) */}
+                        {isExpanded && (
+                          <div className="bg-white">
+                            {requests.map((request: any) => {
+                              const getStatusInfo = () => {
+                                if (request.status === 'pending') {
+                                  return {
+                                    label: 'En attente',
+                                    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                                    icon: '⏳'
+                                  };
+                                } else if (request.status === 'received') {
+                                  return {
+                                    label: '✅ Document reçu',
+                                    color: 'bg-green-100 text-green-800 border-green-200',
+                                    icon: '✅'
+                                  };
+                                } else if (request.status === 'sent') {
+                                  // Vérifier si le document existait déjà avant la demande
+                                  const documentCreatedBeforeRequest = request.document && 
+                                    request.document.createdAt && 
+                                    new Date(request.document.createdAt) < new Date(request.createdAt);
+                                  
+                                  return {
+                                    label: documentCreatedBeforeRequest ? '📋 Déjà reçu' : '✅ Document reçu',
+                                    color: 'bg-blue-100 text-blue-800 border-blue-200',
+                                    icon: documentCreatedBeforeRequest ? '📋' : '✅'
+                                  };
+                                }
+                                return {
+                                  label: 'Inconnu',
+                                  color: 'bg-gray-100 text-gray-800 border-gray-200',
+                                  icon: '❓'
+                                };
+                              };
+
+                              const statusInfo = getStatusInfo();
+
+                              return (
+                                <div
+                                  key={request._id || request.id}
+                                  className="border-t border-gray-100 p-4 hover:bg-gray-50/50 transition-colors"
+                                >
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-lg">{statusInfo.icon}</span>
+                                        <h4 className="font-semibold text-sm text-foreground">
+                                          {request.documentTypeLabel}
+                                        </h4>
+                                        {request.isUrgent && (
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-semibold">
+                                            🔴 URGENT
+                                          </span>
+                                        )}
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusInfo.color}`}>
+                                          {statusInfo.label}
+                                        </span>
+                                      </div>
+                                      
+                                      {request.message && (
+                                        <p className="text-xs text-muted-foreground mb-2 ml-7">
+                                          {request.message}
+                                        </p>
+                                      )}
+
+                                      <div className="flex items-center gap-4 text-xs text-muted-foreground ml-7">
+                                        <span>
+                                          📅 Demandé le {new Date(request.createdAt).toLocaleDateString('fr-FR', {
+                                            day: 'numeric',
+                                            month: 'short',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                        {request.sentAt && (
+                                          <span>
+                                            📤 Envoyé le {new Date(request.sentAt).toLocaleDateString('fr-FR', {
+                                              day: 'numeric',
+                                              month: 'short',
+                                              year: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                        {request.receivedAt && (
+                                          <span>
+                                            ✅ Reçu le {new Date(request.receivedAt).toLocaleDateString('fr-FR', {
+                                              day: 'numeric',
+                                              month: 'short',
+                                              year: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {request.document && (
+                                        <div className="mt-2 ml-7 p-2 bg-blue-50 rounded border border-blue-200">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm">📄</span>
+                                            <span className="text-xs font-medium text-blue-900">
+                                              {request.document.nom}
+                                            </span>
+                                            <span className="text-xs text-blue-700">
+                                              ({(request.document.taille / 1024).toFixed(2)} KB)
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Actions */}
+                                    {request.document && (
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <Button
+                                          variant="outline"
+                                          className="text-xs h-8"
+                                          onClick={() => {
+                                            // Ouvrir le document dans un nouvel onglet
+                                            const documentUrl = `/api/user/documents/${request.document._id || request.document.id}/preview`;
+                                            window.open(documentUrl, '_blank');
+                                          }}
+                                        >
+                                          👁️ Voir
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          className="text-xs h-8"
+                                          onClick={async () => {
+                                            // Télécharger le document
+                                            try {
+                                              const response = await documentsAPI.downloadDocument(request.document._id || request.document.id);
+                                              const blob = new Blob([response.data]);
+                                              const url = window.URL.createObjectURL(blob);
+                                              const link = document.createElement('a');
+                                              link.href = url;
+                                              link.download = request.document.nom;
+                                              document.body.appendChild(link);
+                                              link.click();
+                                              document.body.removeChild(link);
+                                              window.URL.revokeObjectURL(url);
+                                            } catch (error) {
+                                              console.error('Erreur lors du téléchargement:', error);
+                                              alert('Erreur lors du téléchargement du document');
+                                            }
+                                          }}
+                                        >
+                                          ⬇️ Télécharger
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Colonne droite : bloc messagerie intégré au dashboard */}

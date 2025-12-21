@@ -548,8 +548,15 @@ export default function DossierDetailPage() {
           setShowDocumentRequestModal(false);
           setSelectedDocumentRequestNotification(null);
           loadDocumentRequests();
+          loadNotifications();
         }}
         notification={selectedDocumentRequestNotification}
+        onDocumentSent={async () => {
+          // Recharger les demandes de documents (seules les demandes en attente seront affichées)
+          await loadDocumentRequests();
+          // Recharger les notifications (la notification de demande sera marquée comme lue)
+          await loadNotifications();
+        }}
       />
     </div>
   );

@@ -9,6 +9,7 @@ interface DocumentRequestNotificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   notification: any;
+  onDocumentSent?: () => void; // Callback appelé après l'envoi du document
 }
 
 function Button({ children, variant = 'default', className = '', disabled, ...props }: any) {
@@ -39,7 +40,7 @@ function Label({ htmlFor, children, className = '' }: any) {
   );
 }
 
-export function DocumentRequestNotificationModal({ isOpen, onClose, notification }: DocumentRequestNotificationModalProps) {
+export function DocumentRequestNotificationModal({ isOpen, onClose, notification, onDocumentSent }: DocumentRequestNotificationModalProps) {
   const { data: session } = useSession();
   const router = useRouter();
   const [documentRequest, setDocumentRequest] = useState<any>(null);
@@ -154,6 +155,11 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
         await loadDocumentRequest();
         await loadExistingDocuments();
         
+        // Appeler le callback pour recharger les données parentes (notifications, demandes, etc.)
+        if (onDocumentSent) {
+          onDocumentSent();
+        }
+        
         setTimeout(() => {
           setSuccess(null);
           onClose();
@@ -178,6 +184,12 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
       await documentRequestsAPI.uploadDocument(documentRequest._id || documentRequest.id, documentId);
       setSuccess('Document envoyé avec succès !');
       await loadDocumentRequest();
+      
+      // Appeler le callback pour recharger les données parentes (notifications, demandes, etc.)
+      if (onDocumentSent) {
+        onDocumentSent();
+      }
+      
       setTimeout(() => {
         setSuccess(null);
         onClose();

@@ -301,7 +301,7 @@ router.post(
       
       // Si c'est une erreur de validation Mongoose
       if (error.name === 'ValidationError') {
-        const mongooseErrors = Object.values(error.errors).map((err: any) => ({
+        const mongooseErrors = Object.values(error.errors).map((err) => ({
           param: err.path,
           msg: err.message
         }));
@@ -497,10 +497,11 @@ router.post(
         });
       }
 
-      // Mettre à jour la demande
+      // Mettre à jour la demande - marquer comme "received" car le document a été envoyé et reçu
       documentRequest.document = documentId;
-      documentRequest.status = 'sent';
+      documentRequest.status = 'received';
       documentRequest.sentAt = new Date();
+      documentRequest.receivedAt = new Date();
       await documentRequest.save();
 
       // Mettre à jour le document pour le lier au dossier si ce n'est pas déjà fait
@@ -509,44 +510,76 @@ router.post(
         await document.save();
       }
 
-      // Créer une notification pour l'administrateur
-      const adminUser = await User.findById(documentRequest.requestedBy._id || documentRequest.requestedBy);
-      if (adminUser) {
-        await Notification.create({
-          user: documentRequest.requestedBy._id || documentRequest.requestedBy,
-          type: 'document_received',
-          title: `📥 Document reçu - Dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}`,
-          message: `Le document "${document.nom}" a été envoyé en réponse à votre demande pour le dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}.`,
-          data: {
-            documentRequestId: documentRequest._id,
-            documentId: documentId,
-            dossierId: documentRequest.dossier._id,
-            dossierNumero: documentRequest.dossier.numero
+      // Marquer la notification de demande de document comme lue pour le client
+      try {
+        const requestedFromId = documentRequest.requestedFrom._id 
+          ? documentRequest.requestedFrom._id.toString() 
+          : documentRequest.requestedFrom.toString();
+        
+        await Notification.updateMany(
+          {
+            user: requestedFromId,
+            type: 'document_request',
+            'data.documentRequestId': documentRequest._id.toString(),
+            lu: false
           },
-          priority: 'normal'
-        });
+          {
+            $set: { lu: true, readAt: new Date() }
+          }
+        );
+        console.log(`✅ Notification(s) de demande de document marquée(s) comme lue(s) pour le client`);
+      } catch (notifError) {
+        console.error('⚠️ Erreur lors du marquage de la notification comme lue:', notifError);
+        // Ne pas bloquer le processus si la mise à jour de la notification échoue
+      }
 
-        // Envoyer un SMS à l'admin si configuré
-        if (adminUser.phone) {
-          try {
-            await sendNotificationSMS(
-              adminUser.phone,
-              'document_received',
-              {
-                dossierNumero: documentRequest.dossier.numero || documentRequest.dossier._id.toString(),
-                documentName: document.nom
-              },
-              {
-                userId: (documentRequest.requestedBy._id || documentRequest.requestedBy).toString(),
-                context: 'document_request',
-                contextId: documentRequest._id.toString()
-              }
-            );
-            console.log(`✅ SMS envoyé à l'admin ${adminUser.email} pour la réception du document`);
-          } catch (smsError) {
-            console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);
+      // Créer une notification pour l'administrateur
+      try {
+        const requestedById = documentRequest.requestedBy._id 
+          ? documentRequest.requestedBy._id.toString() 
+          : documentRequest.requestedBy.toString();
+        
+        const adminUser = await User.findById(requestedById);
+        if (adminUser) {
+          await Notification.create({
+            user: requestedById,
+            type: 'document_received',
+            title: `📥 Document reçu - Dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}`,
+            message: `Le document "${document.nom}" a été envoyé en réponse à votre demande pour le dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}.`,
+            data: {
+              documentRequestId: documentRequest._id.toString(),
+              documentId: documentId.toString(),
+              dossierId: documentRequest.dossier._id.toString(),
+              dossierNumero: documentRequest.dossier.numero
+            },
+            priority: 'normal'
+          });
+
+          // Envoyer un SMS à l'admin si configuré
+          if (adminUser.phone) {
+            try {
+              await sendNotificationSMS(
+                adminUser.phone,
+                'document_received',
+                {
+                  dossierNumero: documentRequest.dossier.numero || documentRequest.dossier._id.toString(),
+                  documentName: document.nom
+                },
+                {
+                  userId: requestedById,
+                  context: 'document_request',
+                  contextId: documentRequest._id.toString()
+                }
+              );
+              console.log(`✅ SMS envoyé à l'admin ${adminUser.email} pour la réception du document`);
+            } catch (smsError) {
+              console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);
+            }
           }
         }
+      } catch (adminNotifError) {
+        console.error('⚠️ Erreur lors de la création de la notification admin:', adminNotifError);
+        // Ne pas bloquer le processus si la notification admin échoue
       }
 
       // Re-populate pour la réponse

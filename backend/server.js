@@ -112,12 +112,20 @@ try {
 }
 
 try {
-  if (require.resolve('./routes/document-requests')) {
-    app.use('/api/document-requests', require('./routes/document-requests'));
-    console.log('✅ Route /api/document-requests enregistrée');
-  }
-} catch (e) {
-  console.log('⚠️ Route /api/document-requests non trouvée');
+  const documentRequestsRouter = require('./routes/document-requests');
+  app.use('/api/document-requests', documentRequestsRouter);
+  console.log('✅ Route /api/document-requests enregistrée');
+  // Afficher les routes disponibles pour debug
+  console.log('📋 Routes document-requests disponibles:');
+  documentRequestsRouter.stack.forEach((r) => {
+    if (r.route) {
+      const methods = Object.keys(r.route.methods).join(', ').toUpperCase();
+      console.log(`   ${methods} ${r.route.path}`);
+    }
+  });
+} catch (error) {
+  console.error('❌ Erreur lors du chargement de la route document-requests:', error.message);
+  console.error(error.stack);
 }
 
 // Route /api/user doit être montée APRÈS les routes spécifiques
