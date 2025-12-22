@@ -80,6 +80,217 @@ const typesTitres = [
   { value: 'autre', label: 'Autre' },
 ];
 
+// Structure hiérarchisée des titres de séjour selon le CESEDA
+interface TypeTitrePrecis {
+  value: string;
+  label: string;
+}
+
+interface SousCategorie {
+  value: string;
+  label: string;
+  types: TypeTitrePrecis[];
+}
+
+interface MotifTitre {
+  value: string;
+  label: string;
+  sousCategories: SousCategorie[];
+}
+
+const titresSejourHierarchiques: MotifTitre[] = [
+  {
+    value: 'professionnel',
+    label: 'Titres de séjour pour motif professionnel',
+    sousCategories: [
+      {
+        value: 'activite_salariee_standard',
+        label: 'Activité salariée standard',
+        types: [
+          { value: 'salarie', label: 'Salarié' },
+          { value: 'travailleur_temporaire', label: 'Travailleur temporaire' }
+        ]
+      },
+      {
+        value: 'activite_non_salariee',
+        label: 'Activité non salariée',
+        types: [
+          { value: 'entrepreneur_profession_liberale', label: 'Entrepreneur / Profession libérale' }
+        ]
+      },
+      {
+        value: 'beneficiaires_mention_talent',
+        label: 'Bénéficiaires de la mention « Talent »',
+        types: [
+          { value: 'talent_salarie_qualifie', label: 'Talent-salarié qualifié' },
+          { value: 'talent_carte_bleue_europeenne', label: 'Talent-carte bleue européenne' },
+          { value: 'talent_profession_medicale_pharmacie', label: 'Talent-profession médicale et de la pharmacie' },
+          { value: 'talent_chercheur', label: 'Talent-chercheur' },
+          { value: 'talent_porteur_projet', label: 'Talent-porteur de projet' },
+          { value: 'talent_categories_diverses', label: 'Talent (catégories diverses)' },
+          { value: 'talent_famille', label: 'Talent (famille)' }
+        ]
+      },
+      {
+        value: 'detachement_temporaire_ict',
+        label: 'Détachement temporaire intragroupe (ICT)',
+        types: [
+          { value: 'salarie_detache_ict', label: 'Salarié détaché ICT' },
+          { value: 'salarie_mobile_ict', label: 'Salarié mobile ICT' },
+          { value: 'stagiaire_ict', label: 'Stagiaire ICT' },
+          { value: 'stagiaire_mobile_ict', label: 'Stagiaire mobile ICT' },
+          { value: 'ict_famille', label: 'ICT (famille)' }
+        ]
+      },
+      {
+        value: 'travailleur_saisonnier',
+        label: 'Travailleur saisonnier',
+        types: [
+          { value: 'travailleur_saisonnier', label: 'Travailleur saisonnier' }
+        ]
+      }
+    ]
+  },
+  {
+    value: 'etudes',
+    label: 'Titres de séjour pour motif d\'études',
+    sousCategories: [
+      {
+        value: 'etudiant',
+        label: 'Étudiant',
+        types: [
+          { value: 'etudiant', label: 'Étudiant' }
+        ]
+      },
+      {
+        value: 'etudiant_programme_mobilite',
+        label: 'Étudiant-programme de mobilité',
+        types: [
+          { value: 'etudiant_programme_mobilite', label: 'Étudiant-programme de mobilité' }
+        ]
+      },
+      {
+        value: 'post_etudes',
+        label: 'Post-études',
+        types: [
+          { value: 'recherche_emploi_creation_entreprise_rec', label: 'Recherche d\'emploi ou création d\'entreprise (REC)' }
+        ]
+      }
+    ]
+  },
+  {
+    value: 'familial',
+    label: 'Titres de séjour pour motif familial (« Vie privée et familiale »)',
+    sousCategories: [
+      {
+        value: 'liens_ressortissant_francais',
+        label: 'Liens avec un ressortissant français',
+        types: [
+          { value: 'conjoint_francais', label: 'Conjoint de Français' },
+          { value: 'parent_enfant_francais_mineur', label: 'Parent d\'enfant français mineur résidant en France' },
+          { value: 'enfant_etranger_francais_18_21_charge', label: 'Enfant étranger d\'un Français (18 à 21 ans ou à charge)' }
+        ]
+      },
+      {
+        value: 'regroupement_familial',
+        label: 'Regroupement familial',
+        types: [
+          { value: 'conjoint_etranger_titulaire_titre', label: 'Conjoint d\'un étranger titulaire d\'un titre de séjour' },
+          { value: 'enfant_etranger_titulaire_titre', label: 'Enfant d\'un étranger titulaire d\'un titre de séjour' }
+        ]
+      },
+      {
+        value: 'parcours_personnel_france',
+        label: 'Parcours personnel en France',
+        types: [
+          { value: 'etranger_ne_france', label: 'Étranger né en France' },
+          { value: 'etranger_residant_france_depuis_13_ans', label: 'Étranger résidant en France depuis l\'âge de 13 ans' },
+          { value: 'etranger_confie_ase_avant_16_ans', label: 'Étranger confié à l\'aide sociale à l\'enfance (ASE) avant ses 16 ans' },
+          { value: 'liens_personnels_familiaux_intenses', label: 'Liens personnels et familiaux intenses' }
+        ]
+      }
+    ]
+  },
+  {
+    value: 'protection_internationale',
+    label: 'Titres liés à la protection internationale',
+    sousCategories: [
+      {
+        value: 'refugies',
+        label: 'Réfugiés',
+        types: [
+          { value: 'refugie', label: 'Réfugié' }
+        ]
+      },
+      {
+        value: 'beneficiaires_protection_subsidiaire',
+        label: 'Bénéficiaires de la protection subsidiaire',
+        types: [
+          { value: 'beneficiaire_protection_subsidiaire', label: 'Bénéficiaire de la protection subsidiaire' }
+        ]
+      },
+      {
+        value: 'apatrides',
+        label: 'Apatrides',
+        types: [
+          { value: 'apatride', label: 'Apatride' }
+        ]
+      }
+    ]
+  },
+  {
+    value: 'humanitaire',
+    label: 'Titres de séjour pour motif humanitaire',
+    sousCategories: [
+      {
+        value: 'victimes_protection_personnes',
+        label: 'Victimes et protection des personnes',
+        types: [
+          { value: 'victime_traite_proxenetisme', label: 'Victime de traite des êtres humains ou de proxénétisme' },
+          { value: 'personne_parcours_sortie_prostitution_aps', label: 'Personne engagée dans un parcours de sortie de la prostitution (APS)' },
+          { value: 'beneficiaire_ordonnance_protection', label: 'Bénéficiaire d\'une ordonnance de protection' },
+          { value: 'victime_hebergement_incompatible_dignite', label: 'Victime d\'hébergement incompatible avec la dignité humaine' }
+        ]
+      },
+      {
+        value: 'sante',
+        label: 'Santé',
+        types: [
+          { value: 'etranger_malade', label: 'Étranger malade' },
+          { value: 'parent_enfant_mineur_malade_aps', label: 'Parent d\'enfant mineur malade (APS)' }
+        ]
+      }
+    ]
+  },
+  {
+    value: 'autres_motifs',
+    label: 'Titres délivrés pour d\'autres motifs',
+    sousCategories: [
+      {
+        value: 'installation_durable',
+        label: 'Installation durable',
+        types: [
+          { value: 'resident_longue_duree_ue', label: 'Résident de longue durée-UE' },
+          { value: 'resident_permanent', label: 'Résident permanent' }
+        ]
+      },
+      {
+        value: 'situation_specifique',
+        label: 'Situation spécifique',
+        types: [
+          { value: 'visiteur', label: 'Visiteur' },
+          { value: 'retraite', label: 'Retraité' },
+          { value: 'jeune_au_pair', label: 'Jeune au pair' },
+          { value: 'volontariat', label: 'Volontariat' },
+          { value: 'stagiaire', label: 'Stagiaire' },
+          { value: 'anciens_combattants', label: 'Anciens combattants' },
+          { value: 'titulaire_rente', label: 'Titulaire d\'une rente' }
+        ]
+      }
+    ]
+  }
+];
+
 // Types de décisions défavorables
 const typesDecisions = [
   { value: 'refus_titre', label: 'Refus de titre de séjour', delai: 30 },
@@ -256,6 +467,14 @@ export default function CalculateurPage() {
   const [formData, setFormData] = useState({
     typeTitre: '',
     typeTitreAutre: '', // Valeur personnalisée si "Autre" est sélectionné
+    // Champs hiérarchisés pour le type de titre de séjour selon CESEDA
+    motifTitreSejour: '', // Motif de délivrance (niveau 1)
+    sousCategorieTitreSejour: '', // Sous-catégorie (niveau 2)
+    typePrecisTitreSejour: '', // Type précis (niveau 3)
+    // Champs hiérarchisés pour le titre de séjour détenu (renouvellement)
+    motifTitreSejourDetenu: '', // Motif de délivrance (niveau 1)
+    sousCategorieTitreSejourDetenu: '', // Sous-catégorie (niveau 2)
+    typePrecisTitreSejourDetenu: '', // Type précis (niveau 3)
     typeDemande: 'premiere', // 'premiere' ou 'renouvellement'
     prefecture: '',
     dateDelivrance: getTodayDate(),
@@ -1341,7 +1560,10 @@ export default function CalculateurPage() {
                         situation: 'contentieux_titre',
                         typeDemande: '',
                         typeTitre: '',
-                        typeTitreAutre: ''
+                        typeTitreAutre: '',
+                        motifTitreSejour: '',
+                        sousCategorieTitreSejour: '',
+                        typePrecisTitreSejour: ''
                       })}
                       className={`px-6 py-3 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center gap-2 ${
                         formData.situation === 'contentieux_titre'
@@ -1363,6 +1585,9 @@ export default function CalculateurPage() {
                         typeDemande: '',
                           typeTitre: '',
                           typeTitreAutre: '',
+                          motifTitreSejour: '',
+                          sousCategorieTitreSejour: '',
+                          typePrecisTitreSejour: '',
                           natureVisa: '',
                           dateConfirmationDepot: '',
                           typeRefusVisa: '',
@@ -1406,99 +1631,147 @@ export default function CalculateurPage() {
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="typeTitre">Type de titre de séjour *</Label>
-                      <Select
-                        id="typeTitre"
-                        value={formData.typeTitre}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData({ 
-                            ...formData, 
-                            typeTitre: value,
-                            typeTitreAutre: value === 'autre' ? formData.typeTitreAutre : '' // Conserver la valeur si on revient à "Autre"
-                          });
-                        }}
-                        required
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        {typesTitres.map((type) => (
-                          <option key={type.value} value={type.value}>{type.label}</option>
-                        ))}
-                      </Select>
-                      {formData.typeTitre === 'autre' && (
-                        <div className="mt-2">
-                          <Input
-                            id="typeTitreAutre"
-                            type="text"
-                            value={formData.typeTitreAutre}
-                            onChange={(e) => setFormData({ ...formData, typeTitreAutre: e.target.value })}
-                            placeholder="Ex: Carte de séjour, Visa, etc."
-                            required
-                            className="mt-1 h-11 border-2 focus:border-primary transition-colors"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Saisissez le type de titre de séjour
-                          </p>
+                    {/* Nouveau champ hiérarchisé pour le type de titre de séjour selon CESEDA */}
+                    <div className="space-y-4 bg-blue-50/50 rounded-lg p-4 border-2 border-blue-200">
+                      <Label htmlFor="motifTitreSejour">Type de titre de séjour demandé *</Label>
+                      
+                      {/* Si la sélection est complète, afficher uniquement le résumé */}
+                      {formData.typePrecisTitreSejour ? (
+                        <div className="p-3 bg-white rounded-md border border-blue-300">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-blue-800 mb-1">Sélection complète :</p>
+                              <p className="text-sm text-gray-700">
+                                {titresSejourHierarchiques
+                                  .find(m => m.value === formData.motifTitreSejour)?.label} → {' '}
+                                {titresSejourHierarchiques
+                                  .find(m => m.value === formData.motifTitreSejour)
+                                  ?.sousCategories.find(sc => sc.value === formData.sousCategorieTitreSejour)?.label} → {' '}
+                                {titresSejourHierarchiques
+                                  .find(m => m.value === formData.motifTitreSejour)
+                                  ?.sousCategories.find(sc => sc.value === formData.sousCategorieTitreSejour)
+                                  ?.types.find(t => t.value === formData.typePrecisTitreSejour)?.label}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData({ 
+                                  ...formData, 
+                                  motifTitreSejour: '',
+                                  sousCategorieTitreSejour: '',
+                                  typePrecisTitreSejour: ''
+                                });
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-800 underline whitespace-nowrap"
+                            >
+                              Modifier
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Sélectionnez le motif de délivrance, puis la catégorie du titre de séjour, puis le type précis de titre de séjour.
+                          </p>
+                          
+                          {/* Niveau 1: Motif de délivrance */}
+                          <div className="space-y-2">
+                            <Label htmlFor="motifTitreSejour" className="text-sm font-semibold text-gray-700">
+                              1. Motif de délivrance du titre de séjour *
+                            </Label>
+                            <Select
+                              id="motifTitreSejour"
+                              value={formData.motifTitreSejour}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFormData({ 
+                                  ...formData, 
+                                  motifTitreSejour: value,
+                                  sousCategorieTitreSejour: '', // Réinitialiser les niveaux inférieurs
+                                  typePrecisTitreSejour: ''
+                                });
+                              }}
+                              required
+                              className="bg-white"
+                            >
+                              <option value="">-- Sélectionner un motif --</option>
+                              {titresSejourHierarchiques.map((motif) => (
+                                <option key={motif.value} value={motif.value}>
+                                  {motif.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+
+                          {/* Niveau 2: Catégorie du titre de séjour */}
+                          {formData.motifTitreSejour && (
+                            <div className="space-y-2">
+                              <Label htmlFor="sousCategorieTitreSejour" className="text-sm font-semibold text-gray-700">
+                                2. Catégorie du titre de séjour *
+                              </Label>
+                              <Select
+                                id="sousCategorieTitreSejour"
+                                value={formData.sousCategorieTitreSejour}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setFormData({ 
+                                    ...formData, 
+                                    sousCategorieTitreSejour: value,
+                                    typePrecisTitreSejour: '' // Réinitialiser le niveau inférieur
+                                  });
+                                }}
+                                required
+                                className="bg-white"
+                              >
+                                <option value="">-- Sélectionner une sous-catégorie --</option>
+                                {titresSejourHierarchiques
+                                  .find(m => m.value === formData.motifTitreSejour)
+                                  ?.sousCategories.map((sousCat) => (
+                                    <option key={sousCat.value} value={sousCat.value}>
+                                      {sousCat.label}
+                                    </option>
+                                  ))}
+                              </Select>
+                            </div>
+                          )}
+
+                          {/* Niveau 3: Type précis */}
+                          {formData.sousCategorieTitreSejour && (
+                            <div className="space-y-2">
+                              <Label htmlFor="typePrecisTitreSejour" className="text-sm font-semibold text-gray-700">
+                                3. Type précis de titre *
+                              </Label>
+                              <Select
+                                id="typePrecisTitreSejour"
+                                value={formData.typePrecisTitreSejour}
+                                onChange={(e) => {
+                                  setFormData({ 
+                                    ...formData, 
+                                    typePrecisTitreSejour: e.target.value
+                                  });
+                                }}
+                                required
+                                className="bg-white"
+                              >
+                                <option value="">-- Sélectionner un type précis --</option>
+                                {titresSejourHierarchiques
+                                  .find(m => m.value === formData.motifTitreSejour)
+                                  ?.sousCategories.find(sc => sc.value === formData.sousCategorieTitreSejour)
+                                  ?.types.map((type) => (
+                                    <option key={type.value} value={type.value}>
+                                      {type.label}
+                                    </option>
+                                  ))}
+                              </Select>
+                            </div>
+                          )}
+                        </>
                       )}
-                    </div>
-
-                    {/* Période de validité */}
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
-                      <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
-                      {!isAdmin && (
-                        <p className="text-xs text-muted-foreground mb-2 italic">
-                          ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
-                        </p>
-                      )}
-
-                    <div className="space-y-2">
-                        <Label htmlFor="dateAttributionTitre">Date d'attribution du titre ou du visa *</Label>
-                        <Input
-                          id="dateAttributionTitre"
-                          type="date"
-                          value={formData.dateAttributionTitre}
-                          onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
-                          required
-                          disabled={!isAdmin}
-                          className={!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="dateExpirationTitre">Date d'expiration du titre ou du visa *</Label>
-                        <Input
-                          id="dateExpirationTitre"
-                          type="date"
-                          value={formData.dateExpirationTitre}
-                          onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
-                          required
-                          disabled={!isAdmin}
-                          className={`${dateErrors.dateExpirationTitre ? 'border-red-500' : ''} ${!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
-                        />
-                        {dateErrors.dateExpirationTitre && (
-                          <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
-                        )}
-                      </div>
                     </div>
 
                     {formData.typeDemande === 'renouvellement' && (
                       <>
-                        <div className="space-y-2">
-                          <Label htmlFor="dateExpiration">Date d'expiration du titre actuel *</Label>
-                          <Input
-                            id="dateExpiration"
-                            type="date"
-                            value={formData.dateExpiration}
-                            onChange={(e) => setFormData({ ...formData, dateExpiration: e.target.value })}
-                            required
-                            className={dateErrors.dateExpiration ? 'border-red-500' : ''}
-                          />
-                          {dateErrors.dateExpiration && (
-                            <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpiration}</p>
-                          )}
-                        </div>
 
                         <div className="space-y-2">
                           <Label htmlFor="dateDelivrance">Date de délivrance</Label>
@@ -1817,44 +2090,6 @@ export default function CalculateurPage() {
                       />
                     </div>
 
-                    {/* Période de validité */}
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
-                      <h3 className="font-semibold text-sm text-gray-800 mb-3">Période de validité</h3>
-                      {!isAdmin && (
-                        <p className="text-xs text-muted-foreground mb-2 italic">
-                          ⓘ Ces informations sont préremplies depuis votre profil. Pour les modifier, veuillez aller sur votre page de profil.
-                        </p>
-                      )}
-
-                    <div className="space-y-2">
-                        <Label htmlFor="dateAttributionTitre_titre">Date d'attribution du titre ou du visa *</Label>
-                        <Input
-                          id="dateAttributionTitre_titre"
-                          type="date"
-                          value={formData.dateAttributionTitre}
-                          onChange={(e) => setFormData({ ...formData, dateAttributionTitre: e.target.value })}
-                          required
-                          disabled={!isAdmin}
-                          className={!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="dateExpirationTitre_titre">Date d'expiration du titre ou du visa *</Label>
-                        <Input
-                          id="dateExpirationTitre_titre"
-                          type="date"
-                          value={formData.dateExpirationTitre}
-                          onChange={(e) => setFormData({ ...formData, dateExpirationTitre: e.target.value })}
-                          required
-                          disabled={!isAdmin}
-                          className={`${dateErrors.dateExpirationTitre ? 'border-red-500' : ''} ${!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
-                        />
-                        {dateErrors.dateExpirationTitre && (
-                          <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpirationTitre}</p>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 )}
               </form>
