@@ -146,7 +146,17 @@ router.get('/admin', authorize('admin', 'superadmin'), async (req, res) => {
 // @access  Private
 router.post('/', upload.single('document'), async (req, res) => {
   try {
+    console.log('📤 Upload de document - Début');
+    console.log('📤 Fichier reçu:', req.file ? {
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    } : 'AUCUN FICHIER');
+    console.log('📤 Body:', req.body);
+
     if (!req.file) {
+      console.error('❌ Aucun fichier téléversé');
       return res.status(400).json({
         success: false,
         message: 'Aucun fichier téléversé'
@@ -154,9 +164,16 @@ router.post('/', upload.single('document'), async (req, res) => {
     }
 
     const { nom, description, categorie, dossierId } = req.body;
+    const effectiveUserId = getEffectiveUserId(req);
+
+    console.log('📤 Données du document:', {
+      userId: effectiveUserId,
+      nom: nom || req.file.originalname,
+      dossierId: dossierId
+    });
 
     const documentData = {
-      user: getEffectiveUserId(req), // Utilise l'ID impersonné si en impersonation
+      user: effectiveUserId, // Utilise l'ID impersonné si en impersonation
       nom: nom || req.file.originalname,
       nomFichier: req.file.filename,
       cheminFichier: req.file.path,
@@ -168,10 +185,19 @@ router.post('/', upload.single('document'), async (req, res) => {
 
     // Ajouter dossierId seulement s'il est fourni et valide
     if (dossierId && dossierId.trim() !== '') {
-      documentData.dossierId = dossierId;
+      // Vérifier que le dossierId est un ObjectId valide
+      const mongoose = require('mongoose');
+      if (mongoose.Types.ObjectId.isValid(dossierId)) {
+        documentData.dossierId = dossierId;
+        console.log('📁 Dossier ID ajouté:', dossierId);
+      } else {
+        console.warn('⚠️ Dossier ID invalide, ignoré:', dossierId);
+      }
     }
 
+    console.log('📤 Création du document...');
     const document = await Document.create(documentData);
+    console.log('✅ Document créé avec succès:', document._id);
 
     // Logger l'action
     try {
@@ -192,23 +218,35 @@ router.post('/', upload.single('document'), async (req, res) => {
       console.error('Erreur lors de l\'enregistrement du log:', logError);
     }
 
+    console.log('✅ Document téléversé avec succès:', document._id);
     res.status(201).json({
       success: true,
       message: 'Document téléversé avec succès',
       document
     });
   } catch (error) {
-    console.error('Erreur lors du téléversement du document:', error);
+    console.error('❌ Erreur lors du téléversement du document:', error);
+    console.error('❌ Stack trace:', error.stack);
+    console.error('❌ Request body:', req.body);
+    console.error('❌ Request file:', req.file);
     
     // Supprimer le fichier si le document n'a pas pu être créé
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (req.file && req.file.path) {
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+          console.log('🗑️ Fichier temporaire supprimé:', req.file.path);
+        }
+      } catch (unlinkError) {
+        console.error('⚠️ Erreur lors de la suppression du fichier temporaire:', unlinkError);
+      }
     }
 
     res.status(500).json({
       success: false,
-      message: error.message || 'Erreur serveur lors du téléversement',
-      error: error.message
+      message: 'Erreur serveur lors du téléversement du document',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

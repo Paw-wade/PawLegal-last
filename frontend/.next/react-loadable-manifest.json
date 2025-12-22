@@ -1,16 +1,4 @@
 {
-  "app\\admin\\messages\\page.tsx -> @/lib/api": {
-    "id": "app\\admin\\messages\\page.tsx -> @/lib/api",
-    "files": []
-  },
-  "app\\admin\\page.tsx -> @/lib/api": {
-    "id": "app\\admin\\page.tsx -> @/lib/api",
-    "files": []
-  },
-  "components\\MessageNotificationModal.tsx -> @/lib/api": {
-    "id": "components\\MessageNotificationModal.tsx -> @/lib/api",
-    "files": []
-  },
   "lib\\api.ts -> next-auth/react": {
     "id": "lib\\api.ts -> next-auth/react",
     "files": []

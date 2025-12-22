@@ -431,8 +431,17 @@ router.post(
   ],
   async (req, res) => {
     try {
+      console.log('📤 Upload de document - Début de la requête:', {
+        requestId: req.params.id,
+        userId: req.user.id,
+        userRole: req.user.role,
+        impersonateUserId: req.impersonateUserId,
+        body: req.body
+      });
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.error('❌ Erreurs de validation:', errors.array());
         return res.status(400).json({
           success: false,
           message: 'Erreurs de validation',
@@ -442,6 +451,11 @@ router.post(
 
       const { documentId } = req.body;
       const targetUserId = req.impersonateUserId || req.user.id;
+      
+      console.log('📤 Données extraites:', {
+        documentId: documentId,
+        targetUserId: targetUserId.toString()
+      });
 
       // Vérifier que la demande existe
       const documentRequest = await DocumentRequest.findById(req.params.id)
@@ -457,11 +471,23 @@ router.post(
       }
 
       // Vérifier que l'utilisateur est le destinataire de la demande
-      const isRequestedFrom = documentRequest.requestedFrom._id?.toString() === targetUserId.toString() ||
-                             documentRequest.requestedFrom.toString() === targetUserId.toString();
+      let isRequestedFrom = false;
+      if (documentRequest.requestedFrom) {
+        if (documentRequest.requestedFrom._id) {
+          isRequestedFrom = documentRequest.requestedFrom._id.toString() === targetUserId.toString();
+        } else {
+          isRequestedFrom = documentRequest.requestedFrom.toString() === targetUserId.toString();
+        }
+      }
       const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
 
       if (!isAdmin && !isRequestedFrom) {
+        console.error('❌ Accès refusé:', {
+          targetUserId: targetUserId.toString(),
+          requestedFrom: documentRequest.requestedFrom ? (documentRequest.requestedFrom._id || documentRequest.requestedFrom).toString() : 'null',
+          isAdmin: isAdmin,
+          isRequestedFrom: isRequestedFrom
+        });
         return res.status(403).json({
           success: false,
           message: 'Vous n\'êtes pas autorisé à répondre à cette demande'
@@ -484,38 +510,69 @@ router.post(
         });
       }
 
-      // Vérifier que le document n'est pas déjà associé à une autre demande
-      const existingRequest = await DocumentRequest.findOne({
-        document: documentId,
-        _id: { $ne: req.params.id }
-      });
-
-      if (existingRequest) {
-        return res.status(400).json({
-          success: false,
-          message: 'Ce document est déjà associé à une autre demande'
-        });
-      }
+      // Note: On permet maintenant la réutilisation d'un document même s'il est déjà associé à une autre demande
+      // Un document peut répondre à plusieurs demandes si nécessaire
 
       // Mettre à jour la demande - marquer comme "received" car le document a été envoyé et reçu
+      console.log('📝 Mise à jour de la demande de document:', {
+        requestId: req.params.id,
+        documentId: documentId,
+        dossier: documentRequest.dossier ? (documentRequest.dossier._id || documentRequest.dossier) : 'NON TROUVÉ'
+      });
+
       documentRequest.document = documentId;
       documentRequest.status = 'received';
       documentRequest.sentAt = new Date();
       documentRequest.receivedAt = new Date();
       await documentRequest.save();
+      console.log('✅ Demande de document mise à jour avec succès');
 
       // Mettre à jour le document pour le lier au dossier si ce n'est pas déjà fait
-      if (!document.dossierId || document.dossierId.toString() !== documentRequest.dossier._id.toString()) {
-        document.dossierId = documentRequest.dossier._id;
-        await document.save();
+      try {
+        if (!documentRequest.dossier) {
+          console.error('❌ Erreur: documentRequest.dossier est null ou undefined');
+          throw new Error('Dossier non trouvé dans la demande de document');
+        }
+
+        const dossierId = documentRequest.dossier._id 
+          ? documentRequest.dossier._id.toString() 
+          : documentRequest.dossier.toString();
+        
+        console.log('📁 Liaison du document au dossier:', {
+          documentId: documentId,
+          dossierId: dossierId,
+          documentDossierId: document.dossierId ? document.dossierId.toString() : 'null'
+        });
+        
+        if (!document.dossierId || document.dossierId.toString() !== dossierId) {
+          document.dossierId = documentRequest.dossier._id || documentRequest.dossier;
+          await document.save();
+          console.log(`✅ Document ${documentId} lié au dossier ${dossierId}`);
+        } else {
+          console.log(`ℹ️ Document ${documentId} déjà lié au dossier ${dossierId}`);
+        }
+      } catch (dossierLinkError) {
+        console.error('⚠️ Erreur lors de la liaison du document au dossier:', dossierLinkError);
+        console.error('Stack trace:', dossierLinkError.stack);
+        // Ne pas bloquer le processus si la liaison échoue
       }
 
       // Marquer la notification de demande de document comme lue pour le client
       try {
+        if (!documentRequest.requestedFrom) {
+          console.error('❌ Erreur: documentRequest.requestedFrom est null ou undefined');
+          throw new Error('Utilisateur destinataire non trouvé dans la demande de document');
+        }
+
         const requestedFromId = documentRequest.requestedFrom._id 
           ? documentRequest.requestedFrom._id.toString() 
           : documentRequest.requestedFrom.toString();
         
+        console.log('🔔 Marquage de la notification comme lue pour le client:', {
+          userId: requestedFromId,
+          requestId: documentRequest._id.toString()
+        });
+
         await Notification.updateMany(
           {
             user: requestedFromId,
@@ -530,27 +587,46 @@ router.post(
         console.log(`✅ Notification(s) de demande de document marquée(s) comme lue(s) pour le client`);
       } catch (notifError) {
         console.error('⚠️ Erreur lors du marquage de la notification comme lue:', notifError);
+        console.error('Stack trace:', notifError.stack);
         // Ne pas bloquer le processus si la mise à jour de la notification échoue
       }
 
       // Créer une notification pour l'administrateur
       try {
+        if (!documentRequest.requestedBy) {
+          console.error('❌ Erreur: documentRequest.requestedBy est null ou undefined');
+          throw new Error('Administrateur demandeur non trouvé dans la demande de document');
+        }
+
         const requestedById = documentRequest.requestedBy._id 
           ? documentRequest.requestedBy._id.toString() 
           : documentRequest.requestedBy.toString();
         
+        console.log('👤 Recherche de l\'administrateur:', requestedById);
         const adminUser = await User.findById(requestedById);
-        if (adminUser) {
+        
+        if (!adminUser) {
+          console.warn('⚠️ Administrateur non trouvé avec l\'ID:', requestedById);
+        } else {
+          const dossierNumero = documentRequest.dossier?.numero || documentRequest.dossier?._id?.toString() || 'N/A';
+          const dossierId = documentRequest.dossier?._id?.toString() || documentRequest.dossier?.toString() || 'N/A';
+          
+          console.log('📨 Création de la notification pour l\'admin:', {
+            adminId: requestedById,
+            dossierNumero: dossierNumero,
+            documentName: document.nom
+          });
+
           await Notification.create({
             user: requestedById,
             type: 'document_received',
-            title: `📥 Document reçu - Dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}`,
-            message: `Le document "${document.nom}" a été envoyé en réponse à votre demande pour le dossier ${documentRequest.dossier.numero || documentRequest.dossier._id}.`,
+            title: `📥 Document reçu - Dossier ${dossierNumero}`,
+            message: `Le document "${document.nom}" a été envoyé en réponse à votre demande pour le dossier ${dossierNumero}.`,
             data: {
               documentRequestId: documentRequest._id.toString(),
               documentId: documentId.toString(),
-              dossierId: documentRequest.dossier._id.toString(),
-              dossierNumero: documentRequest.dossier.numero
+              dossierId: dossierId,
+              dossierNumero: dossierNumero
             },
             priority: 'normal'
           });
@@ -558,11 +634,12 @@ router.post(
           // Envoyer un SMS à l'admin si configuré
           if (adminUser.phone) {
             try {
+              const smsDossierNumero = documentRequest.dossier?.numero || documentRequest.dossier?._id?.toString() || 'N/A';
               await sendNotificationSMS(
                 adminUser.phone,
                 'document_received',
                 {
-                  dossierNumero: documentRequest.dossier.numero || documentRequest.dossier._id.toString(),
+                  dossierNumero: smsDossierNumero,
                   documentName: document.nom
                 },
                 {
@@ -574,6 +651,7 @@ router.post(
               console.log(`✅ SMS envoyé à l'admin ${adminUser.email} pour la réception du document`);
             } catch (smsError) {
               console.error('⚠️ Erreur lors de l\'envoi du SMS:', smsError);
+              console.error('Stack trace:', smsError.stack);
             }
           }
         }
@@ -583,8 +661,14 @@ router.post(
       }
 
       // Re-populate pour la réponse
-      await documentRequest.populate('document', 'nom typeMime taille');
+      try {
+        await documentRequest.populate('document', 'nom typeMime taille');
+      } catch (populateError) {
+        console.error('⚠️ Erreur lors du populate du document:', populateError);
+        // Ne pas bloquer la réponse si le populate échoue
+      }
 
+      console.log('✅ Document envoyé avec succès pour la demande:', req.params.id);
       res.json({
         success: true,
         message: 'Document envoyé avec succès',
@@ -592,10 +676,14 @@ router.post(
       });
     } catch (error) {
       console.error('❌ Erreur lors de l\'envoi du document:', error);
+      console.error('Stack trace:', error.stack);
+      console.error('Request params:', req.params);
+      console.error('Request body:', req.body);
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Erreur serveur lors de l\'envoi du document',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   }

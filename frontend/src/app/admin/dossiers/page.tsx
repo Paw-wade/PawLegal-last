@@ -1482,8 +1482,7 @@ export default function AdminDossiersPage() {
                     {/* Encadré Documents - Compact avec dropdown */}
                     <div className="mb-3 pb-3 border-b border-gray-200">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Documents</span>
-                        <div className="relative">
+                        <div className="relative flex-1">
                           {(() => {
                             const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
                             const totalRequests = dossierRequests.length;
@@ -1493,7 +1492,9 @@ export default function AdminDossiersPage() {
                             
                             if (totalRequests === 0) {
                               return (
-                                <span className="text-xs text-muted-foreground px-2 py-1">Aucun document</span>
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                  Documents <span className="text-xs text-muted-foreground normal-case font-normal">(Aucun)</span>
+                                </span>
                               );
                             }
                             
@@ -1511,22 +1512,23 @@ export default function AdminDossiersPage() {
                                     }
                                     setExpandedDocumentDropdowns(newExpanded);
                                   }}
-                                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-xs font-medium transition-colors"
+                                  className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
                                   title="Voir les documents"
                                 >
-                                  <span className="text-gray-700">📄</span>
-                                  <span className="text-gray-700 font-semibold">{totalRequests}</span>
+                                  <span>DOCUMENTS</span>
+                                  <span className="text-gray-700 normal-case font-normal">📄</span>
+                                  <span className="text-gray-700 font-semibold normal-case">{totalRequests}</span>
                                   {pendingCount > 0 && (
-                                    <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] font-bold">
+                                    <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] font-bold normal-case">
                                       {pendingCount}
                                     </span>
                                   )}
                                   {receivedCount > 0 && (
-                                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-bold">
+                                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-bold normal-case">
                                       {receivedCount}
                                     </span>
                                   )}
-                                  <span className="text-gray-400 text-[10px]">{isExpanded ? '▲' : '▼'}</span>
+                                  <span className="text-gray-400 text-[10px] ml-1">{isExpanded ? '▲' : '▼'}</span>
                                 </button>
                                 
                                 {/* Dropdown de la liste des documents */}

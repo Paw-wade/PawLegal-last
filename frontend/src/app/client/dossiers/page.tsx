@@ -105,6 +105,7 @@ export default function DossiersPage() {
   const [documentRequests, setDocumentRequests] = useState<Record<string, any[]>>({});
   const [selectedDocumentRequest, setSelectedDocumentRequest] = useState<any>(null);
   const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
+  const [expandedDocumentSections, setExpandedDocumentSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Vérifier si l'utilisateur a un token même sans session
@@ -202,8 +203,8 @@ export default function DossiersPage() {
 
   const loadDocumentRequests = async () => {
     try {
-      // Charger toutes les demandes de documents en attente pour les dossiers du client
-      const response = await documentRequestsAPI.getRequests({ status: 'pending' });
+      // Charger TOUTES les demandes de documents (pas seulement pending) pour afficher l'historique complet
+      const response = await documentRequestsAPI.getRequests({});
       if (response.data.success) {
         const requests = response.data.documentRequests || [];
         const requestsMap: Record<string, any[]> = {};
@@ -425,110 +426,197 @@ export default function DossiersPage() {
                     )}
                   </div>
 
+                  {/* Section Documents demandés */}
+                  {(() => {
+                    const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
+                    const pendingRequests = dossierRequests.filter((r: any) => r.status === 'pending');
+                    const receivedRequests = dossierRequests.filter((r: any) => r.status === 'received' || r.status === 'sent');
+                    const isExpanded = expandedDocumentSections.has(dossier._id || dossier.id);
+                    
+                    if (dossierRequests.length === 0) {
+                      return null; // Ne rien afficher s'il n'y a pas de demandes
+                    }
+                    
+                    return (
+                      <div className="pt-3 border-t border-gray-200 mb-3">
+                        <div 
+                          className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
+                          onClick={() => {
+                            const dossierId = dossier._id || dossier.id;
+                            const newExpanded = new Set(expandedDocumentSections);
+                            if (isExpanded) {
+                              newExpanded.delete(dossierId);
+                            } else {
+                              newExpanded.add(dossierId);
+                            }
+                            setExpandedDocumentSections(newExpanded);
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">📄</span>
+                            <div>
+                              <h4 className="text-sm font-semibold text-foreground">Documents demandés</h4>
+                              <p className="text-xs text-muted-foreground">
+                                {pendingRequests.length > 0 && (
+                                  <span className="text-orange-600 font-medium">
+                                    {pendingRequests.length} en attente
+                                  </span>
+                                )}
+                                {pendingRequests.length > 0 && receivedRequests.length > 0 && ' • '}
+                                {receivedRequests.length > 0 && (
+                                  <span className="text-green-600 font-medium">
+                                    {receivedRequests.length} reçu{receivedRequests.length > 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-muted-foreground text-sm">{isExpanded ? '▲' : '▼'}</span>
+                        </div>
+                        
+                        {isExpanded && (
+                          <div className="mt-3 space-y-3">
+                            {dossierRequests.map((request: any) => {
+                              const isPending = request.status === 'pending';
+                              const isUrgent = request.isUrgent;
+                              
+                              return (
+                                <div
+                                  key={request._id || request.id}
+                                  className={`border rounded-lg p-3 ${
+                                    isPending
+                                      ? isUrgent
+                                        ? 'bg-red-50/50 border-red-200'
+                                        : 'bg-orange-50/50 border-orange-200'
+                                      : 'bg-green-50/50 border-green-200'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-lg">
+                                          {isPending ? (isUrgent ? '🔴' : '📄') : '✅'}
+                                        </span>
+                                        <h5 className="font-semibold text-sm text-foreground">
+                                          {request.documentTypeLabel || request.documentType || 'Document'}
+                                        </h5>
+                                        {isUrgent && (
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-bold">
+                                            URGENT
+                                          </span>
+                                        )}
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                          isPending
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : 'bg-green-100 text-green-800'
+                                        }`}>
+                                          {isPending ? 'En attente' : 'Reçu'}
+                                        </span>
+                                      </div>
+                                      
+                                      {request.message && (
+                                        <p className="text-xs text-muted-foreground mb-2 ml-7">
+                                          {request.message}
+                                        </p>
+                                      )}
+                                      
+                                      <div className="flex items-center gap-3 text-xs text-muted-foreground ml-7">
+                                        <span>
+                                          📅 Demandé le {new Date(request.createdAt).toLocaleDateString('fr-FR')}
+                                        </span>
+                                        {request.receivedAt && (
+                                          <span>
+                                            ✅ Reçu le {new Date(request.receivedAt).toLocaleDateString('fr-FR')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {isPending && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const notification = {
+                                            _id: request._id,
+                                            id: request.id,
+                                            type: 'document_request',
+                                            titre: isUrgent
+                                              ? `🔴 Demande urgente de document - Dossier ${dossier.numero || dossier._id}`
+                                              : `📄 Demande de document - Dossier ${dossier.numero || dossier._id}`,
+                                            message: `Un document de type "${request.documentTypeLabel}" est requis pour votre dossier.`,
+                                            data: {
+                                              documentRequestId: request._id || request.id,
+                                              dossierId: dossier._id || dossier.id,
+                                              dossierNumero: dossier.numero,
+                                              documentType: request.documentType,
+                                              documentTypeLabel: request.documentTypeLabel,
+                                              isUrgent: request.isUrgent || false,
+                                              message: request.message
+                                            }
+                                          };
+                                          setSelectedDocumentRequest(notification);
+                                          setShowDocumentRequestModal(true);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex-shrink-0 ${
+                                          isUrgent
+                                            ? 'bg-red-500 text-white hover:bg-red-600'
+                                            : 'bg-orange-500 text-white hover:bg-orange-600'
+                                        }`}
+                                      >
+                                        📤 Envoyer
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Actions */}
                   <div className="pt-3 border-t border-gray-200">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         {(() => {
-                          // Vérifier d'abord s'il y a des demandes de documents en attente
+                          // Afficher la dernière notification défilante si pas de demandes de documents
                           const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
                           const pendingRequests = dossierRequests.filter((r: any) => r.status === 'pending');
                           
-                          if (pendingRequests.length > 0) {
-                            const urgentRequests = pendingRequests.filter((r: any) => r.isUrgent);
-                            const hasUrgent = urgentRequests.length > 0;
+                          if (pendingRequests.length === 0) {
+                            const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
+                            if (lastNotification) {
+                              return (
+                                <div className="relative overflow-hidden bg-blue-50/50 rounded-md px-3 py-2 border border-blue-200/50">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs">🔔</span>
+                                    <div className="flex-1 min-w-0 overflow-hidden">
+                                      <div className="animate-scroll-text whitespace-nowrap">
+                                        <span className="text-xs text-blue-900 font-medium">
+                                          {lastNotification.title || lastNotification.message || 'Nouvelle notification'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
                             
                             return (
-                              <div 
-                                className={`relative overflow-hidden rounded-md px-3 py-2 border cursor-pointer transition-all hover:shadow-md ${
-                                  hasUrgent 
-                                    ? 'bg-red-50/50 border-red-200/50 hover:bg-red-100/50' 
-                                    : 'bg-orange-50/50 border-orange-200/50 hover:bg-orange-100/50'
-                                }`}
-                                onClick={() => {
-                                  // Ouvrir le modal avec la première demande en attente (ou urgente si disponible)
-                                  const requestToShow = urgentRequests[0] || pendingRequests[0];
-                                  if (requestToShow) {
-                                    // Créer une notification factice pour le modal
-                                    const notification = {
-                                      _id: requestToShow._id,
-                                      id: requestToShow.id,
-                                      type: 'document_request',
-                                      titre: requestToShow.isUrgent
-                                        ? `🔴 Demande urgente de document - Dossier ${dossier.numero || dossier._id}`
-                                        : `📄 Demande de document - Dossier ${dossier.numero || dossier._id}`,
-                                      message: `Un document de type "${requestToShow.documentTypeLabel}" est requis pour votre dossier.`,
-                                      data: {
-                                        documentRequestId: requestToShow._id || requestToShow.id,
-                                        dossierId: dossier._id || dossier.id,
-                                        dossierNumero: dossier.numero,
-                                        documentType: requestToShow.documentType,
-                                        documentTypeLabel: requestToShow.documentTypeLabel,
-                                        isUrgent: requestToShow.isUrgent || false
-                                      }
-                                    };
-                                    setSelectedDocumentRequest(notification);
-                                    setShowDocumentRequestModal(true);
-                                  }
-                                }}
-                                title={`${pendingRequests.length} demande(s) de document(s) en attente${hasUrgent ? ' (urgente)' : ''}. Cliquez pour envoyer le document.`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs">{hasUrgent ? '🔴' : '📄'}</span>
-                                  <div className="flex-1 min-w-0 overflow-hidden">
-                                    <div className="animate-scroll-text whitespace-nowrap">
-                                      <span className={`text-xs font-medium ${
-                                        hasUrgent ? 'text-red-900' : 'text-orange-900'
-                                      }`}>
-                                        {hasUrgent 
-                                          ? `🔴 ${urgentRequests.length} demande(s) urgente(s) de document`
-                                          : `${pendingRequests.length} demande(s) de document en attente`
-                                        }
-                                        {pendingRequests.length > 1 && !hasUrgent && ` (${pendingRequests.length} demandes)`}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {pendingRequests.length > 1 && (
-                                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                                      hasUrgent ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'
-                                    }`}>
-                                      {pendingRequests.length}
-                                    </span>
-                                  )}
-                                </div>
+                              <div className="flex gap-3 text-xs text-muted-foreground">
+                                {dossier.documents && dossier.documents.length > 0 && (
+                                  <span>📄 {dossier.documents.length}</span>
+                                )}
+                                {dossier.messages && dossier.messages.length > 0 && (
+                                  <span>💬 {dossier.messages.length}</span>
+                                )}
                               </div>
                             );
                           }
                           
-                          // Sinon, afficher la dernière notification défilante
-                          const lastNotification = getLastNotificationForDossier(dossier._id || dossier.id);
-                          if (lastNotification) {
-                            return (
-                              <div className="relative overflow-hidden bg-blue-50/50 rounded-md px-3 py-2 border border-blue-200/50">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs">🔔</span>
-                                  <div className="flex-1 min-w-0 overflow-hidden">
-                                    <div className="animate-scroll-text whitespace-nowrap">
-                                      <span className="text-xs text-blue-900 font-medium">
-                                        {lastNotification.title || lastNotification.message || 'Nouvelle notification'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          return (
-                            <div className="flex gap-3 text-xs text-muted-foreground">
-                              {dossier.documents && dossier.documents.length > 0 && (
-                                <span>📄 {dossier.documents.length}</span>
-                              )}
-                              {dossier.messages && dossier.messages.length > 0 && (
-                                <span>💬 {dossier.messages.length}</span>
-                              )}
-                            </div>
-                          );
+                          return null; // Les demandes sont affichées dans la section dédiée ci-dessus
                         })()}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
