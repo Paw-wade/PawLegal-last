@@ -52,11 +52,12 @@ router.post(
       }
 
       // Vérifier si un utilisateur avec ce numéro existe déjà
+      // Permettre la réinscription si l'utilisateur n'a pas encore défini de mot de passe
       const existingUser = await User.findOne({ phone: formattedPhone });
-      if (existingUser) {
+      if (existingUser && existingUser.password && !existingUser.needsPasswordSetup) {
         return res.status(400).json({
           success: false,
-          message: 'Un compte avec ce numéro de téléphone existe déjà'
+          message: 'Un compte avec ce numéro de téléphone existe déjà. Veuillez vous connecter.'
         });
       }
 
@@ -81,7 +82,10 @@ router.post(
         const message = `Votre code de vérification Paw Legal est : ${code}. Valide pendant 10 minutes.`;
         
         // En mode développement, permettre de continuer sans SMS réel si Twilio n'est pas configuré
-        if (process.env.NODE_ENV === 'development' && process.env.ALLOW_OTP_WITHOUT_SMS === 'true') {
+        const allowWithoutSMS = process.env.NODE_ENV === 'development' && process.env.ALLOW_OTP_WITHOUT_SMS === 'true';
+        const twilioNotConfigured = !process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN;
+        
+        if (allowWithoutSMS || twilioNotConfigured) {
           console.log(`⚠️ Mode développement: SMS simulé pour ${formattedPhone}`);
           console.log(`📱 Code OTP généré: ${code} (valide 10 minutes)`);
           
@@ -111,7 +115,22 @@ router.post(
           stack: process.env.NODE_ENV === 'development' ? smsError.stack : undefined
         });
         
-        // Supprimer le code OTP si l'envoi du SMS échoue
+        // En mode développement, permettre de continuer même si l'envoi SMS échoue
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⚠️ Mode développement: SMS échoué mais code OTP conservé pour ${formattedPhone}`);
+          console.log(`📱 Code OTP généré: ${code} (valide 10 minutes)`);
+          
+          res.json({
+            success: true,
+            message: 'Code OTP généré avec succès (mode développement - SMS échoué)',
+            expiresAt: expiresAt.toISOString(),
+            code: code,
+            warning: `Erreur SMS: ${smsError.message}`
+          });
+          return;
+        }
+        
+        // Supprimer le code OTP si l'envoi du SMS échoue (en production uniquement)
         await OTP.findByIdAndDelete(otp._id);
         
         // Message d'erreur plus détaillé selon le type d'erreur

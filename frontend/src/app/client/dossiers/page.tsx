@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { dossiersAPI, notificationsAPI, documentRequestsAPI } from '@/lib/api';
+import { dossiersAPI, notificationsAPI, documentRequestsAPI, documentsAPI } from '@/lib/api';
 import { DocumentRequestNotificationModal } from '@/components/DocumentRequestNotificationModal';
-import { getStatutColor, getStatutLabel, getPrioriteColor } from '@/lib/dossierUtils';
+import { DocumentPreview } from '@/components/DocumentPreview';
+import { getStatutColor, getStatutLabel, getPrioriteColor, getDossierProgress, calculateDaysSince, calculateDaysUntil, isDeadlineApproaching, formatRelativeTime, getNextAction, getTimelineSteps } from '@/lib/dossierUtils';
 
 // Mapping des catégories pour l'affichage
 const categories = {
@@ -106,6 +107,10 @@ export default function DossiersPage() {
   const [selectedDocumentRequest, setSelectedDocumentRequest] = useState<any>(null);
   const [showDocumentRequestModal, setShowDocumentRequestModal] = useState(false);
   const [expandedDocumentSections, setExpandedDocumentSections] = useState<Set<string>>(new Set());
+  const [expandedDocumentDropdowns, setExpandedDocumentDropdowns] = useState<Set<string>>(new Set());
+  const [dossierDocuments, setDossierDocuments] = useState<Record<string, any[]>>({});
+  const [selectedDocumentForPreview, setSelectedDocumentForPreview] = useState<any>(null);
+  const [expandedDossiers, setExpandedDossiers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Vérifier si l'utilisateur a un token même sans session
@@ -134,11 +139,13 @@ export default function DossiersPage() {
       loadDossiers();
       loadNotifications();
       loadDocumentRequests();
+      loadDossierDocuments();
     } else if (token) {
       // Si on a un token mais pas de session, charger quand même les dossiers
       loadDossiers();
       loadNotifications();
       loadDocumentRequests();
+      loadDossierDocuments();
     }
   }, [session, status, router]);
 
@@ -149,6 +156,7 @@ export default function DossiersPage() {
         loadDossiers();
         loadNotifications();
         loadDocumentRequests();
+        loadDossierDocuments();
       }
     }, 30000); // Rafraîchir toutes les 30 secondes
 
@@ -225,6 +233,32 @@ export default function DossiersPage() {
       if (err.response?.status !== 404) {
         console.error('Erreur lors du chargement des demandes de documents:', err);
       }
+    }
+  };
+
+  const loadDossierDocuments = async () => {
+    try {
+      const response = await documentsAPI.getMyDocuments();
+      if (response.data.success) {
+        const allDocuments = response.data.documents || [];
+        const documentsMap: Record<string, any[]> = {};
+        
+        // Grouper les documents par dossier
+        allDocuments.forEach((doc: any) => {
+          const dossierId = doc.dossierId?._id || doc.dossierId || doc.dossier?._id || doc.dossier;
+          if (dossierId) {
+            const dossierIdStr = dossierId.toString();
+            if (!documentsMap[dossierIdStr]) {
+              documentsMap[dossierIdStr] = [];
+            }
+            documentsMap[dossierIdStr].push(doc);
+          }
+        });
+        
+        setDossierDocuments(documentsMap);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des documents des dossiers:', err);
     }
   };
 
@@ -357,21 +391,92 @@ export default function DossiersPage() {
                       : 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200'
                   }`}
                 >
-                  {/* En-tête de la carte */}
+                  {/* En-tête de la carte avec bouton de pliage/dépliage */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0 pr-2">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
-                          {dossier.titre || 'Sans titre'}
-                        </h3>
+                        <button
+                          onClick={() => {
+                            const dossierId = dossier._id || dossier.id;
+                            const newExpanded = new Set(expandedDossiers);
+                            if (newExpanded.has(dossierId)) {
+                              newExpanded.delete(dossierId);
+                            } else {
+                              newExpanded.add(dossierId);
+                            }
+                            setExpandedDossiers(newExpanded);
+                          }}
+                          className="p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-600 hover:text-primary flex-shrink-0"
+                          title={expandedDossiers.has(dossier._id || dossier.id) ? 'Plier le dossier' : 'Déplier le dossier'}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={expandedDossiers.has(dossier._id || dossier.id) ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                          </svg>
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
+                            {dossier.titre || 'Sans titre'}
+                          </h3>
+                          {(dossier.numero || dossier.numeroDossier) && (
+                            <p className="text-xs text-primary font-semibold mt-0.5">
+                              N° {dossier.numero || dossier.numeroDossier}
+                            </p>
+                          )}
+                          {/* Compteurs de documents sur dossier plié */}
+                          {!expandedDossiers.has(dossier._id || dossier.id) && (
+                            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                              {(() => {
+                                const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
+                                const pendingRequests = dossierRequests.filter((r: any) => r.status === 'pending');
+                                const receivedRequests = dossierRequests.filter((r: any) => r.status === 'received' || r.status === 'sent');
+                                const totalDocuments = dossierDocuments[dossier._id || dossier.id]?.length || dossier.documents?.length || 0;
+                                
+                                return (
+                                  <>
+                                    <span className="flex items-center gap-1">
+                                      <span>📄</span>
+                                      <span className="font-semibold text-foreground">{totalDocuments}</span>
+                                      <span className="text-[10px]">documents</span>
+                                    </span>
+                                    {dossierRequests.length > 0 && (
+                                      <>
+                                        <span className="flex items-center gap-1">
+                                          <span>📋</span>
+                                          <span className="font-semibold text-orange-600">{pendingRequests.length}</span>
+                                          <span className="text-[10px]">demandés</span>
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                          <span>✅</span>
+                                          <span className="font-semibold text-green-600">{receivedRequests.length}</span>
+                                          <span className="text-[10px]">reçus</span>
+                                        </span>
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      {dossier.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                      {expandedDossiers.has(dossier._id || dossier.id) && dossier.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1 ml-7">
                           {dossier.description}
                         </p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <Link
+                        href={`/client/dossiers/${dossier._id || dossier.id}`}
+                        className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-600 hover:text-primary"
+                        title="Voir les détails du dossier"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </Link>
                       <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
                         {getStatutLabel(dossier.statut)}
                       </span>
@@ -382,6 +487,95 @@ export default function DossiersPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Contenu détaillé (affiché uniquement si le dossier est déplié) */}
+                  {expandedDossiers.has(dossier._id || dossier.id) && (
+                    <>
+
+                  {/* Barre de progression */}
+                  {(() => {
+                    const progress = getDossierProgress(dossier.statut);
+                    return (
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Progression</span>
+                          <span className="font-semibold text-foreground">{progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              progress >= 80 ? 'bg-green-500' : 
+                              progress >= 50 ? 'bg-blue-500' : 
+                              progress >= 25 ? 'bg-yellow-500' : 
+                              'bg-gray-400'
+                            }`}
+                            style={{width: `${progress}%`}}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Alerte d'échéance */}
+                  {isDeadlineApproaching(dossier.dateEcheance) && (
+                    <div className="bg-red-50 border-l-4 border-red-500 p-2 mb-3 rounded-r">
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600">⚠️</span>
+                        <p className="text-xs font-semibold text-red-900">
+                          Échéance dans {calculateDaysUntil(dossier.dateEcheance)} jour{calculateDaysUntil(dossier.dateEcheance) > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Prochaine action */}
+                  {(() => {
+                    const nextAction = getNextAction(dossier.statut);
+                    if (nextAction) {
+                      return (
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-2 mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-blue-600">📋</span>
+                            <div>
+                              <p className="text-xs font-semibold text-blue-900">Prochaine action</p>
+                              <p className="text-xs text-blue-700">{nextAction}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Timeline complète avec toutes les étapes */}
+                  {(() => {
+                    const steps = getTimelineSteps(dossier.statut);
+                    return (
+                      <div className="mb-3 pb-2 border-b border-gray-100">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Étapes du dossier :</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {steps.map((step) => (
+                            <div key={step.key} className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded ${
+                              step.isCurrent ? 'bg-blue-50 border border-blue-200' : ''
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                step.completed && !step.isCurrent ? 'bg-green-500' : 
+                                step.isCurrent ? 'bg-blue-500 ring-2 ring-blue-300' : 
+                                'bg-gray-300'
+                              }`}></span>
+                              <span className={`text-[10px] leading-tight ${
+                                step.completed && !step.isCurrent ? 'text-green-700 font-medium' : 
+                                step.isCurrent ? 'text-blue-700 font-bold' : 
+                                'text-gray-400'
+                              }`}>
+                                {step.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Informations du dossier */}
                   <div className="space-y-2 mb-3">
@@ -408,13 +602,29 @@ export default function DossiersPage() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>📅</span>
                       <span>
-                        {dossier.createdAt ? new Date(dossier.createdAt).toLocaleDateString('fr-FR', {
+                        Créé le {dossier.createdAt ? new Date(dossier.createdAt).toLocaleDateString('fr-FR', {
                           day: 'numeric',
                           month: 'short',
                           year: 'numeric'
                         }) : '-'}
                       </span>
                     </div>
+
+                    {/* Temps écoulé */}
+                    {dossier.createdAt && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>⏱️</span>
+                        <span>Ouvert il y a {calculateDaysSince(dossier.createdAt)} jour{calculateDaysSince(dossier.createdAt) > 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+
+                    {/* Dernière activité */}
+                    {dossier.updatedAt && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>🔄</span>
+                        <span>Dernière activité: {formatRelativeTime(dossier.updatedAt)}</span>
+                      </div>
+                    )}
 
                     {dossier.dateEcheance && (
                       <div className="flex items-center gap-2 text-xs">
@@ -424,6 +634,28 @@ export default function DossiersPage() {
                         </span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Statistiques rapides */}
+                  <div className="grid grid-cols-3 gap-2 mb-3 pb-2 border-b border-gray-100">
+                    <div className="bg-gray-50 p-2 rounded text-center">
+                      <p className="text-xs text-muted-foreground">Documents</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {dossierDocuments[dossier._id || dossier.id]?.length || dossier.documents?.length || 0}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-2 rounded text-center">
+                      <p className="text-xs text-muted-foreground">Messages</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {dossier.messages?.length || 0}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-2 rounded text-center">
+                      <p className="text-xs text-muted-foreground">Demandes</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {documentRequests[dossier._id || dossier.id]?.length || 0}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Section Documents demandés */}
@@ -494,18 +726,22 @@ export default function DossiersPage() {
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-lg">
+                                        <span className="text-lg flex-shrink-0">
                                           {isPending ? (isUrgent ? '🔴' : '📄') : '✅'}
                                         </span>
-                                        <h5 className="font-semibold text-sm text-foreground">
-                                          {request.documentTypeLabel || request.documentType || 'Document'}
-                                        </h5>
+                                        <div className="flex-1 min-w-0">
+                                          <h5 className={`font-semibold text-sm truncate ${
+                                            isUrgent ? 'text-red-600' : 'text-foreground'
+                                          }`}>
+                                            {request.documentTypeLabel || request.documentType || 'Document'}
+                                          </h5>
+                                        </div>
                                         {isUrgent && (
-                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-bold">
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-bold flex-shrink-0">
                                             URGENT
                                           </span>
                                         )}
-                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0 ${
                                           isPending
                                             ? 'bg-yellow-100 text-yellow-800'
                                             : 'bg-green-100 text-green-800'
@@ -604,14 +840,110 @@ export default function DossiersPage() {
                               );
                             }
                             
+                            const dossierDocs = dossierDocuments[dossier._id || dossier.id] || [];
+                            const hasDocuments = dossierDocs.length > 0;
+                            const isDocDropdownExpanded = expandedDocumentDropdowns.has(dossier._id || dossier.id);
+                            
                             return (
-                              <div className="flex gap-3 text-xs text-muted-foreground">
-                                {dossier.documents && dossier.documents.length > 0 && (
-                                  <span>📄 {dossier.documents.length}</span>
-                                )}
-                                {dossier.messages && dossier.messages.length > 0 && (
-                                  <span>💬 {dossier.messages.length}</span>
-                                )}
+                              <div className="relative">
+                                <div className="flex gap-3 text-xs text-muted-foreground">
+                                  {hasDocuments && (
+                                    <div className="relative">
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const newExpanded = new Set(expandedDocumentDropdowns);
+                                          if (isDocDropdownExpanded) {
+                                            newExpanded.delete(dossier._id || dossier.id);
+                                          } else {
+                                            newExpanded.add(dossier._id || dossier.id);
+                                          }
+                                          setExpandedDocumentDropdowns(newExpanded);
+                                        }}
+                                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                                        title="Voir les documents"
+                                      >
+                                        <span>📄 {dossierDocs.length}</span>
+                                        <span className="text-[10px]">{isDocDropdownExpanded ? '▲' : '▼'}</span>
+                                      </button>
+                                      
+                                      {/* Dropdown des documents */}
+                                      {isDocDropdownExpanded && (
+                                        <div 
+                                          className="absolute left-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <div className="p-2">
+                                            <div className="flex items-center justify-between mb-2 px-2 py-1 bg-gray-50 rounded">
+                                              <span className="text-xs font-semibold text-gray-700">Documents du dossier</span>
+                                              <span className="text-xs text-gray-500">{dossierDocs.length} total</span>
+                                            </div>
+                                            <div className="space-y-1">
+                                              {dossierDocs.map((doc: any) => (
+                                                <div
+                                                  key={doc._id || doc.id}
+                                                  className="p-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                                                >
+                                                  <div className="flex items-start justify-between gap-2 mb-2">
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className="text-xs font-medium text-gray-900 truncate">{doc.nom}</p>
+                                                      {doc.description && (
+                                                        <p className="text-[10px] text-gray-500 line-clamp-1 mt-0.5">{doc.description}</p>
+                                                      )}
+                                                      <p className="text-[10px] text-gray-400 mt-1">
+                                                        {doc.typeMime} • {doc.taille ? `${(doc.taille / 1024).toFixed(1)} KB` : ''}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-1 pt-2 border-t border-gray-100">
+                                                    <button
+                                                      onClick={async (e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setSelectedDocumentForPreview(doc);
+                                                      }}
+                                                      className="flex-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-medium transition-colors"
+                                                    >
+                                                      👁️ Voir
+                                                    </button>
+                                                    <button
+                                                      onClick={async (e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        try {
+                                                          const response = await documentsAPI.downloadDocument(doc._id || doc.id);
+                                                          const blob = new Blob([response.data]);
+                                                          const url = window.URL.createObjectURL(blob);
+                                                          const link = document.createElement('a');
+                                                          link.href = url;
+                                                          link.download = doc.nom;
+                                                          document.body.appendChild(link);
+                                                          link.click();
+                                                          document.body.removeChild(link);
+                                                          window.URL.revokeObjectURL(url);
+                                                        } catch (err) {
+                                                          console.error('Erreur lors du téléchargement:', err);
+                                                          alert('Erreur lors du téléchargement du document');
+                                                        }
+                                                      }}
+                                                      className="flex-1 px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-[10px] font-medium transition-colors"
+                                                    >
+                                                      ⬇️ Télécharger
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  {dossier.messages && dossier.messages.length > 0 && (
+                                    <span>💬 {dossier.messages.length}</span>
+                                  )}
+                                </div>
                               </div>
                             );
                           }
@@ -658,6 +990,8 @@ export default function DossiersPage() {
                       </div>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -688,8 +1022,18 @@ export default function DossiersPage() {
           // Recharger les données après l'envoi du document
           await loadDocumentRequests();
           await loadNotifications();
+          await loadDossierDocuments();
         }}
       />
+      
+      {/* Modal de prévisualisation de document */}
+      {selectedDocumentForPreview && (
+        <DocumentPreview
+          document={selectedDocumentForPreview}
+          isOpen={!!selectedDocumentForPreview}
+          onClose={() => setSelectedDocumentForPreview(null)}
+        />
+      )}
     </div>
   );
 }

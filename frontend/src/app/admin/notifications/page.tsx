@@ -176,9 +176,10 @@ export default function AdminNotificationsPage() {
     return null;
   }
 
-  const unreadCount = notifications.filter(n => !n.lu).length;
-  const filteredNotifications = filter === 'unread' ? notifications.filter(n => !n.lu) : notifications;
+  // Appliquer le filtre de statut (lu/non-lu) sur toutes les notifications
+  let filteredByStatus = filter === 'unread' ? notifications.filter(n => !n.lu) : notifications;
 
+  // Catégoriser les notifications filtrées par statut
   const categorizedNotifications: Record<NotificationCategoryKey, any[]> = {
     dossiers: [],
     rendezvous: [],
@@ -187,28 +188,41 @@ export default function AdminNotificationsPage() {
     autres: [],
   };
 
-  filteredNotifications.forEach((notif) => {
+  filteredByStatus.forEach((notif) => {
     const key = getNotificationCategory(notif);
     categorizedNotifications[key].push(notif);
   });
 
+  // Fonctions pour obtenir les comptes par catégorie
   const getCategoryUnreadCount = (key: NotificationCategoryKey) =>
     (categorizedNotifications[key] || []).filter((n) => !n.lu).length;
 
   const getCategoryCount = (key: NotificationCategoryKey) => (categorizedNotifications[key] || []).length;
 
-  const scopedNotifications =
-    categoryFilter === 'all'
-      ? notifications
-      : notifications.filter((n) => getNotificationCategory(n) === categoryFilter);
-  const scopedTotalCount = scopedNotifications.length;
-  const scopedUnreadCount = scopedNotifications.filter((n) => !n.lu).length;
-
+  // Notifications visibles selon les filtres appliqués
   const visibleNotifications = (() => {
-    const base = filteredNotifications;
-    if (categoryFilter === 'all') return base;
-    return base.filter((n) => getNotificationCategory(n) === categoryFilter);
-  })().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    let base = filteredByStatus;
+    
+    // Appliquer le filtre de catégorie
+    if (categoryFilter !== 'all') {
+      base = base.filter((n) => getNotificationCategory(n) === categoryFilter);
+    }
+    
+    return base.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  })();
+
+  // Calculer les comptes pour les badges
+  // Total toutes catégories avec le filtre de statut appliqué
+  const totalCount = filteredByStatus.length;
+  const unreadCount = filteredByStatus.filter(n => !n.lu).length;
+  
+  // Comptes pour la catégorie sélectionnée
+  const categoryCount = categoryFilter === 'all' 
+    ? totalCount 
+    : getCategoryCount(categoryFilter);
+  const categoryUnreadCount = categoryFilter === 'all'
+    ? unreadCount
+    : getCategoryUnreadCount(categoryFilter);
 
   return (
     <div className="min-h-screen bg-background">
@@ -236,7 +250,7 @@ export default function AdminNotificationsPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Chargement des notifications...</p>
           </div>
-        ) : filteredNotifications.length === 0 ? (
+        ) : visibleNotifications.length === 0 && !isLoading ? (
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🔔</div>
             <p className="text-muted-foreground text-lg mb-2">
@@ -264,7 +278,7 @@ export default function AdminNotificationsPage() {
                   <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
                     filter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
                   }`}>
-                    {scopedTotalCount}
+                    {categoryFilter === 'all' ? totalCount : categoryCount}
                   </span>
                 </button>
 
@@ -281,7 +295,7 @@ export default function AdminNotificationsPage() {
                   <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
                     filter === 'unread' ? 'bg-white/20 text-white' : 'bg-red-50 text-red-700 border border-red-200'
                   }`}>
-                    {scopedUnreadCount}
+                    {categoryFilter === 'all' ? unreadCount : categoryUnreadCount}
                   </span>
                 </button>
               </div>
@@ -301,13 +315,15 @@ export default function AdminNotificationsPage() {
                 <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
                   categoryFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
                 }`}>
-                  {filteredNotifications.length}
+                  {totalCount}
                 </span>
               </button>
 
               {categoryDefinitions.map(({ key, label, icon }) => {
-                const total = getCategoryCount(key);
-                const unreadInCat = getCategoryUnreadCount(key);
+                // Calculer les comptes en tenant compte du filtre de statut
+                const categoryNotifs = filteredByStatus.filter((n) => getNotificationCategory(n) === key);
+                const total = categoryNotifs.length;
+                const unreadInCat = categoryNotifs.filter((n) => !n.lu).length;
                 const active = categoryFilter === key;
                 return (
                   <button

@@ -144,9 +144,43 @@ router.get('/admin', authorize('admin', 'superadmin'), async (req, res) => {
 // @route   POST /api/user/documents
 // @desc    Téléverser un document
 // @access  Private
-router.post('/', upload.single('document'), async (req, res) => {
+router.post('/', (req, res, next) => {
+  upload.single('document')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Erreur Multer:', err);
+      
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'Le fichier est trop volumineux. Taille maximale: 10 MB'
+        });
+      }
+      
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({
+          success: false,
+          message: 'Nom de champ de fichier incorrect. Le champ doit s\'appeler "document"'
+        });
+      }
+      
+      if (err.message && err.message.includes('Type de fichier non autorisé')) {
+        return res.status(400).json({
+          success: false,
+          message: err.message
+        });
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'Erreur lors du téléversement du fichier'
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     console.log('📤 Upload de document - Début');
+    console.log('📤 Headers Content-Type:', req.headers['content-type']);
     console.log('📤 Fichier reçu:', req.file ? {
       originalname: req.file.originalname,
       filename: req.file.filename,
@@ -157,9 +191,11 @@ router.post('/', upload.single('document'), async (req, res) => {
 
     if (!req.file) {
       console.error('❌ Aucun fichier téléversé');
+      console.error('❌ Request headers:', req.headers);
+      console.error('❌ Request body keys:', Object.keys(req.body || {}));
       return res.status(400).json({
         success: false,
-        message: 'Aucun fichier téléversé'
+        message: 'Aucun fichier téléversé. Assurez-vous que le champ du formulaire s\'appelle "document"'
       });
     }
 

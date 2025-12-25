@@ -82,6 +82,7 @@ export default function AdminDashboardPage() {
   const [documentRequests, setDocumentRequests] = useState<any[]>([]);
   const [isLoadingDocumentRequests, setIsLoadingDocumentRequests] = useState(false);
   const [expandedDossiers, setExpandedDossiers] = useState<Set<string>>(new Set());
+  const [expandedDocumentSections, setExpandedDocumentSections] = useState<Set<string>>(new Set());
   const [documentRequestFilter, setDocumentRequestFilter] = useState<'all' | 'pending' | 'received'>('all');
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
@@ -974,7 +975,7 @@ export default function AdminDashboardPage() {
                 <p className="text-muted-foreground font-medium">Aucune demande de document</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-4">
                 {(() => {
                   // Filtrer les demandes selon le filtre sélectionné
                   let filteredRequests = documentRequests;
@@ -997,229 +998,273 @@ export default function AdminDashboardPage() {
                   return Object.entries(requestsByDossier).map(([dossierId, requests]: [string, any[]]) => {
                     const dossier = requests[0]?.dossier;
                     const client = requests[0]?.client;
-                    const isExpanded = expandedDossiers.has(dossierId);
+                    const pendingRequests = requests.filter((r: any) => r.status === 'pending');
+                    const receivedRequests = requests.filter((r: any) => r.status === 'received' || r.status === 'sent');
+                    const isExpanded = expandedDocumentSections.has(dossierId);
+
+                    // Déterminer la couleur de la bordure gauche selon le statut du dossier
+                    const getDossierBorderColor = () => {
+                      if (!dossier?.statut) return 'border-l-blue-500';
+                      if (dossier.statut === 'recu' || dossier.statut === 'en_attente_onboarding') {
+                        return 'border-l-yellow-500';
+                      } else if (dossier.statut === 'decision_favorable' || dossier.statut === 'gain_cause') {
+                        return 'border-l-green-500';
+                      } else if (dossier.statut === 'decision_defavorable' || dossier.statut === 'refuse' || dossier.statut === 'rejet') {
+                        return 'border-l-red-500';
+                      }
+                      return 'border-l-blue-500';
+                    };
 
                     return (
                       <div
                         key={dossierId}
-                        className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50/50"
+                        className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${getDossierBorderColor()} border-t border-r border-b border-gray-200`}
                       >
-                        {/* En-tête du dossier */}
-                        <div
-                          className="p-4 bg-white border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-                          onClick={() => {
-                            const newExpanded = new Set(expandedDossiers);
-                            if (isExpanded) {
-                              newExpanded.delete(dossierId);
-                            } else {
-                              newExpanded.add(dossierId);
-                            }
-                            setExpandedDossiers(newExpanded);
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <span className="text-lg">{isExpanded ? '📂' : '📁'}</span>
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-base text-foreground truncate">
-                                  {dossier?.titre || `Dossier ${dossierId.slice(-6)}`}
-                                </h3>
-                                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                                  {dossier?.numero && (
-                                    <span>N° {dossier.numero}</span>
-                                  )}
-                                  {client ? (
-                                    <span>👤 {client.firstName} {client.lastName}</span>
-                                  ) : dossier?.clientEmail && (
-                                    <span>👤 {dossier.clientEmail}</span>
-                                  )}
-                                  <span>{requests.length} demande(s)</span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-2">
-                                  <Link 
-                                    href={`/admin/messages?dossierId=${dossierId}&action=view`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                  >
-                                    💬 Voir les messages
-                                  </Link>
-                                </div>
-                              </div>
+                        {/* En-tête de la carte */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
+                                {dossier?.titre || `Dossier ${dossierId.slice(-6)}`}
+                              </h3>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                requests.filter((r: any) => r.status === 'pending').length > 0
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {requests.filter((r: any) => r.status === 'pending').length} en attente
+                            {dossier?.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                {dossier.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                            {dossier?.statut && (
+                              <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getStatutColor(dossier.statut)}`}>
+                                {getStatutLabel(dossier.statut)}
                               </span>
-                              <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
-                            </div>
+                            )}
+                            {dossier?.priorite && (
+                              <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getPrioriteColor(dossier.priorite)}`}>
+                                {dossier.priorite}
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* Liste des demandes (arborescence) */}
-                        {isExpanded && (
-                          <div className="bg-white">
-                            {requests.map((request: any) => {
-                              const getStatusInfo = () => {
-                                if (request.status === 'pending') {
-                                  return {
-                                    label: 'En attente',
-                                    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-                                    icon: '⏳'
-                                  };
-                                } else if (request.status === 'received') {
-                                  return {
-                                    label: '✅ Document reçu',
-                                    color: 'bg-green-100 text-green-800 border-green-200',
-                                    icon: '✅'
-                                  };
-                                } else if (request.status === 'sent') {
-                                  // Vérifier si le document existait déjà avant la demande
-                                  const documentCreatedBeforeRequest = request.document && 
-                                    request.document.createdAt && 
-                                    new Date(request.document.createdAt) < new Date(request.createdAt);
-                                  
-                                  return {
-                                    label: documentCreatedBeforeRequest ? '📋 Déjà reçu' : '✅ Document reçu',
-                                    color: 'bg-blue-100 text-blue-800 border-blue-200',
-                                    icon: documentCreatedBeforeRequest ? '📋' : '✅'
-                                  };
-                                }
-                                return {
-                                  label: 'Inconnu',
-                                  color: 'bg-gray-100 text-gray-800 border-gray-200',
-                                  icon: '❓'
-                                };
-                              };
+                        {/* Informations du dossier */}
+                        <div className="space-y-2 mb-3">
+                          {(dossier?.numero || dossier?.numeroDossier) && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-primary font-semibold">🔢</span>
+                              <span className="text-primary font-semibold">
+                                N° {dossier.numero || dossier.numeroDossier}
+                              </span>
+                            </div>
+                          )}
+                          {client ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>👤</span>
+                              <span>{client.firstName} {client.lastName}</span>
+                            </div>
+                          ) : dossier?.clientEmail && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>👤</span>
+                              <span>{dossier.clientEmail}</span>
+                            </div>
+                          )}
+                          {dossier?.createdAt && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>📅</span>
+                              <span>
+                                {new Date(dossier.createdAt).toLocaleDateString('fr-FR', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
 
-                              const statusInfo = getStatusInfo();
-
-                              return (
-                                <div
-                                  key={request._id || request.id}
-                                  className="border-t border-gray-100 p-4 hover:bg-gray-50/50 transition-colors"
-                                >
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-lg">{statusInfo.icon}</span>
-                                        <h4 className="font-semibold text-sm text-foreground">
-                                          {request.documentTypeLabel}
-                                        </h4>
-                                        {request.isUrgent && (
-                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-semibold">
-                                            🔴 URGENT
-                                          </span>
-                                        )}
-                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusInfo.color}`}>
-                                          {statusInfo.label}
+                        {/* Section Documents demandés */}
+                        {(() => {
+                          if (requests.length === 0) {
+                            return null;
+                          }
+                          
+                          return (
+                            <div className="pt-3 border-t border-gray-200 mb-3">
+                              <div 
+                                className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedDocumentSections);
+                                  if (isExpanded) {
+                                    newExpanded.delete(dossierId);
+                                  } else {
+                                    newExpanded.add(dossierId);
+                                  }
+                                  setExpandedDocumentSections(newExpanded);
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">📄</span>
+                                  <div>
+                                    <h4 className="text-sm font-semibold text-foreground">Documents demandés</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                      {pendingRequests.length > 0 && (
+                                        <span className="text-orange-600 font-medium">
+                                          {pendingRequests.length} en attente
                                         </span>
-                                      </div>
-                                      
-                                      {request.message && (
-                                        <p className="text-xs text-muted-foreground mb-2 ml-7">
-                                          {request.message}
-                                        </p>
                                       )}
-
-                                      <div className="flex items-center gap-4 text-xs text-muted-foreground ml-7">
-                                        <span>
-                                          📅 Demandé le {new Date(request.createdAt).toLocaleDateString('fr-FR', {
-                                            day: 'numeric',
-                                            month: 'short',
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })}
+                                      {pendingRequests.length > 0 && receivedRequests.length > 0 && ' • '}
+                                      {receivedRequests.length > 0 && (
+                                        <span className="text-green-600 font-medium">
+                                          {receivedRequests.length} reçu{receivedRequests.length > 1 ? 's' : ''}
                                         </span>
-                                        {request.sentAt && (
-                                          <span>
-                                            📤 Envoyé le {new Date(request.sentAt).toLocaleDateString('fr-FR', {
-                                              day: 'numeric',
-                                              month: 'short',
-                                              year: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
-                                          </span>
-                                        )}
-                                        {request.receivedAt && (
-                                          <span>
-                                            ✅ Reçu le {new Date(request.receivedAt).toLocaleDateString('fr-FR', {
-                                              day: 'numeric',
-                                              month: 'short',
-                                              year: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {request.document && (
-                                        <div className="mt-2 ml-7 p-2 bg-blue-50 rounded border border-blue-200">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-sm">📄</span>
-                                            <span className="text-xs font-medium text-blue-900">
-                                              {request.document.nom}
-                                            </span>
-                                            <span className="text-xs text-blue-700">
-                                              ({(request.document.taille / 1024).toFixed(2)} KB)
-                                            </span>
-                                          </div>
-                                        </div>
                                       )}
-                                    </div>
-
-                                    {/* Actions */}
-                                    {request.document && (
-                                      <div className="flex items-center gap-2 flex-shrink-0">
-                                        <Button
-                                          variant="outline"
-                                          className="text-xs h-8"
-                                          onClick={() => {
-                                            // Ouvrir le document dans un nouvel onglet
-                                            const documentUrl = `/api/user/documents/${request.document._id || request.document.id}/preview`;
-                                            window.open(documentUrl, '_blank');
-                                          }}
-                                        >
-                                          👁️ Voir
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          className="text-xs h-8"
-                                          onClick={async () => {
-                                            // Télécharger le document
-                                            try {
-                                              const response = await documentsAPI.downloadDocument(request.document._id || request.document.id);
-                                              const blob = new Blob([response.data]);
-                                              const url = window.URL.createObjectURL(blob);
-                                              const link = document.createElement('a');
-                                              link.href = url;
-                                              link.download = request.document.nom;
-                                              document.body.appendChild(link);
-                                              link.click();
-                                              document.body.removeChild(link);
-                                              window.URL.revokeObjectURL(url);
-                                            } catch (error) {
-                                              console.error('Erreur lors du téléchargement:', error);
-                                              alert('Erreur lors du téléchargement du document');
-                                            }
-                                          }}
-                                        >
-                                          ⬇️ Télécharger
-                                        </Button>
-                                      </div>
-                                    )}
+                                    </p>
                                   </div>
                                 </div>
-                              );
-                            })}
+                                <span className="text-muted-foreground text-sm">{isExpanded ? '▲' : '▼'}</span>
+                              </div>
+                              
+                              {isExpanded && (
+                                <div className="mt-3 space-y-3">
+                                  {requests.map((request: any) => {
+                                    const isPending = request.status === 'pending';
+                                    const isUrgent = request.isUrgent;
+                                    
+                                    return (
+                                      <div
+                                        key={request._id || request.id}
+                                        className={`border rounded-lg p-3 ${
+                                          isPending
+                                            ? isUrgent
+                                              ? 'bg-red-50/50 border-red-200'
+                                              : 'bg-orange-50/50 border-orange-200'
+                                            : 'bg-green-50/50 border-green-200'
+                                        }`}
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <span className="text-lg">
+                                                {isPending ? (isUrgent ? '🔴' : '📄') : '✅'}
+                                              </span>
+                                              <h5 className="font-semibold text-sm text-foreground">
+                                                {request.documentTypeLabel || request.documentType || 'Document'}
+                                              </h5>
+                                              {isUrgent && (
+                                                <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-bold">
+                                                  URGENT
+                                                </span>
+                                              )}
+                                              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                                isPending
+                                                  ? 'bg-yellow-100 text-yellow-800'
+                                                  : 'bg-green-100 text-green-800'
+                                              }`}>
+                                                {isPending ? 'En attente' : 'Reçu'}
+                                              </span>
+                                            </div>
+                                            
+                                            {request.message && (
+                                              <p className="text-xs text-muted-foreground mb-2 ml-7">
+                                                {request.message}
+                                              </p>
+                                            )}
+                                            
+                                            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-7">
+                                              <span>
+                                                📅 Demandé le {new Date(request.createdAt).toLocaleDateString('fr-FR')}
+                                              </span>
+                                              {request.receivedAt && (
+                                                <span>
+                                                  ✅ Reçu le {new Date(request.receivedAt).toLocaleDateString('fr-FR')}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {request.document && (
+                                              <div className="mt-2 ml-7 p-2 bg-blue-50 rounded border border-blue-200">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm">📄</span>
+                                                  <span className="text-xs font-medium text-blue-900">
+                                                    {request.document.nom}
+                                                  </span>
+                                                  <span className="text-xs text-blue-700">
+                                                    ({(request.document.taille / 1024).toFixed(2)} KB)
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Actions */}
+                                          {request.document && (
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                              <Button
+                                                variant="outline"
+                                                className="text-xs h-8"
+                                                onClick={() => {
+                                                  const documentUrl = `/api/user/documents/${request.document._id || request.document.id}/preview`;
+                                                  window.open(documentUrl, '_blank');
+                                                }}
+                                              >
+                                                👁️ Voir
+                                              </Button>
+                                              <Button
+                                                variant="outline"
+                                                className="text-xs h-8"
+                                                onClick={async () => {
+                                                  try {
+                                                    const response = await documentsAPI.downloadDocument(request.document._id || request.document.id);
+                                                    const blob = new Blob([response.data]);
+                                                    const url = window.URL.createObjectURL(blob);
+                                                    const link = document.createElement('a');
+                                                    link.href = url;
+                                                    link.download = request.document.nom;
+                                                    document.body.appendChild(link);
+                                                    link.click();
+                                                    document.body.removeChild(link);
+                                                    window.URL.revokeObjectURL(url);
+                                                  } catch (error) {
+                                                    console.error('Erreur lors du téléchargement:', error);
+                                                    alert('Erreur lors du téléchargement du document');
+                                                  }
+                                                }}
+                                              >
+                                                ⬇️ Télécharger
+                                              </Button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Actions */}
+                        <div className="pt-3 border-t border-gray-200">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <Link 
+                                href={`/admin/messages?dossierId=${dossierId}&action=view`}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                💬 Voir les messages
+                              </Link>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Link href={`/admin/dossiers/${dossierId}`}>
+                                <Button variant="outline" size="sm" className="text-xs h-8">
+                                  Détails
+                                </Button>
+                              </Link>
+                            </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     );
                   });

@@ -71,6 +71,12 @@ const getToken = async (): Promise<string | null> => {
 // Intercepteur pour ajouter le token d'authentification et le header d'impersonation
 api.interceptors.request.use(
   async (config) => {
+    // Si la requête contient un FormData, supprimer le Content-Type pour que le navigateur le définisse avec le boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+      console.log('📤 FormData détecté, Content-Type supprimé pour laisser le navigateur le définir');
+    }
+    
     if (typeof window !== 'undefined') {
       const token = await getToken();
       if (token) {
@@ -82,7 +88,11 @@ api.interceptors.request.use(
         const isPublicEndpoint =
           url.includes('/creneaux/available') ||
           url.includes('/temoignages') ||
-          url.includes('/contact');
+          url.includes('/contact') ||
+          url.includes('/otp/send') ||
+          url.includes('/otp/verify') ||
+          url.includes('/auth/register') ||
+          url.includes('/auth/login');
 
         // Avertir seulement si une route clairement protégée part sans token
         const isProtectedEndpoint =
@@ -139,6 +149,7 @@ api.interceptors.response.use(
       (silentError as any).isCmsNotFound = true;
       (silentError as any).response = error.response;
       (silentError as any).config = error.config;
+      // Retourner directement sans logger - cela évite l'affichage dans la console du navigateur
       return Promise.reject(silentError);
     }
     
@@ -169,13 +180,15 @@ api.interceptors.response.use(
       }
     }
     
-    // Log des erreurs pour le débogage
-    console.error('❌ Erreur API:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      data: error.response?.data
-    });
+    // Log des erreurs pour le débogage (sauf pour les erreurs CMS déjà gérées)
+    if (!isCmsKeyNotFound) {
+      console.error('❌ Erreur API:', {
+        url: error.config?.url,
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+        data: error.response?.data
+      });
+    }
     
     // Gérer les erreurs 401 (non autorisé)
     // Ne pas déconnecter automatiquement - laisser l'utilisateur choisir
@@ -722,12 +735,14 @@ export const documentsAPI = {
   },
   
   // Téléverser un document
-  uploadDocument: (formData: FormData) =>
-    api.post('/user/documents', formData, {
+  uploadDocument: (formData: FormData) => {
+    // Ne pas définir Content-Type manuellement - laisser le navigateur le définir avec le boundary
+    return api.post('/user/documents', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        // Le navigateur définira automatiquement Content-Type: multipart/form-data avec le boundary
       },
-    }),
+    });
+  },
   
   // Prévisualiser un document (retourne une Promise qui résout avec l'URL du blob)
   previewDocument: async (id: string): Promise<string> => {

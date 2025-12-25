@@ -471,10 +471,6 @@ export default function CalculateurPage() {
     motifTitreSejour: '', // Motif de délivrance (niveau 1)
     sousCategorieTitreSejour: '', // Sous-catégorie (niveau 2)
     typePrecisTitreSejour: '', // Type précis (niveau 3)
-    // Champs hiérarchisés pour le titre de séjour détenu (renouvellement)
-    motifTitreSejourDetenu: '', // Motif de délivrance (niveau 1)
-    sousCategorieTitreSejourDetenu: '', // Sous-catégorie (niveau 2)
-    typePrecisTitreSejourDetenu: '', // Type précis (niveau 3)
     typeDemande: 'premiere', // 'premiere' ou 'renouvellement'
     prefecture: '',
     dateDelivrance: getTodayDate(),
@@ -1772,30 +1768,19 @@ export default function CalculateurPage() {
 
                     {formData.typeDemande === 'renouvellement' && (
                       <>
-
                         <div className="space-y-2">
-                          <Label htmlFor="dateDelivrance">Date de délivrance</Label>
+                          <Label htmlFor="dateExpiration">Date d'expiration du titre actuel *</Label>
                           <Input
-                            id="dateDelivrance"
+                            id="dateExpiration"
                             type="date"
-                            value={formData.dateDelivrance}
-                            onChange={(e) => setFormData({ ...formData, dateDelivrance: e.target.value })}
+                            value={formData.dateExpiration}
+                            onChange={(e) => setFormData({ ...formData, dateExpiration: e.target.value })}
+                            required
+                            className={dateErrors.dateExpiration ? 'border-red-500' : ''}
                           />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="dureeTitre">Durée du titre actuel</Label>
-                          <Select
-                            id="dureeTitre"
-                            value={formData.dureeTitre}
-                            onChange={(e) => setFormData({ ...formData, dureeTitre: e.target.value })}
-                          >
-                            <option value="">-- Sélectionner --</option>
-                            <option value="1">1 an</option>
-                            <option value="2">2 ans</option>
-                            <option value="4">4 ans</option>
-                            <option value="10">10 ans</option>
-                          </Select>
+                          {dateErrors.dateExpiration && (
+                            <p className="text-xs text-red-600 mt-1">{dateErrors.dateExpiration}</p>
+                          )}
                         </div>
                       </>
                     )}

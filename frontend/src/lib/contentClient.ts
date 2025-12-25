@@ -21,9 +21,10 @@ export function useCmsText(key: string, fallback: string): string {
           setText(value);
         }
       } catch (error: any) {
-        // En cas d'erreur 404 (clé non trouvée), c'est normal - on garde le fallback silencieusement
+        // En cas d'erreur 404 (clé non trouvée) ou erreur CMS silencieuse, c'est normal - on garde le fallback silencieusement
         // Pour les autres erreurs, on peut logger si nécessaire
-        if (error?.response?.status !== 404) {
+        const isCmsNotFound = error?.response?.status === 404 || error?.isCmsNotFound;
+        if (!isCmsNotFound) {
           console.error(`Erreur CMS pour la clé "${key}":`, error);
         }
       }

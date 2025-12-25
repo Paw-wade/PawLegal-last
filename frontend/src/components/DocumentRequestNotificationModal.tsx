@@ -103,21 +103,45 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      console.log('📄 Fichier sélectionné:', file.name, file.size, 'bytes');
       setSelectedFile(file);
-      if (!uploadData.nom) {
+      if (!uploadData.nom || uploadData.nom.trim() === '') {
         setUploadData({ ...uploadData, nom: file.name });
       }
       setError(null);
+      setSuccess(null);
+    } else {
+      console.warn('⚠️ Aucun fichier sélectionné');
     }
   };
 
   const handleUploadNewDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    const file = selectedFile || fileInputRef.current?.files?.[0];
+    
+    // Récupérer le fichier depuis l'état ou l'input
+    let file: File | null = null;
+    
+    if (selectedFile) {
+      file = selectedFile;
+      console.log('📄 Utilisation du fichier depuis selectedFile:', file.name);
+    } else if (fileInputRef.current?.files?.[0]) {
+      file = fileInputRef.current.files[0];
+      console.log('📄 Utilisation du fichier depuis fileInput:', file.name);
+      // Mettre à jour selectedFile pour qu'il reste visible
+      setSelectedFile(file);
+    }
+    
     if (!file) {
       setError('Veuillez sélectionner un fichier');
       return;
     }
+    
+    console.log('📤 Début du téléversement:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
+    
     if (!uploadData.nom || uploadData.nom.trim() === '') {
       setError('Veuillez saisir un nom pour le document');
       return;
@@ -130,30 +154,49 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
     setUploading(true);
     setError(null);
     setSuccess(null);
+    
+    // NE PAS réinitialiser selectedFile ici - le garder visible pendant le téléversement
 
     try {
+      // Vérifier que le fichier est toujours valide
+      if (!file || !(file instanceof File)) {
+        throw new Error('Le fichier sélectionné n\'est plus valide. Veuillez le sélectionner à nouveau.');
+      }
+      
       // Téléverser le document
       const formData = new FormData();
-      formData.append('document', file);
+      formData.append('document', file, file.name);
       formData.append('nom', uploadData.nom.trim());
       formData.append('description', uploadData.description.trim());
       formData.append('categorie', documentRequest.documentType || uploadData.categorie);
       formData.append('dossierId', documentRequest.dossier._id || documentRequest.dossier);
 
+      // Vérifier que le fichier est bien dans le FormData
+      const fileInFormData = formData.get('document');
+      if (!fileInFormData) {
+        throw new Error('Le fichier n\'a pas pu être ajouté au formulaire. Veuillez réessayer.');
+      }
+
+      console.log('📤 Envoi du FormData au backend...', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        hasFile: !!fileInFormData
+      });
+      
       const uploadResponse = await documentsAPI.uploadDocument(formData);
+      
+      console.log('✅ Réponse du backend:', uploadResponse.data);
+      
       if (uploadResponse.data.success) {
         const newDocumentId = uploadResponse.data.document._id || uploadResponse.data.document.id;
         
+        console.log('📤 Association du document à la demande...');
         // Associer le document à la demande
         await documentRequestsAPI.uploadDocument(documentRequest._id || documentRequest.id, newDocumentId);
         
+        console.log('✅ Document envoyé et associé avec succès');
         setSuccess('Document envoyé avec succès !');
-        setSelectedFile(null);
-        setUploadData({ nom: '', description: '', categorie: 'autre' });
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        setShowUploadForm(false);
         
         // Recharger la demande pour voir le nouveau statut
         await loadDocumentRequest();
@@ -164,14 +207,30 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
           onDocumentSent();
         }
         
+        // Réinitialiser seulement après succès et après un délai
         setTimeout(() => {
+          setSelectedFile(null);
+          setUploadData({ nom: '', description: '', categorie: 'autre' });
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          setShowUploadForm(false);
           setSuccess(null);
           onClose();
         }, 2000);
+      } else {
+        throw new Error(uploadResponse.data.message || 'Erreur lors du téléversement');
       }
     } catch (err: any) {
-      console.error('Erreur lors du téléversement:', err);
-      setError(err.response?.data?.message || 'Erreur lors du téléversement du document');
+      console.error('❌ Erreur lors du téléversement:', err);
+      console.error('❌ Détails:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      
+      // En cas d'erreur, garder le fichier sélectionné pour permettre une nouvelle tentative
+      setError(err.response?.data?.message || err.message || 'Erreur lors du téléversement du document');
     } finally {
       setUploading(false);
     }
@@ -370,10 +429,32 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
                           required
                           accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                           className="mt-1"
+                          disabled={uploading}
                         />
                         {selectedFile && (
-                          <p className="text-xs text-green-600 mt-1">
-                            ✓ Fichier sélectionné: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                          <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-600 text-lg">✓</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-green-800">
+                                  Fichier sélectionné: {selectedFile.name}
+                                </p>
+                                <p className="text-xs text-green-600 mt-1">
+                                  Taille: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                                  {uploading && (
+                                    <span className="ml-2 inline-flex items-center gap-1">
+                                      <span className="animate-spin">⏳</span>
+                                      <span>Envoi en cours...</span>
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {!selectedFile && !uploading && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Sélectionnez un fichier à téléverser
                           </p>
                         )}
                       </div>
@@ -416,8 +497,15 @@ export function DocumentRequestNotificationModal({ isOpen, onClose, notification
                         >
                           Annuler
                         </Button>
-                        <Button type="submit" disabled={uploading} className="flex-1">
-                          {uploading ? 'Envoi...' : 'Envoyer le document'}
+                        <Button type="submit" disabled={uploading || !selectedFile} className="flex-1">
+                          {uploading ? (
+                            <span className="flex items-center gap-2">
+                              <span className="animate-spin">⏳</span>
+                              <span>Envoi en cours...</span>
+                            </span>
+                          ) : (
+                            'Envoyer le document'
+                          )}
                         </Button>
                       </div>
                     </form>

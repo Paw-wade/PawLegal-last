@@ -28,8 +28,7 @@ const otpSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    required: true,
-    index: { expireAfterSeconds: 0 } // Suppression automatique après expiration
+    required: true
   },
   createdAt: {
     type: Date,

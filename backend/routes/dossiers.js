@@ -690,12 +690,16 @@ router.post(
 router.get('/:id', async (req, res) => {
   try {
       const dossier = await Dossier.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone')
-      .populate('createdBy', 'firstName lastName email')
+      .populate('user', 'firstName lastName email phone dateNaissance lieuNaissance nationalite sexe numeroEtranger numeroTitre typeTitre dateDelivrance dateExpiration adressePostale ville codePostal pays')
+      .populate('createdBy', 'firstName lastName email role')
       .populate('assignedTo', 'firstName lastName email role')
+      .populate('teamMembers', 'firstName lastName email role')
+      .populate('teamLeader', 'firstName lastName email role')
+      .populate('activeCollaborators.user', 'firstName lastName email role')
       .populate('documents')
       .populate('messages')
-      .populate('rendezVous');
+      .populate('rendezVous')
+      .populate('createdFromContactMessage');
 
     if (!dossier) {
       return res.status(404).json({

@@ -9,8 +9,8 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   useEffect(() => {
-    // Mettre à jour le titre de la page
-    document.title = "Service d'accompagnement juridique - Paw Legal";
+    // Harmoniser le titre de l’onglet admin avec le favicon
+    document.title = 'Paw Legal';
   }, []);
 
   return <DashboardLayout variant="admin">{children}</DashboardLayout>;
