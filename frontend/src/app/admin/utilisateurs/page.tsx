@@ -986,129 +986,203 @@ export default function AdminUtilisateursPage() {
               </Button>
             </div>
 
-            {/* Badges de tri */}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-muted-foreground">Filtrer par :</span>
-              
+            {/* Badges de filtres - Style identique aux notifications */}
+            <div className="flex flex-wrap items-center gap-2">
               {/* Filtre par rôle */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Rôle:</span>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setRoleFilter('all')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
                     roleFilter === 'all'
-                      ? 'bg-primary text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
                   Tous
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                    roleFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setRoleFilter('client')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     roleFilter === 'client'
-                      ? 'bg-blue-500 text-white shadow-md'
-                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  👤 Clients
+                  <span className="text-base">👤</span>
+                  <span>Clients</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    roleFilter === 'client' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.filter(u => u.role === 'client').length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setRoleFilter('admin')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     roleFilter === 'admin'
-                      ? 'bg-purple-500 text-white shadow-md'
-                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  👨‍💼 Admins
+                  <span className="text-base">👨‍💼</span>
+                  <span>Admins</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    roleFilter === 'admin' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.filter(u => u.role === 'admin').length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setRoleFilter('superadmin')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     roleFilter === 'superadmin'
-                      ? 'bg-red-500 text-white shadow-md'
-                      : 'bg-red-50 text-red-700 hover:bg-red-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  🔴 SuperAdmins
+                  <span className="text-base">🔴</span>
+                  <span>SuperAdmins</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    roleFilter === 'superadmin' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.filter(u => u.role === 'superadmin').length}
+                  </span>
                 </button>
               </div>
 
+              <div className="hidden sm:block w-px h-8 bg-gray-200 mx-1" />
+
               {/* Filtre par statut */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Statut:</span>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
                     statusFilter === 'all'
-                      ? 'bg-primary text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  Tous
+                  Tous statuts
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                    statusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.filter(u => roleFilter === 'all' || u.role === roleFilter).length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setStatusFilter('active')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     statusFilter === 'active'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-green-50 text-green-700 hover:bg-green-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  ✅ Actifs
+                  <span className="text-base">✅</span>
+                  <span>Actifs</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    statusFilter === 'active' ? 'bg-white/20 text-white' : 'bg-green-50 text-green-700 border border-green-200'
+                  }`}>
+                    {utilisateurs.filter(u => {
+                      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+                      return matchesRole && u.isActive !== false;
+                    }).length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setStatusFilter('inactive')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     statusFilter === 'inactive'
-                      ? 'bg-gray-500 text-white shadow-md'
-                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  ⏸️ Inactifs
+                  <span className="text-base">⏸️</span>
+                  <span>Inactifs</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    statusFilter === 'inactive' ? 'bg-white/20 text-white' : 'bg-gray-50 text-gray-700 border border-gray-200'
+                  }`}>
+                    {utilisateurs.filter(u => {
+                      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+                      return matchesRole && u.isActive === false;
+                    }).length}
+                  </span>
                 </button>
               </div>
 
+              <div className="hidden sm:block w-px h-8 bg-gray-200 mx-1" />
+
               {/* Filtre par profil */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Profil:</span>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setProfilFilter('all')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all ${
                     profilFilter === 'all'
-                      ? 'bg-primary text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  Tous
+                  Tous profils
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                    profilFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {utilisateurs.filter(u => {
+                      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+                      const matchesStatus = statusFilter === 'all' || 
+                        (statusFilter === 'active' && u.isActive !== false) ||
+                        (statusFilter === 'inactive' && u.isActive === false);
+                      return matchesRole && matchesStatus;
+                    }).length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setProfilFilter('complete')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     profilFilter === 'complete'
-                      ? 'bg-emerald-500 text-white shadow-md'
-                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  ✓ Complet
+                  <span className="text-base">✓</span>
+                  <span>Complet</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    profilFilter === 'complete' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    {utilisateurs.filter(u => {
+                      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+                      const matchesStatus = statusFilter === 'all' || 
+                        (statusFilter === 'active' && u.isActive !== false) ||
+                        (statusFilter === 'inactive' && u.isActive === false);
+                      return matchesRole && matchesStatus && u.profilComplete === true;
+                    }).length}
+                  </span>
                 </button>
                 <button
                   onClick={() => setProfilFilter('incomplete')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
                     profilFilter === 'incomplete'
-                      ? 'bg-orange-500 text-white shadow-md'
-                      : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-primary/40 hover:bg-primary/5'
                   }`}
                 >
-                  ⚠️ Incomplet
+                  <span className="text-base">⚠️</span>
+                  <span>Incomplet</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    profilFilter === 'incomplete' ? 'bg-white/20 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'
+                  }`}>
+                    {utilisateurs.filter(u => {
+                      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+                      const matchesStatus = statusFilter === 'all' || 
+                        (statusFilter === 'active' && u.isActive !== false) ||
+                        (statusFilter === 'inactive' && u.isActive === false);
+                      return matchesRole && matchesStatus && u.profilComplete !== true;
+                    }).length}
+                  </span>
                 </button>
-              </div>
-
-              {/* Compteur de résultats */}
-              <div className="ml-auto text-sm text-muted-foreground">
-                {filteredUsers.length} utilisateur{filteredUsers.length > 1 ? 's' : ''}
-                {filteredUsers.length !== utilisateurs.length && ` sur ${utilisateurs.length}`}
               </div>
             </div>
           </div>

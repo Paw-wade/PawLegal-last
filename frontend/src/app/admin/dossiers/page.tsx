@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { dossiersAPI, userAPI, documentRequestsAPI, notificationsAPI, messagesAPI, documentsAPI } from '@/lib/api';
+import { dossiersAPI, userAPI, documentRequestsAPI, notificationsAPI, messagesAPI, documentsAPI, tasksAPI } from '@/lib/api';
 import { getStatutColor, getStatutLabel, getPrioriteColor, getDossierProgress, calculateDaysSince, calculateDaysUntil, isDeadlineApproaching, formatRelativeTime, getNextAction, getTimelineSteps } from '@/lib/dossierUtils';
+import { getStatutColor as getTaskStatutColor, getStatutLabel as getTaskStatutLabel, getPrioriteColor as getTaskPrioriteColor, getPrioriteLabel as getTaskPrioriteLabel } from '@/lib/taskUtils';
 import { DateInput as DateInputComponent } from '@/components/ui/DateInput';
 import { DocumentPreview } from '@/components/DocumentPreview';
 
@@ -299,6 +300,10 @@ export default function AdminDossiersPage() {
   const [dossierDocuments, setDossierDocuments] = useState<Record<string, any[]>>({});
   const [expandedDossiers, setExpandedDossiers] = useState<Set<string>>(new Set());
   const [expandedDossierDocumentDropdowns, setExpandedDossierDocumentDropdowns] = useState<Set<string>>(new Set());
+  const [dossierTasks, setDossierTasks] = useState<Record<string, any[]>>({});
+  const [expandedTaskSections, setExpandedTaskSections] = useState<Set<string>>(new Set());
+  const [showTaskFormForDossier, setShowTaskFormForDossier] = useState<string | null>(null);
+  const [taskFormData, setTaskFormData] = useState<Record<string, { titre: string; description: string; priorite: string; assignedTo: string[] }>>({});
 
   useEffect(() => {
     if (status === 'unauthenticated') {
