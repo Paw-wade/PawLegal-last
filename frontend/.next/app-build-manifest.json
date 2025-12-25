@@ -75,6 +75,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/client/rendez-vous/page.js"
+    ],
+    "/admin/creneaux/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/creneaux/page.js"
+    ],
+    "/admin/rendez-vous/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/rendez-vous/page.js"
     ]
   }
 }

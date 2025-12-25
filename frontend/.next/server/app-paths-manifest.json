@@ -1,10 +1,6 @@
 {
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/page": "app/page.js",
-  "/auth/signin/page": "app/auth/signin/page.js",
+  "/admin/page": "app/admin/page.js",
   "/admin/dossiers/page": "app/admin/dossiers/page.js",
-  "/client/page": "app/client/page.js",
-  "/client/documents/page": "app/client/documents/page.js",
-  "/client/rendez-vous/page": "app/client/rendez-vous/page.js",
-  "/client/dossiers/page": "app/client/dossiers/page.js"
+  "/admin/creneaux/page": "app/admin/creneaux/page.js",
+  "/admin/rendez-vous/page": "app/admin/rendez-vous/page.js"
 }

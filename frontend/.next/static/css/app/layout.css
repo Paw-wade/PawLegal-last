@@ -806,6 +806,9 @@ video {
 .mt-auto {
   margin-top: auto;
 }
+.mt-1\.5 {
+  margin-top: 0.375rem;
+}
 .line-clamp-1 {
   overflow: hidden;
   display: -webkit-box;
@@ -1086,6 +1089,9 @@ video {
 .max-w-xs {
   max-width: 20rem;
 }
+.max-w-\[80px\] {
+  max-width: 80px;
+}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -1235,6 +1241,9 @@ video {
 }
 .gap-8 {
   gap: 2rem;
+}
+.gap-2\.5 {
+  gap: 0.625rem;
 }
 .space-x-2 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-x-reverse: 0;

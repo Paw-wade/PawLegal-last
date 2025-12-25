@@ -1418,36 +1418,76 @@ export default function AdminDossiersPage() {
                                 N° {dossier.numero || dossier.numeroDossier}
                               </p>
                             )}
-                            {/* Compteurs de documents sur dossier plié */}
+                            {/* Compteurs et informations sur dossier plié */}
                             {!expandedDossiers.has(dossier._id || dossier.id) && (
-                              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                              <div className="mt-1.5 space-y-1">
                                 {(() => {
                                   const dossierRequests = documentRequests[dossier._id || dossier.id] || [];
                                   const pendingRequests = dossierRequests.filter((r: any) => r.status === 'pending');
                                   const receivedRequests = dossierRequests.filter((r: any) => r.status === 'received' || r.status === 'sent');
                                   const totalDocuments = dossierDocuments[dossier._id || dossier.id]?.length || dossier.documents?.length || 0;
+                                  const progress = getDossierProgress(dossier.statut);
+                                  const unreadCount = getUnreadNotificationsCountForDossier(dossier._id || dossier.id);
                                   
                                   return (
                                     <>
-                                      <span className="flex items-center gap-1">
-                                        <span>📄</span>
-                                        <span className="font-semibold text-foreground">{totalDocuments}</span>
-                                        <span className="text-[10px]">documents</span>
-                                      </span>
-                                      {dossierRequests.length > 0 && (
-                                        <>
-                                          <span className="flex items-center gap-1">
-                                            <span>📋</span>
-                                            <span className="font-semibold text-orange-600">{pendingRequests.length}</span>
-                                            <span className="text-[10px]">demandés</span>
+                                      {/* Ligne 1: Documents */}
+                                      <div className="flex items-center gap-2.5 flex-wrap text-[10px] text-muted-foreground">
+                                        <span className="flex items-center gap-0.5">
+                                          <span className="text-xs">📄</span>
+                                          <span className="font-semibold text-foreground">{totalDocuments}</span>
+                                        </span>
+                                        {dossierRequests.length > 0 && (
+                                          <>
+                                            <span className="flex items-center gap-0.5">
+                                              <span className="text-xs">📋</span>
+                                              <span className="font-semibold text-orange-600">{pendingRequests.length}</span>
+                                            </span>
+                                            <span className="flex items-center gap-0.5">
+                                              <span className="text-xs">✅</span>
+                                              <span className="font-semibold text-green-600">{receivedRequests.length}</span>
+                                            </span>
+                                          </>
+                                        )}
+                                        {dossier.messages?.length > 0 && (
+                                          <span className="flex items-center gap-0.5">
+                                            <span className="text-xs">💬</span>
+                                            <span className="font-semibold">{dossier.messages.length}</span>
                                           </span>
-                                          <span className="flex items-center gap-1">
-                                            <span>✅</span>
-                                            <span className="font-semibold text-green-600">{receivedRequests.length}</span>
-                                            <span className="text-[10px]">reçus</span>
+                                        )}
+                                        {unreadCount > 0 && (
+                                          <span className="flex items-center gap-0.5">
+                                            <span className="text-xs">🔔</span>
+                                            <span className="font-semibold text-red-600">{unreadCount}</span>
                                           </span>
-                                        </>
-                                      )}
+                                        )}
+                                      </div>
+                                      
+                                      {/* Ligne 2: Progression, Échéance, Activité, Assigné */}
+                                      <div className="flex items-center gap-2.5 flex-wrap text-[10px] text-muted-foreground">
+                                        <span className="flex items-center gap-0.5">
+                                          <span className="text-xs">📊</span>
+                                          <span className="font-semibold">{progress}%</span>
+                                        </span>
+                                        {dossier.dateEcheance && isDeadlineApproaching(dossier.dateEcheance) && (
+                                          <span className="flex items-center gap-0.5 text-red-600">
+                                            <span className="text-xs">⏰</span>
+                                            <span className="font-semibold">{calculateDaysUntil(dossier.dateEcheance)}j</span>
+                                          </span>
+                                        )}
+                                        {dossier.updatedAt && (
+                                          <span className="flex items-center gap-0.5">
+                                            <span className="text-xs">🔄</span>
+                                            <span>{formatRelativeTime(dossier.updatedAt)}</span>
+                                          </span>
+                                        )}
+                                        {dossier.assignedTo && typeof dossier.assignedTo === 'object' && dossier.assignedTo.firstName && (
+                                          <span className="flex items-center gap-0.5">
+                                            <span className="text-xs">👤</span>
+                                            <span className="truncate max-w-[80px]">{dossier.assignedTo.firstName}</span>
+                                          </span>
+                                        )}
+                                      </div>
                                     </>
                                   );
                                 })()}
