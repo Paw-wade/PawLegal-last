@@ -254,7 +254,7 @@ export default function ClientMessageDetailPage() {
   if (error && !message) {
     return (
       <div className="min-h-screen bg-background">
-        <main className="container mx-auto px-4 py-8">
+        <main className="w-full px-4 py-8">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-red-600">{error}</p>
             <Link href="/client/messages">
@@ -278,7 +278,7 @@ export default function ClientMessageDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="w-full px-4 py-8">
         {/* En-tête avec bouton retour */}
         <div className="mb-6 flex items-center justify-between">
           <Link href="/client/messages">

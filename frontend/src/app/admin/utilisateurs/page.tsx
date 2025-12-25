@@ -846,7 +846,7 @@ export default function AdminUtilisateursPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-16">
+      <main className="w-full px-4 py-16">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Gestion des Utilisateurs</h1>
           <p className="text-muted-foreground">Gérez tous les utilisateurs de la plateforme</p>

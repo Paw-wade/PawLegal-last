@@ -519,7 +519,7 @@ export default function AdminMessagesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
+      <main className="w-full px-4 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between flex-wrap gap-4 mb-6">

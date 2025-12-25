@@ -97,7 +97,7 @@ export default function ImpersonatePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="mb-8">
           <Link href="/admin">
             <Button variant="ghost" className="mb-4">

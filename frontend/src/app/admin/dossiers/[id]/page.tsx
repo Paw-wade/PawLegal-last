@@ -222,7 +222,7 @@ export default function AdminDossierDetailPage() {
   if (error || !dossier) {
     return (
       <div className="min-h-screen bg-background">
-        <main className="container mx-auto px-4 py-16">
+        <main className="w-full px-4 py-16">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <h2 className="text-xl font-bold text-red-900 mb-2">Erreur</h2>
             <p className="text-red-700 mb-4">{error || 'Dossier non trouvé'}</p>
@@ -237,7 +237,7 @@ export default function AdminDossierDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/10">
-      <main className="container mx-auto px-4 py-8 max-w-7xl overflow-x-hidden">
+      <main className="w-full px-4 py-8 overflow-x-hidden">
         {/* En-tête amélioré */}
         <div className="mb-6">
           <Link href="/admin/dossiers" className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 mb-4 transition-colors">

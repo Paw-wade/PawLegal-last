@@ -339,7 +339,7 @@ export default function DossiersPage() {
           animation-play-state: paused;
         }
       `}} />
-      <main className="container mx-auto px-4 py-16">
+      <main className="w-full px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Dossiers</h1>

@@ -61,6 +61,17 @@ const rendezVousSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  dateEffectue: {
+    type: Date
+  },
+  archived: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  archivedAt: {
+    type: Date
+  },
   dossierId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Dossier',

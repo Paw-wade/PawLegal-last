@@ -7,6 +7,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { AdminSidebar } from './AdminSidebar';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { NotificationBanner } from '@/components/NotificationBanner';
 import { Toast } from '@/components/Toast';
 import { userAPI } from '@/lib/api';
 
@@ -177,6 +178,14 @@ export function DashboardLayout({ children, variant = 'client' }: DashboardLayou
           showNav={false}
           onMenuClick={showClientSidebar ? () => setSidebarOpen(!sidebarOpen) : undefined}
         />
+
+        {/* Barre de notification défilante */}
+        {session && (
+          <NotificationBanner 
+            userRole={isAdmin ? 'admin' : 'client'} 
+            userId={(session.user as any)?.id}
+          />
+        )}
 
         {/* Banner d'impersonation - toujours visible en mode impersonation */}
         {isImpersonating && variant === 'client' && (

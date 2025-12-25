@@ -86,6 +86,7 @@ export default function AdminDashboardPage() {
   const [documentRequestFilter, setDocumentRequestFilter] = useState<'all' | 'pending' | 'received'>('all');
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+  const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
 
   // Textes CMS pour le header du dashboard admin
   const dashboardTitle = useCmsText(
@@ -730,46 +731,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Notifications intelligentes */}
-        {tomorrowAppointments.length > 0 && (
-          <div className="mb-8 grid md:grid-cols-1 gap-4">
-            {/* Rendez-vous du lendemain */}
-            {tomorrowAppointments.length > 0 && (
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl shadow-lg p-6 border-2 border-orange-300">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
-                    <span className="text-2xl">📆</span>
-        </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-orange-900">Rendez-vous demain</h3>
-                    <p className="text-sm text-orange-700">{tomorrowAppointments.length} rendez-vous</p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {tomorrowAppointments.slice(0, 5).map((apt: any) => {
-                    const clientName = `${apt.prenom || ''} ${apt.nom || ''}`.trim() || 'Client';
-                    return (
-                      <div
-                        key={apt._id || apt.id}
-                        onClick={() => {
-                          setSelectedAppointment(apt);
-                          setShowAppointmentModal(true);
-                        }}
-                        className="p-2 rounded-lg bg-white border border-orange-200 hover:bg-orange-50 hover:border-orange-300 cursor-pointer transition-colors"
-                      >
-                        <p className="font-semibold text-sm text-foreground">{clientName}</p>
-                        <p className="text-xs text-muted-foreground">⏰ {apt.heure?.substring(0, 5) || '-'}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <Link href="/admin/rendez-vous" className="mt-4 inline-block text-sm text-orange-700 hover:text-orange-900 font-semibold">
-                  Voir tous →
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Statistiques principales - Design professionnel et chaleureux avec accès direct */}
         <div id="utilisateurs-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 scroll-mt-20">
@@ -1274,54 +1235,103 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Colonne droite : bloc messagerie intégré au dashboard */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2" />
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
+        {/* Messagerie - Pleine largeur et dépliable */}
+        <div className="mb-8">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+            {/* En-tête avec bouton déplier/replier */}
+            <div 
+              className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-200"
+              onClick={() => setIsMessagesExpanded(!isMessagesExpanded)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-2xl">✉️</span>
+                </div>
                 <div>
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <span>✉️ Messagerie interne</span>
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Accédez rapidement à vos échanges avec les clients et l&apos;équipe.
+                  <h2 className="text-xl font-bold text-foreground">Messagerie interne</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {messagesPreview.length > 0 
+                      ? `${messagesPreview.length} message${messagesPreview.length > 1 ? 's' : ''} non lu${messagesPreview.length > 1 ? 's' : ''}`
+                      : 'Aucun message non lu'}
                   </p>
                 </div>
-                <Link href="/admin/messages">
-                  <Button variant="outline" className="text-xs">
-                    Ouvrir la messagerie
-                  </Button>
-                </Link>
               </div>
-              {messagesPreview.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Aucun message non lu pour le moment.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {messagesPreview.map((msg) => (
-                    <Link
-                      key={msg._id || msg.id}
-                      href={`/admin/messages/${msg._id || msg.id}`}
-                      className="block rounded-lg border border-gray-100 px-3 py-2 hover:bg-primary/5 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold truncate">{msg.sujet}</p>
-                          <p className="text-[11px] text-muted-foreground line-clamp-2">
-                            {msg.contenu}
-                          </p>
-                        </div>
-                        <span className="ml-2 flex-shrink-0 rounded-full bg-primary text-white text-[10px] px-2 py-0.5">
-                          Voir
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                <Link 
+                  href="/admin/messages"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm text-primary hover:text-primary/80 font-semibold"
+                >
+                  Ouvrir la messagerie →
+                </Link>
+                <button className="text-2xl text-muted-foreground hover:text-foreground transition-colors">
+                  {isMessagesExpanded ? '▴' : '▾'}
+                </button>
+              </div>
             </div>
+
+            {/* Contenu dépliable */}
+            {isMessagesExpanded && (
+              <div className="p-6 max-h-[600px] overflow-y-auto">
+                {messagesPreview.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-4xl">✉️</span>
+                    </div>
+                    <p className="text-muted-foreground font-medium mb-2">Aucun message non lu</p>
+                    <p className="text-sm text-muted-foreground">
+                      Vous serez notifié lorsque vous recevrez de nouveaux messages
+                    </p>
+                    <Link href="/admin/messages">
+                      <Button className="mt-4">
+                        Accéder à la messagerie
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messagesPreview.map((msg) => (
+                      <Link
+                        key={msg._id || msg.id}
+                        href={`/admin/messages/${msg._id || msg.id}`}
+                        className="block rounded-xl border-2 border-gray-200 hover:border-primary/40 hover:bg-primary/5 transition-all p-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-lg">💬</span>
+                              <p className="text-base font-bold text-foreground truncate">{msg.sujet || 'Sans sujet'}</p>
+                            </div>
+                            <p className="text-sm text-muted-foreground line-clamp-3 mb-2">
+                              {msg.contenu || 'Aucun contenu'}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              {msg.expediteur && typeof msg.expediteur === 'object' && (
+                                <span>👤 {msg.expediteur.firstName} {msg.expediteur.lastName}</span>
+                              )}
+                              {msg.createdAt && (
+                                <span>📅 {new Date(msg.createdAt).toLocaleDateString('fr-FR', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-primary text-white text-sm font-semibold">
+                              Voir →
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

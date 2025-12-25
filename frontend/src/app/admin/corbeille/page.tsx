@@ -252,7 +252,7 @@ export default function AdminCorbeillePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="w-full px-4 py-8 max-w-7xl mx-auto">
+      <main className="w-full px-4 py-8">
         {/* En-tête */}
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-4">

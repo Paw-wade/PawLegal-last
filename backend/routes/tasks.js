@@ -127,20 +127,8 @@ router.post(
   protect,
   authorize('admin', 'superadmin'),
   [
-    body('titre').trim().notEmpty().withMessage('Le titre est requis'),
-    body('assignedTo').custom((value) => {
-      // Accepter un tableau ou une chaîne
-      if (Array.isArray(value)) {
-        if (value.length === 0) {
-          throw new Error('La tâche doit être assignée à au moins un membre');
-        }
-        return true;
-      }
-      if (value && typeof value === 'string') {
-        return true; // Sera converti en tableau plus tard
-      }
-      throw new Error('L\'assignation est requise');
-    }),
+    body('titre').optional().trim(),
+    body('assignedTo').optional(),
     body('statut').optional().isIn(['a_faire', 'en_cours', 'en_attente', 'termine', 'annule']),
     body('priorite').optional().isIn(['basse', 'normale', 'haute', 'urgente'])
   ],
@@ -177,41 +165,35 @@ router.post(
         notes
       } = req.body;
 
-      // Normaliser assignedTo en tableau
+      // Normaliser assignedTo en tableau (optionnel)
       let assignedToArray = [];
-      if (Array.isArray(assignedTo)) {
-        assignedToArray = assignedTo.filter(id => id); // Filtrer les valeurs vides
-      } else if (assignedTo) {
-        assignedToArray = [assignedTo];
+      if (assignedTo) {
+        if (Array.isArray(assignedTo)) {
+          assignedToArray = assignedTo.filter(id => id); // Filtrer les valeurs vides
+        } else {
+          assignedToArray = [assignedTo];
+        }
       }
 
-      if (assignedToArray.length === 0) {
-        console.error('❌ Aucun utilisateur assigné');
-        return res.status(400).json({
-          success: false,
-          message: 'La tâche doit être assignée à au moins un membre',
-          errors: [{
-            param: 'assignedTo',
-            msg: 'La tâche doit être assignée à au moins un membre'
-          }]
-        });
+      // Vérifier que tous les utilisateurs assignés existent (seulement s'il y en a)
+      if (assignedToArray.length > 0) {
+        console.log('👤 Vérification des utilisateurs assignés:', assignedToArray);
+        const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
+        if (assignedUsers.length !== assignedToArray.length) {
+          console.error('❌ Utilisateurs non trouvés. Attendus:', assignedToArray.length, 'Trouvés:', assignedUsers.length);
+          return res.status(404).json({
+            success: false,
+            message: 'Un ou plusieurs utilisateurs assignés non trouvés',
+            errors: [{
+              param: 'assignedTo',
+              msg: 'Un ou plusieurs utilisateurs assignés non trouvés'
+            }]
+          });
+        }
+        console.log('✅ Utilisateurs assignés validés:', assignedUsers.map(u => u.email));
+      } else {
+        console.log('ℹ️ Aucun utilisateur assigné - tâche créée sans assignation');
       }
-
-      // Vérifier que tous les utilisateurs assignés existent
-      console.log('👤 Vérification des utilisateurs assignés:', assignedToArray);
-      const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
-      if (assignedUsers.length !== assignedToArray.length) {
-        console.error('❌ Utilisateurs non trouvés. Attendus:', assignedToArray.length, 'Trouvés:', assignedUsers.length);
-        return res.status(404).json({
-          success: false,
-          message: 'Un ou plusieurs utilisateurs assignés non trouvés',
-          errors: [{
-            param: 'assignedTo',
-            msg: 'Un ou plusieurs utilisateurs assignés non trouvés'
-          }]
-        });
-      }
-      console.log('✅ Utilisateurs assignés validés:', assignedUsers.map(u => u.email));
 
       // Vérifier que le dossier existe si fourni
       let dossierExists = null;
@@ -225,19 +207,35 @@ router.post(
         }
       }
 
+      // Générer un titre par défaut si aucun titre n'est fourni
+      let finalTitre = titre && titre.trim() ? titre.trim() : '';
+      if (!finalTitre) {
+        if (dossierExists) {
+          finalTitre = `Tâche - ${dossierExists.titre || dossierExists.numero || 'Dossier'}`;
+        } else {
+          finalTitre = 'Nouvelle tâche';
+        }
+      }
+
       console.log('✅ Création de la tâche...');
-      const task = await Task.create({
-        titre,
+      const taskDataToCreate: any = {
+        titre: finalTitre,
         description: description || '',
         statut: statut || 'a_faire',
         priorite: priorite || 'normale',
-        assignedTo: assignedToArray,
         createdBy: req.user.id,
         dateEcheance: dateEcheance || null,
         dateDebut: dateDebut || null,
         dossier: dossier || null,
         notes: notes || ''
-      });
+      };
+
+      // Ajouter assignedTo seulement s'il y a des utilisateurs assignés
+      if (assignedToArray.length > 0) {
+        taskDataToCreate.assignedTo = assignedToArray;
+      }
+
+      const task = await Task.create(taskDataToCreate);
       console.log('✅ Tâche créée avec succès:', task._id);
 
       const taskPopulated = await Task.findById(task._id)
@@ -295,7 +293,11 @@ router.post(
           const memberIds = Array.from(uniqueMembers);
 
           if (memberIds.length > 0) {
-            const teamUsers = await User.find({ _id: { $in: memberIds } });
+            // Ne notifier que les admins, pas les clients
+            const teamUsers = await User.find({ 
+              _id: { $in: memberIds },
+              role: { $in: ['admin', 'superadmin'] } // Filtrer uniquement les admins
+            });
 
             for (const member of teamUsers) {
               try {

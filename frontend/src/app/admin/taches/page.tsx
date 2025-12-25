@@ -80,6 +80,7 @@ export default function AdminTachesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'a_faire' | 'en_cours' | 'en_attente' | 'termine' | 'annule'>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'basse' | 'normale' | 'haute' | 'urgente'>('all');
@@ -111,6 +112,16 @@ export default function AdminTachesPage() {
       loadDossiers();
     }
   }, [session, status]);
+
+  // Initialiser toutes les tâches comme dépliées par défaut
+  useEffect(() => {
+    if (tasks.length > 0 && expandedTasks.size === 0) {
+      const allTaskIds = new Set(
+        tasks.map((task: any) => (task._id || task.id)?.toString()).filter(Boolean)
+      );
+      setExpandedTasks(allTaskIds);
+    }
+  }, [tasks, expandedTasks.size]);
 
   const loadTasks = async () => {
     setIsLoading(true);
@@ -161,20 +172,7 @@ export default function AdminTachesPage() {
     setError(null);
 
     try {
-      // Validation frontend - uniquement pour la création
-      if (!editingTask) {
-        if (!formData.titre || formData.titre.trim() === '') {
-          setError('Le titre de la tâche est requis');
-          setIsLoading(false);
-          return;
-        }
-
-        if (formData.assignedTo.length === 0) {
-          setError('Veuillez assigner la tâche à au moins un membre');
-          setIsLoading(false);
-          return;
-        }
-      }
+      // Aucune validation obligatoire - tous les champs sont optionnels
 
       console.log('📤 Envoi des données de tâche:', {
         titre: formData.titre,
@@ -184,13 +182,21 @@ export default function AdminTachesPage() {
       });
 
       const taskData: any = {
-        titre: formData.titre.trim(),
         description: formData.description?.trim() || '',
-        statut: formData.statut,
-        priorite: formData.priorite,
-        assignedTo: formData.assignedTo, // Tableau d'IDs
+        statut: formData.statut || 'a_faire',
+        priorite: formData.priorite || 'normale',
         notes: formData.notes?.trim() || '',
       };
+
+      // Ajouter le titre seulement s'il est fourni (optionnel)
+      if (formData.titre && formData.titre.trim()) {
+        taskData.titre = formData.titre.trim();
+      }
+
+      // Ajouter assignedTo seulement s'il y a des assignés (optionnel)
+      if (formData.assignedTo && formData.assignedTo.length > 0) {
+        taskData.assignedTo = formData.assignedTo;
+      }
 
       if (formData.dateEcheance) taskData.dateEcheance = formData.dateEcheance;
       if (formData.dateDebut) taskData.dateDebut = formData.dateDebut;
@@ -377,7 +383,7 @@ export default function AdminTachesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="w-full px-4 py-8 max-w-7xl mx-auto">
+      <main className="w-full px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-1 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">Gestion des Tâches</h1>
@@ -433,14 +439,13 @@ export default function AdminTachesPage() {
               
               <form onSubmit={handleSubmit} className="p-6 space-y-5">
                 <div>
-                  <Label htmlFor="titre">Titre de la tâche {!editingTask && '*'}</Label>
+                  <Label htmlFor="titre">Titre de la tâche (optionnel)</Label>
                   <Input
                     id="titre"
                     value={formData.titre}
                     onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
-                    required={!editingTask}
                     className="mt-1"
-                    placeholder="Ex: Préparer le dossier de demande de titre de séjour"
+                    placeholder="Ex: Préparer le dossier de demande de titre de séjour (optionnel)"
                   />
                 </div>
 
@@ -506,9 +511,6 @@ export default function AdminTachesPage() {
                       </label>
                     ))}
                   </div>
-                  {formData.assignedTo.length === 0 && !editingTask && (
-                    <p className="text-xs text-red-600 mt-1">Veuillez sélectionner au moins un membre</p>
-                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -582,7 +584,7 @@ export default function AdminTachesPage() {
                   }} disabled={isLoading}>
                     Annuler
                   </Button>
-                  <Button type="submit" disabled={isLoading || formData.assignedTo.length === 0}>
+                  <Button type="submit" disabled={isLoading}>
                     {isLoading ? (editingTask ? 'Mise à jour...' : 'Création...') : (editingTask ? 'Mettre à jour' : 'Créer la tâche')}
                   </Button>
                 </div>
@@ -654,37 +656,93 @@ export default function AdminTachesPage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="space-y-4">
               {filteredTasks.map((task) => {
                 const assignedToArray = Array.isArray(task.assignedTo) 
                   ? task.assignedTo 
                   : [task.assignedTo].filter(Boolean);
                 const daysUntilDeadline = getDaysUntilDeadline(task.dateEcheance);
                 const isUrgent = daysUntilDeadline !== null && daysUntilDeadline <= 2 && daysUntilDeadline >= 0;
+                const taskId = task._id || task.id;
+                const isExpanded = expandedTasks.has(taskId);
 
                 return (
                   <div
-                    key={task._id || task.id}
-                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${
+                    key={taskId}
+                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white w-full ${
                       task.statut === 'a_faire'
-                        ? 'border-l-4 border-l-gray-500'
+                        ? 'border-l-4 border-l-gray-500 border-t border-r border-b border-gray-200'
                         : task.statut === 'en_cours'
-                        ? 'border-l-4 border-l-blue-500'
+                        ? 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200'
                         : task.statut === 'en_attente'
-                        ? 'border-l-4 border-l-yellow-500'
+                        ? 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200'
                         : task.statut === 'termine'
-                        ? 'border-l-4 border-l-green-500'
-                        : 'border-l-4 border-l-red-500'
+                        ? 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-200'
+                        : 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200'
                     } ${isUrgent ? 'ring-2 ring-red-300' : ''}`}
                   >
-                    {/* En-tête de la carte */}
+                    {/* En-tête de la carte avec bouton de pliage/dépliage */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0 pr-2">
-                        <h3 className="font-bold text-base text-foreground mb-1 line-clamp-2 leading-tight">
-                          {task.titre}
-                        </h3>
-                        {task.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <button
+                            onClick={() => {
+                              const newExpanded = new Set(expandedTasks);
+                              if (newExpanded.has(taskId)) {
+                                newExpanded.delete(taskId);
+                              } else {
+                                newExpanded.add(taskId);
+                              }
+                              setExpandedTasks(newExpanded);
+                            }}
+                            className="p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-600 hover:text-primary flex-shrink-0"
+                            title={isExpanded ? 'Plier la tâche' : 'Déplier la tâche'}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                            </svg>
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-base text-foreground line-clamp-2 leading-tight">
+                              {task.titre || 'Tâche sans titre'}
+                            </h3>
+                            {/* Résumé quand plié */}
+                            {!isExpanded && (
+                              <div className="mt-1.5 space-y-1">
+                                <div className="flex items-center gap-2.5 flex-wrap text-[10px] text-muted-foreground">
+                                  {assignedToArray.length > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                      <span className="text-xs">👥</span>
+                                      <span className="font-semibold text-foreground">{assignedToArray.length}</span>
+                                    </span>
+                                  )}
+                                  {task.dossier && (
+                                    <span className="flex items-center gap-0.5">
+                                      <span className="text-xs">📁</span>
+                                      <span className="truncate max-w-[120px]">{task.dossier.titre || 'Dossier lié'}</span>
+                                    </span>
+                                  )}
+                                  {task.dateEcheance && (
+                                    <span className={`flex items-center gap-0.5 ${isUrgent ? 'text-red-600' : 'text-orange-600'}`}>
+                                      <span className="text-xs">⏰</span>
+                                      <span className="font-semibold">
+                                        {daysUntilDeadline === 0 ? "Aujourd'hui" : daysUntilDeadline === 1 ? 'Demain' : daysUntilDeadline !== null ? `${daysUntilDeadline}j` : ''}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {task.createdBy && (
+                                    <span className="flex items-center gap-0.5">
+                                      <span className="text-xs">👤</span>
+                                      <span className="truncate max-w-[80px]">{task.createdBy.firstName || ''}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {isExpanded && task.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1 ml-7">
                             {task.description}
                           </p>
                         )}
@@ -699,6 +757,9 @@ export default function AdminTachesPage() {
                       </div>
                     </div>
 
+                    {/* Informations détaillées (affichées uniquement si la tâche est dépliée) */}
+                    {isExpanded && (
+                      <>
                     {/* Informations de la tâche */}
                     <div className="space-y-2 mb-3">
                       {assignedToArray.length > 0 && (
@@ -894,6 +955,8 @@ export default function AdminTachesPage() {
                         </p>
                       </div>
                     </div>
+                    </>
+                    )}
                   </div>
                 );
               })}

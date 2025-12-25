@@ -518,9 +518,13 @@ export const appointmentsAPI = {
     api.put(`/appointments/${id}`, data),
   
   // Admin - Récupérer tous les rendez-vous
-  getAllAppointments: (params?: { statut?: string; date?: string; userId?: string }) => {
+  getAllAppointments: (params?: { statut?: string; date?: string; userId?: string; includeArchived?: string }) => {
     return api.get('/appointments/admin', { params });
   },
+  
+  // Admin - Archiver/désarchiver un rendez-vous
+  archiveAppointment: (id: string, archived: boolean) =>
+    api.put(`/appointments/${id}/archive`, { archived }),
   
   // Admin - Mettre à jour un rendez-vous
   updateAppointment: (id: string, data: { 

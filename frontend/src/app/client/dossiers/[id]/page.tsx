@@ -239,7 +239,7 @@ export default function DossierDetailPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <main className="container mx-auto px-4 py-16">
+        <main className="w-full px-4 py-16">
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Chargement du dossier...</p>
@@ -252,7 +252,7 @@ export default function DossierDetailPage() {
   if (error || !dossier) {
     return (
       <div className="min-h-screen bg-background">
-        <main className="container mx-auto px-4 py-16">
+        <main className="w-full px-4 py-16">
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">❌</div>
             <h2 className="text-2xl font-bold mb-4">Dossier non trouvé</h2>
@@ -268,7 +268,7 @@ export default function DossierDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/10">
-      <main className="container mx-auto px-4 py-8 overflow-x-hidden">
+      <main className="w-full px-4 py-8 overflow-x-hidden">
         {/* En-tête amélioré */}
         <div className="mb-6">
           <Link href="/client/dossiers" className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 mb-4 transition-colors">

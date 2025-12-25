@@ -283,21 +283,23 @@ function RendezVousPageContent() {
       } as any);
       
       if (response.data.success) {
+        // Utiliser les données du rendez-vous mis à jour depuis la réponse
+        const updatedAppointment = response.data.data;
+        
+        // Recharger la liste des rendez-vous
         await loadRendezVous();
-        if (isDone) {
+        
+        if (isDone && updatedAppointment) {
           // Si marqué comme effectué, proposer de créer un dossier
-          const appointment = rendezVous.find((rdv: any) => (rdv._id || rdv.id) === appointmentId);
-          if (appointment) {
-            setAppointmentForDossier(appointment);
-            setDossierFormData({
-              titre: `Dossier suite au rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}`,
-              description: `Dossier créé suite au rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')} à ${appointment.heure}.\n\nMotif: ${appointment.motif || 'N/A'}\n${appointment.description ? `Description: ${appointment.description}` : ''}`,
-              categorie: 'autre',
-              type: '',
-              priorite: 'normale'
-            });
-            setShowCreateDossierModal(true);
-          }
+          setAppointmentForDossier(updatedAppointment);
+          setDossierFormData({
+            titre: `Dossier suite au rendez-vous du ${new Date(updatedAppointment.date).toLocaleDateString('fr-FR')}`,
+            description: `Dossier créé suite au rendez-vous du ${new Date(updatedAppointment.date).toLocaleDateString('fr-FR')} à ${updatedAppointment.heure}.\n\nMotif: ${updatedAppointment.motif || 'N/A'}\n${updatedAppointment.description ? `Description: ${updatedAppointment.description}` : ''}`,
+            categorie: 'autre',
+            type: '',
+            priorite: 'normale'
+          });
+          setShowCreateDossierModal(true);
         }
       } else {
         setError(response.data.message || 'Erreur lors de la mise à jour du rendez-vous');
@@ -378,7 +380,7 @@ function RendezVousPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-16">
+      <main className="w-full px-4 py-16">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Rendez-vous</h1>
@@ -476,7 +478,7 @@ function RendezVousPageContent() {
                 }
 
                 const canCancel = rdv.statut !== 'annule' && rdv.statut !== 'termine' && !isPast;
-                const canMarkAsDone = !isPast && rdv.statut !== 'annule';
+                const canMarkAsDone = rdv.statut !== 'annule' && !rdv.effectue;
                 const appointmentId = rdv._id || rdv.id;
 
                 // Déterminer le style de la carte (bordure gauche colorée comme les dossiers)
@@ -589,6 +591,17 @@ function RendezVousPageContent() {
                     <div className="pt-3 border-t border-gray-200">
                       <div className="flex items-center justify-end">
                         <div className="flex items-center gap-2">
+                          {canMarkAsDone && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8 border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400"
+                              onClick={() => handleMarkAsDone(appointmentId, true)}
+                              disabled={markingAsDone === appointmentId}
+                            >
+                              {markingAsDone === appointmentId ? 'Marquage...' : '✅ Marquer comme effectué'}
+                            </Button>
+                          )}
                           {canCancel && (
                             <>
                               <Button

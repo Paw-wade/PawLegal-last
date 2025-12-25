@@ -622,7 +622,7 @@ function ClientDashboardContent() {
           animation-play-state: paused;
         }
       `}} />
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div id="dashboard-top" className="scroll-mt-20"></div>
 
         {/* En-tête de bienvenue */}

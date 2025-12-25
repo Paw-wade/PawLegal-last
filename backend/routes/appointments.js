@@ -197,7 +197,7 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
       query: req.query
     });
     
-    const { statut, date, userId } = req.query;
+    const { statut, date, userId, includeArchived } = req.query;
     let query = {};
 
     if (statut) {
@@ -216,7 +216,40 @@ router.get('/admin', protect, authorize('admin', 'superadmin'), async (req, res)
       query.date = { $gte: startDate, $lte: endDate };
     }
 
+    // Exclure les rendez-vous archivés par défaut (sauf si includeArchived=true)
+    if (includeArchived !== 'true' && includeArchived !== true) {
+      query.archived = { $ne: true };
+    }
+
     console.log('🔍 Query MongoDB:', JSON.stringify(query, null, 2));
+
+    // Archiver automatiquement les rendez-vous dépassés qui ne sont pas encore archivés
+    // On archive uniquement ceux qui sont passés (date ET heure si disponible)
+    const now = new Date();
+    const allAppointments = await RendezVous.find({
+      archived: { $ne: true }
+    });
+    
+    for (const apt of allAppointments) {
+      if (apt.date) {
+        let appointmentDateTime = new Date(apt.date);
+        // Si une heure est spécifiée, l'ajouter à la date
+        if (apt.heure) {
+          const [hours, minutes] = apt.heure.split(':').map(Number);
+          appointmentDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+        } else {
+          // Si pas d'heure, considérer la fin de journée
+          appointmentDateTime.setHours(23, 59, 59, 999);
+        }
+        
+        // Archiver si la date/heure est passée (sauf si déjà annulé)
+        if (appointmentDateTime < now && apt.statut !== 'annule' && apt.statut !== 'annulé') {
+          apt.archived = true;
+          apt.archivedAt = now;
+          await apt.save();
+        }
+      }
+    }
 
     const rendezVous = await RendezVous.find(query)
       .populate('user', 'firstName lastName email')
@@ -258,7 +291,10 @@ router.get('/', protect, handleImpersonation, async (req, res) => {
     
     console.log('📅 Récupération des rendez-vous pour l\'utilisateur:', targetUserId, req.impersonateUserId ? '[IMPERSONATION]' : '');
     
-    const rendezVous = await RendezVous.find({ user: targetUserId })
+    // Exclure les rendez-vous archivés pour les utilisateurs
+    const query = { user: targetUserId, archived: { $ne: true } };
+    
+    const rendezVous = await RendezVous.find(query)
       .sort({ date: -1, heure: -1 });
 
     console.log('✅ Rendez-vous trouvés:', rendezVous.length);
@@ -323,6 +359,45 @@ router.get('/:id', protect, handleImpersonation, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erreur serveur lors de la récupération du rendez-vous'
+    });
+  }
+});
+
+// @route   PUT /api/appointments/:id/archive
+// @desc    Archiver ou désarchiver un rendez-vous (admin)
+// @access  Private (Admin)
+router.put('/:id/archive', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { archived } = req.body;
+    const rendezVous = await RendezVous.findById(req.params.id);
+
+    if (!rendezVous) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rendez-vous non trouvé'
+      });
+    }
+
+    rendezVous.archived = archived === true || archived === 'true';
+    if (rendezVous.archived) {
+      rendezVous.archivedAt = new Date();
+    } else {
+      rendezVous.archivedAt = null;
+    }
+
+    await rendezVous.save();
+    await rendezVous.populate('user', 'firstName lastName email');
+
+    res.json({
+      success: true,
+      message: rendezVous.archived ? 'Rendez-vous archivé avec succès' : 'Rendez-vous désarchivé avec succès',
+      data: rendezVous
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'archivage du rendez-vous:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de l\'archivage du rendez-vous'
     });
   }
 });

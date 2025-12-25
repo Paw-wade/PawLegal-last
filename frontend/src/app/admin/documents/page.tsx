@@ -56,6 +56,7 @@ export default function AdminDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [previewDocument, setPreviewDocument] = useState<any | null>(null);
   const [dossierInfoMap, setDossierInfoMap] = useState<Record<string, any>>({});
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -67,6 +68,21 @@ export default function AdminDocumentsPage() {
       loadDossiers();
     }
   }, [session, status, router]);
+
+  // Initialiser toutes les sections comme dépliées par défaut
+  useEffect(() => {
+    if (documents.length > 0 && expandedUsers.size === 0) {
+      const allUserKeys = new Set(
+        documents
+          .map((doc: any) => {
+            const userId = doc.user?._id || doc.user?.id || 'unknown';
+            return userId.toString();
+          })
+          .filter(Boolean)
+      );
+      setExpandedUsers(allUserKeys);
+    }
+  }, [documents]);
 
   const loadDossiers = async () => {
     setIsLoadingDossiers(true);
@@ -228,11 +244,31 @@ export default function AdminDocumentsPage() {
   }, {});
 
   // Convertir en tableau et trier par nom d'utilisateur
-  const groupedDocumentsArray = Object.values(groupedDocuments).sort((a: any, b: any) => {
+  const groupedDocumentsArray = Object.values(groupedDocuments).map((group: any) => {
+    const userId = group.user?._id || group.user?.id || 'unknown';
+    const userKey = userId.toString();
+    return {
+      ...group,
+      userKey,
+      totalSize: group.documents.reduce((sum: number, doc: any) => sum + (doc.taille || 0), 0)
+    };
+  }).sort((a: any, b: any) => {
     const nameA = `${a.user.firstName} ${a.user.lastName}`.toLowerCase();
     const nameB = `${b.user.firstName} ${b.user.lastName}`.toLowerCase();
     return nameA.localeCompare(nameB);
   });
+
+  const toggleUserExpanded = (userKey: string) => {
+    setExpandedUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userKey)) {
+        newSet.delete(userKey);
+      } else {
+        newSet.add(userKey);
+      }
+      return newSet;
+    });
+  };
 
   if (status === 'loading') {
     return (
@@ -251,7 +287,7 @@ export default function AdminDocumentsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Tous les Documents</h1>
@@ -398,32 +434,64 @@ export default function AdminDocumentsPage() {
             </p>
           ) : (
             <div className="space-y-6">
-              {groupedDocumentsArray.map((group: any, groupIndex: number) => (
-                <div key={groupIndex} className="bg-white rounded-lg shadow-md border border-border overflow-hidden">
-                  {/* En-tête de l'utilisateur */}
-                  <div className="bg-gradient-to-r from-primary/10 to-primary/5 border-b border-border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-bold text-lg">
-                          {group.user.firstName?.[0]?.toUpperCase() || '?'}
+              {groupedDocumentsArray.map((group: any, groupIndex: number) => {
+                const isExpanded = expandedUsers.has(group.userKey);
+                return (
+                  <div key={groupIndex} className="bg-white rounded-lg shadow-md border border-border overflow-hidden">
+                    {/* En-tête de l'utilisateur */}
+                    <div 
+                      className="bg-gradient-to-r from-primary/10 to-primary/5 border-b border-border p-4 cursor-pointer hover:from-primary/15 hover:to-primary/10 transition-colors"
+                      onClick={() => toggleUserExpanded(group.userKey)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                            {group.user.firstName?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-lg text-foreground">
+                              {group.user.firstName} {group.user.lastName}
+                            </h3>
+                            <p className="text-sm text-muted-foreground truncate">{group.user.email}</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-lg text-foreground">
-                            {group.user.firstName} {group.user.lastName}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">{group.user.email}</p>
+                        <div className="flex items-center gap-4">
+                          {!isExpanded && (
+                            <div className="text-right">
+                              <p className="text-sm font-medium text-foreground">
+                                {group.documents.length} document{group.documents.length > 1 ? 's' : ''}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatFileSize(group.totalSize)}
+                              </p>
+                            </div>
+                          )}
+                          {isExpanded && (
+                            <div className="text-right">
+                              <p className="text-sm font-medium text-foreground">
+                                {group.documents.length} document{group.documents.length > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          )}
+                          <button
+                            className="ml-2 p-1 rounded hover:bg-primary/20 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleUserExpanded(group.userKey);
+                            }}
+                            aria-label={isExpanded ? 'Plier' : 'Déplier'}
+                          >
+                            <span className="text-xl">
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          </button>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-foreground">
-                          {group.documents.length} document{group.documents.length > 1 ? 's' : ''}
-                        </p>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Liste des documents de l'utilisateur */}
-                  <div className="overflow-x-auto">
+                    {/* Liste des documents de l'utilisateur */}
+                    {isExpanded && (
+                      <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b bg-muted/30">
@@ -493,8 +561,10 @@ export default function AdminDocumentsPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              ))}
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

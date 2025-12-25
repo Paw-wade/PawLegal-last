@@ -388,7 +388,7 @@ export default function AdminSmsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-primary/10 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground mb-2">Gestion des SMS</h1>
           <p className="text-muted-foreground">Gérez les templates de messages SMS et consultez l'historique</p>

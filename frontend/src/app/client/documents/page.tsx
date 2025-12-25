@@ -263,7 +263,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
+      <main className="w-full px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2">Mes Documents</h1>

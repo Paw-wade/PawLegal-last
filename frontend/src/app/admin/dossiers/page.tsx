@@ -303,7 +303,14 @@ export default function AdminDossiersPage() {
   const [dossierTasks, setDossierTasks] = useState<Record<string, any[]>>({});
   const [expandedTaskSections, setExpandedTaskSections] = useState<Set<string>>(new Set());
   const [showTaskFormForDossier, setShowTaskFormForDossier] = useState<string | null>(null);
-  const [taskFormData, setTaskFormData] = useState<Record<string, { titre: string; description: string; priorite: string; assignedTo: string[] }>>({});
+  const [taskFormData, setTaskFormData] = useState<{ titre: string; description: string; priorite: string; assignedTo: string[] }>({
+    titre: '',
+    description: '',
+    priorite: 'normale',
+    assignedTo: []
+  });
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [taskSuccessMessage, setTaskSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -320,6 +327,7 @@ export default function AdminDossiersPage() {
       loadTeamMembers();
       loadNotifications();
       loadDossierDocuments();
+      loadDossierTasks();
     }
   }, [session, status]);
 
@@ -461,6 +469,83 @@ export default function AdminDossiersPage() {
       }
     } catch (err: any) {
       console.error('Erreur lors du chargement des documents des dossiers:', err);
+    }
+  };
+
+  const loadDossierTasks = async () => {
+    try {
+      const response = await tasksAPI.getAllTasks();
+      if (response.data.success) {
+        const allTasks = response.data.tasks || [];
+        const tasksMap: Record<string, any[]> = {};
+        
+        // Grouper les tâches par dossier
+        allTasks.forEach((task: any) => {
+          const dossierId = task.dossier?._id || task.dossier || task.dossierId?._id || task.dossierId;
+          if (dossierId) {
+            const dossierIdStr = dossierId.toString();
+            if (!tasksMap[dossierIdStr]) {
+              tasksMap[dossierIdStr] = [];
+            }
+            tasksMap[dossierIdStr].push(task);
+          }
+        });
+        
+        setDossierTasks(tasksMap);
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des tâches des dossiers:', err);
+    }
+  };
+
+  const handleCreateTask = async (dossierId: string) => {
+    // Validation simple
+    if (!taskFormData.assignedTo || taskFormData.assignedTo.length === 0) {
+      setError('Veuillez assigner la tâche à au moins un membre');
+      return;
+    }
+
+    setIsCreatingTask(true);
+    setError(null);
+    
+    try {
+      const taskData: any = {
+        description: taskFormData.description?.trim() || '',
+        statut: 'a_faire',
+        priorite: taskFormData.priorite || 'normale',
+        assignedTo: taskFormData.assignedTo,
+        dossier: dossierId
+      };
+      
+      // Ajouter le titre seulement s'il est fourni (optionnel)
+      if (taskFormData.titre && taskFormData.titre.trim()) {
+        taskData.titre = taskFormData.titre.trim();
+      }
+      
+      const response = await tasksAPI.createTask(taskData);
+
+      if (response.data.success) {
+        // Réinitialiser le formulaire
+        setTaskFormData({
+          titre: '',
+          description: '',
+          priorite: 'normale',
+          assignedTo: []
+        });
+        setShowTaskFormForDossier(null);
+        // Recharger les tâches
+        await loadDossierTasks();
+        setError(null);
+        setTaskSuccessMessage('Tâche créée avec succès !');
+        setTimeout(() => setTaskSuccessMessage(null), 3000);
+      } else {
+        setError(response.data.message || 'Erreur lors de la création de la tâche');
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur lors de la création de la tâche:', err);
+      setError(err.response?.data?.message || 'Erreur lors de la création de la tâche');
+    } finally {
+      setIsCreatingTask(false);
     }
   };
 
@@ -809,7 +894,7 @@ export default function AdminDossiersPage() {
           animation-play-state: paused;
         }
       `}} />
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-1 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">Gestion des Dossiers</h1>
@@ -1727,7 +1812,7 @@ export default function AdminDossiersPage() {
                     </div>
 
                     {/* Statistiques rapides */}
-                    <div className="grid grid-cols-3 gap-2 mb-3 pb-2 border-b border-gray-100">
+                    <div className="grid grid-cols-4 gap-2 mb-3 pb-2 border-b border-gray-100">
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <p className="text-xs text-muted-foreground">Documents</p>
                         <p className="text-sm font-semibold text-foreground">
@@ -1746,7 +1831,232 @@ export default function AdminDossiersPage() {
                           {documentRequests[dossier._id || dossier.id]?.length || 0}
                         </p>
                       </div>
+                      <div className="bg-gray-50 p-2 rounded text-center">
+                        <p className="text-xs text-muted-foreground">Tâches</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {dossierTasks[dossier._id || dossier.id]?.length || 0}
+                        </p>
+                      </div>
                     </div>
+
+                    {/* Section Tâches */}
+                    {(() => {
+                      const dossierId = dossier._id || dossier.id;
+                      const tasks = dossierTasks[dossierId] || [];
+                      const isTaskSectionExpanded = expandedTaskSections.has(dossierId);
+                      const showForm = showTaskFormForDossier === dossierId;
+
+                      return (
+                        <div className="mb-3 pb-2 border-b border-gray-100">
+                          <div 
+                            className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded-md p-1.5 -m-1.5 transition-colors"
+                            onClick={() => {
+                              const newExpanded = new Set(expandedTaskSections);
+                              if (isTaskSectionExpanded) {
+                                newExpanded.delete(dossierId);
+                              } else {
+                                newExpanded.add(dossierId);
+                              }
+                              setExpandedTaskSections(newExpanded);
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">✅</span>
+                              <span className="text-xs font-semibold text-foreground">Tâches</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                tasks.length > 0 ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {tasks.length}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {isTaskSectionExpanded ? '▼' : '▶'}
+                            </span>
+                          </div>
+
+                          {isTaskSectionExpanded && (
+                            <div className="mt-2 space-y-2">
+                              {/* Liste des tâches */}
+                              {tasks.length > 0 ? (
+                                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                                  {tasks.map((task: any) => (
+                                    <div key={task._id || task.id} className="bg-gray-50 rounded-md p-2 border border-gray-200">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-semibold text-foreground truncate">{task.titre}</p>
+                                          {task.description && (
+                                            <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
+                                          )}
+                                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${getTaskStatutColor(task.statut)}`}>
+                                              {getTaskStatutLabel(task.statut)}
+                                            </span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${getTaskPrioriteColor(task.priorite)}`}>
+                                              {getTaskPrioriteLabel(task.priorite)}
+                                            </span>
+                                            {task.assignedTo && Array.isArray(task.assignedTo) && task.assignedTo.length > 0 && (
+                                              <span className="text-[10px] text-muted-foreground">
+                                                👤 {task.assignedTo.length} assigné{task.assignedTo.length > 1 ? 's' : ''}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground text-center py-2">Aucune tâche</p>
+                              )}
+
+                              {/* Formulaire de création de tâche */}
+                              {showForm ? (
+                                <div 
+                                  className="bg-blue-50 border border-blue-200 rounded-md p-2 space-y-2"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div>
+                                    <Label htmlFor={`task-titre-${dossierId}`} className="text-[10px]">Titre (optionnel)</Label>
+                                    <Input
+                                      id={`task-titre-${dossierId}`}
+                                      value={taskFormData.titre || ''}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        setTaskFormData(prev => ({ ...prev, titre: e.target.value }));
+                                      }}
+                                      placeholder="Titre de la tâche (optionnel)"
+                                      className="h-8 text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor={`task-description-${dossierId}`} className="text-[10px]">Description</Label>
+                                    <textarea
+                                      id={`task-description-${dossierId}`}
+                                      value={taskFormData.description || ''}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        setTaskFormData(prev => ({ ...prev, description: e.target.value }));
+                                      }}
+                                      placeholder="Description (optionnelle)"
+                                      className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-2 py-1.5 text-[10px]"
+                                      rows={2}
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label htmlFor={`task-priorite-${dossierId}`} className="text-[10px]">Priorité</Label>
+                                      <select
+                                        id={`task-priorite-${dossierId}`}
+                                        value={taskFormData.priorite || 'normale'}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          setTaskFormData(prev => ({ ...prev, priorite: e.target.value }));
+                                        }}
+                                        className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-[10px]"
+                                      >
+                                        <option value="basse">Basse</option>
+                                        <option value="normale">Normale</option>
+                                        <option value="haute">Haute</option>
+                                        <option value="urgente">Urgente</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label className="text-[10px] mb-1 block">Assigner à *</Label>
+                                      <div className="max-h-[80px] overflow-y-auto border border-input rounded-md p-1.5 space-y-1">
+                                        {teamMembers.length === 0 ? (
+                                          <p className="text-[10px] text-muted-foreground text-center py-1">Aucun membre disponible</p>
+                                        ) : (
+                                          teamMembers.map((member: any) => {
+                                            const memberId = member._id || member.id;
+                                            return (
+                                              <label key={memberId} className="flex items-center gap-1.5 cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={taskFormData.assignedTo.includes(memberId)}
+                                                  onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    setTaskFormData(prev => {
+                                                      const currentAssigned = prev.assignedTo || [];
+                                                      const newAssigned = e.target.checked
+                                                        ? [...currentAssigned, memberId]
+                                                        : currentAssigned.filter((id: string) => id !== memberId);
+                                                      return { ...prev, assignedTo: newAssigned };
+                                                    });
+                                                  }}
+                                                  className="h-3 w-3 rounded border-gray-300"
+                                                />
+                                                <span className="text-[10px] text-foreground">
+                                                  {member.firstName} {member.lastName}
+                                                </span>
+                                              </label>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCreateTask(dossierId);
+                                      }}
+                                      disabled={isCreatingTask}
+                                      className="h-7 text-[10px] px-2 flex-1"
+                                    >
+                                      {isCreatingTask ? 'Création...' : 'Créer'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setShowTaskFormForDossier(null);
+                                        setTaskFormData({
+                                          titre: '',
+                                          description: '',
+                                          priorite: 'normale',
+                                          assignedTo: []
+                                        });
+                                      }}
+                                      className="h-7 text-[10px] px-2"
+                                      disabled={isCreatingTask}
+                                    >
+                                      Annuler
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setShowTaskFormForDossier(dossierId);
+                                    setTaskFormData({
+                                      titre: '',
+                                      description: '',
+                                      priorite: 'normale',
+                                      assignedTo: []
+                                    });
+                                  }}
+                                  className="w-full h-7 text-[10px]"
+                                >
+                                  + Créer une tâche
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Section Documents demandés - Style identique au client */}
                     {(() => {

@@ -126,6 +126,7 @@ export default function AdminRendezVousPage() {
   const [rendezVous, setRendezVous] = useState<any[]>([]);
   const [filter, setFilter] = useState('all'); // all, today, week, month
   const [statusFilter, setStatusFilter] = useState<'all' | 'en_attente' | 'confirme' | 'annule' | 'termine'>('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -161,7 +162,7 @@ export default function AdminRendezVousPage() {
     } else if (status === 'authenticated') {
       loadAppointments();
     }
-  }, [session, status, router, filter]);
+  }, [session, status, router, filter, showArchived]);
 
   const loadAppointments = async () => {
     setIsLoading(true);
@@ -241,6 +242,92 @@ export default function AdminRendezVousPage() {
     }
   };
 
+  const handleCreateDossierFromAppointment = async (createDossier: boolean) => {
+    if (!appointmentForDossier) return;
+
+    setIsCreatingDossier(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      // D'abord, marquer le rendez-vous comme effectué
+      const updateResponse = await appointmentsAPI.updateAppointment(
+        appointmentForDossier._id || appointmentForDossier.id,
+        { effectue: true }
+      );
+
+      if (!updateResponse.data.success) {
+        setError('Erreur lors de la mise à jour du rendez-vous');
+        setIsCreatingDossier(false);
+        return;
+      }
+
+      // Si on doit créer un dossier
+      if (createDossier) {
+        const dossierData: any = {
+          titre: dossierFormData.titre || `Dossier suite au rendez-vous du ${new Date(appointmentForDossier.date).toLocaleDateString('fr-FR')}`,
+          description: dossierFormData.description,
+          categorie: dossierFormData.categorie,
+          type: dossierFormData.type || '',
+          statut: 'recu',
+          priorite: dossierFormData.priorite,
+          rendezVousId: appointmentForDossier._id || appointmentForDossier.id
+        };
+
+        // Si le rendez-vous a un utilisateur, utiliser son ID
+        if (appointmentForDossier.user?._id || appointmentForDossier.user) {
+          dossierData.userId = appointmentForDossier.user._id || appointmentForDossier.user;
+        } else {
+          // Sinon, utiliser les informations du rendez-vous
+          dossierData.clientNom = appointmentForDossier.nom || '';
+          dossierData.clientPrenom = appointmentForDossier.prenom || '';
+          dossierData.clientEmail = appointmentForDossier.email || '';
+          dossierData.clientTelephone = appointmentForDossier.telephone || '';
+        }
+
+        const dossierResponse = await dossiersAPI.createDossier(dossierData);
+        
+        if (dossierResponse.data.success) {
+          setSuccess('Rendez-vous marqué comme effectué et dossier créé avec succès !');
+          setTimeout(() => {
+            setShowCreateDossierModal(false);
+            setAppointmentForDossier(null);
+            setDossierFormData({
+              titre: '',
+              description: '',
+              categorie: 'autre',
+              type: '',
+              priorite: 'normale'
+            });
+            loadAppointments();
+          }, 2000);
+        } else {
+          setError(dossierResponse.data.message || 'Erreur lors de la création du dossier');
+        }
+      } else {
+        // Juste marquer comme effectué sans créer de dossier
+        setSuccess('Rendez-vous marqué comme effectué avec succès !');
+        setTimeout(() => {
+          setShowCreateDossierModal(false);
+          setAppointmentForDossier(null);
+          setDossierFormData({
+            titre: '',
+            description: '',
+            categorie: 'autre',
+            type: '',
+            priorite: 'normale'
+          });
+          loadAppointments();
+        }, 2000);
+      }
+    } catch (err: any) {
+      console.error('❌ Erreur:', err);
+      setError(err.response?.data?.message || 'Erreur lors de l\'opération');
+    } finally {
+      setIsCreatingDossier(false);
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -258,7 +345,7 @@ export default function AdminRendezVousPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
@@ -313,6 +400,16 @@ export default function AdminRendezVousPage() {
             >
               🗓️ Ce mois
             </button>
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                showArchived 
+                  ? 'bg-gray-600 text-white shadow-md' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {showArchived ? '📦 Afficher les actifs' : '📦 Afficher les archivés'}
+            </button>
             <Button onClick={loadAppointments} variant="outline" className="ml-auto">
               🔄 Actualiser
             </Button>
@@ -321,39 +418,45 @@ export default function AdminRendezVousPage() {
 
         {/* Statistiques rapides */}
         {!isLoading && rendezVous.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <button
               type="button"
               onClick={() => setStatusFilter('en_attente')}
-              className={`text-left bg-blue-50 border border-blue-200 rounded-lg p-4 transition-all ${
-                statusFilter === 'en_attente' ? 'ring-2 ring-blue-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              className={`text-left bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm transition-all ${
+                statusFilter === 'en_attente'
+                  ? 'ring-2 ring-yellow-500/60 shadow-md'
+                  : 'hover:shadow-md hover:-translate-y-0.5'
               }`}
             >
-              <p className="text-xs text-blue-700 font-medium mb-1">En attente</p>
-              <p className="text-2xl font-bold text-blue-900">
+              <p className="text-xs text-yellow-700 font-semibold mb-1 uppercase tracking-wide">En attente</p>
+              <p className="text-2xl font-bold text-yellow-900">
                 {rendezVous.filter((r: any) => r.statut === 'en_attente').length}
               </p>
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('confirme')}
-              className={`text-left bg-green-50 border border-green-200 rounded-lg p-4 transition-all ${
-                statusFilter === 'confirme' ? 'ring-2 ring-green-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              className={`text-left bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm transition-all ${
+                statusFilter === 'confirme'
+                  ? 'ring-2 ring-blue-500/60 shadow-md'
+                  : 'hover:shadow-md hover:-translate-y-0.5'
               }`}
             >
-              <p className="text-xs text-green-700 font-medium mb-1">Confirmés</p>
-              <p className="text-2xl font-bold text-green-900">
+              <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Confirmés</p>
+              <p className="text-2xl font-bold text-blue-900">
                 {rendezVous.filter((r: any) => r.statut === 'confirme' || r.statut === 'confirmé').length}
               </p>
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('annule')}
-              className={`text-left bg-red-50 border border-red-200 rounded-lg p-4 transition-all ${
-                statusFilter === 'annule' ? 'ring-2 ring-red-400 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              className={`text-left bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-lg p-4 shadow-sm transition-all ${
+                statusFilter === 'annule'
+                  ? 'ring-2 ring-red-500/60 shadow-md'
+                  : 'hover:shadow-md hover:-translate-y-0.5'
               }`}
             >
-              <p className="text-xs text-red-700 font-medium mb-1">Annulés</p>
+              <p className="text-xs text-red-700 font-semibold mb-1 uppercase tracking-wide">Annulés</p>
               <p className="text-2xl font-bold text-red-900">
                 {rendezVous.filter((r: any) => r.statut === 'annule' || r.statut === 'annulé').length}
               </p>
@@ -361,12 +464,14 @@ export default function AdminRendezVousPage() {
             <button
               type="button"
               onClick={() => setStatusFilter('termine')}
-              className={`text-left bg-gray-50 border border-gray-200 rounded-lg p-4 transition-all ${
-                statusFilter === 'termine' ? 'ring-2 ring-gray-500 shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'
+              className={`text-left bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 shadow-sm transition-all ${
+                statusFilter === 'termine'
+                  ? 'ring-2 ring-green-500/60 shadow-md'
+                  : 'hover:shadow-md hover:-translate-y-0.5'
               }`}
             >
-              <p className="text-xs text-gray-700 font-medium mb-1">Terminés</p>
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Terminés</p>
+              <p className="text-2xl font-bold text-green-900">
                 {rendezVous.filter((r: any) => r.statut === 'termine' || r.statut === 'terminé').length}
               </p>
             </button>
@@ -404,7 +509,7 @@ export default function AdminRendezVousPage() {
         )}
 
         {/* Liste des rendez-vous */}
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">{error}</p>
@@ -486,10 +591,10 @@ export default function AdminRendezVousPage() {
                 const statut = rdv.statut || 'en_attente';
                 
                 const getStatutColor = (statut: string) => {
-                  if (statut === 'confirme' || statut === 'confirmé') return 'bg-green-100 text-green-800 border-green-300';
-                  if (statut === 'annule' || statut === 'annulé') return 'bg-red-100 text-red-800 border-red-300';
-                  if (statut === 'termine' || statut === 'terminé') return 'bg-gray-100 text-gray-800 border-gray-300';
-                  return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                  if (statut === 'confirme' || statut === 'confirmé') return 'bg-green-100 text-green-800';
+                  if (statut === 'annule' || statut === 'annulé') return 'bg-red-100 text-red-800';
+                  if (statut === 'termine' || statut === 'terminé') return 'bg-gray-100 text-gray-800';
+                  return 'bg-yellow-100 text-yellow-800';
                 };
 
                 const getStatutLabel = (statut: string) => {
@@ -499,111 +604,127 @@ export default function AdminRendezVousPage() {
                   return 'En attente';
                 };
                 
-                // Déterminer le style en fonction de si le rendez-vous est passé
-                const getCardStyle = () => {
-                  if (isPast && statut !== 'termine' && statut !== 'terminé' && !rdv.effectue) {
-                    return 'bg-red-50 border-red-400 border-2';
+                // Déterminer le style de la bordure gauche selon le statut (comme pour les dossiers)
+                const getCardBorderStyle = () => {
+                  if (rdv.archived) {
+                    return 'border-l-4 border-l-gray-500 border-t border-r border-b border-gray-200 opacity-75';
                   }
-                  if (rdv.effectue) {
-                    return 'bg-green-50/50 border-green-300';
+                  if (statut === 'annule' || statut === 'annulé') {
+                    return 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200';
                   }
-                  if (getStatutColor(statut).split(' ')[0] === 'bg-green-100') {
-                    return 'bg-green-50/50 border-green-300';
+                  if (statut === 'termine' || statut === 'terminé' || rdv.effectue) {
+                    return 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-200';
                   }
-                  if (getStatutColor(statut).split(' ')[0] === 'bg-red-100') {
-                    return 'bg-red-50/50 border-red-300';
+                  if (isPast && !rdv.effectue && statut !== 'annule' && statut !== 'annulé') {
+                    return 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-200';
                   }
-                  if (getStatutColor(statut).split(' ')[0] === 'bg-yellow-100') {
-                    return 'bg-yellow-50/50 border-yellow-300';
+                  if (statut === 'confirme' || statut === 'confirmé') {
+                    return 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-200';
                   }
-                  return 'bg-white border-gray-200';
+                  return 'border-l-4 border-l-yellow-500 border-t border-r border-b border-gray-200';
                 };
                 
                 return (
                   <div
                     key={rdv._id || rdv.id}
-                    className={`border-2 rounded-xl p-5 hover:shadow-lg transition-all duration-200 ${getCardStyle()}`}
+                    className={`border rounded-xl p-5 hover:shadow-xl transition-all duration-200 bg-white ${getCardBorderStyle()}`}
                   >
-                    {/* En-tête */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-lg text-foreground mb-1 line-clamp-1">
-                          {clientName}
+                    {/* En-tête de la carte */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <h3 className="font-bold text-base text-foreground mb-1 line-clamp-2 leading-tight">
+                          {rdv.motif || 'Rendez-vous'}
                         </h3>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {rdv.email}
+                        <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                          {clientName}
                         </p>
+                        {rdv.email && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {rdv.email}
+                          </p>
+                        )}
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatutColor(statut)}`}>
-                        {getStatutLabel(statut)}
-                      </span>
-                    </div>
-
-                    {/* Date et heure */}
-                    <div className="mb-4 pb-4 border-b border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-2xl">📅</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-foreground">
-                            {formattedDate}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            ⏰ {formattedTime}
-                          </p>
-                          {isPast && statut !== 'termine' && statut !== 'terminé' && !rdv.effectue && (
-                            <span className="text-xs text-red-600 font-bold mt-1 inline-block bg-red-100 px-2 py-1 rounded">
-                              ⚠️ Rendez-vous dépassé
-                            </span>
-                          )}
-                          {rdv.effectue && (
-                            <span className="text-xs text-green-700 font-bold mt-1 inline-block bg-green-100 px-2 py-1 rounded">
-                              ✅ Rendez-vous effectué
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${getStatutColor(statut)}`}>
+                          {getStatutLabel(statut)}
+                        </span>
+                        {rdv.archived && (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-800">
+                            📦 Archivé
+                          </span>
+                        )}
+                        {isPast && !rdv.effectue && statut !== 'annule' && statut !== 'annulé' && !rdv.archived && (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-red-100 text-red-800">
+                            ⚠️ Dépassé
+                          </span>
+                        )}
+                        {rdv.effectue ? (
+                          <span className="px-2 py-1 rounded-md text-xs font-semibold bg-green-100 text-green-800">
+                            ✅ Effectué
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 
-                    {/* Informations */}
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">📞</span>
-                        <span className="text-foreground">{rdv.telephone || 'Non renseigné'}</span>
+                    {/* Informations du rendez-vous */}
+                    <div className="space-y-2 mb-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">📅</span>
+                        <span className="font-medium text-foreground">
+                          {dateObj ? dateObj.toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          }) : formattedDate}
+                        </span>
                       </div>
-                      <div className="flex items-start gap-2 text-sm">
-                        <span className="text-muted-foreground">💼</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground">Motif: {rdv.motif || 'Non spécifié'}</p>
-                          {rdv.description && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                              {rdv.description}
-                            </p>
-                          )}
+
+                      {rdv.heure && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">🕐</span>
+                          <span className="font-medium text-foreground">
+                            {formattedTime}
+                          </span>
                         </div>
-                      </div>
-                      {rdv.notes && (
-                        <div className="flex items-start gap-2 text-sm">
+                      )}
+
+                      {rdv.telephone && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">📞</span>
+                          <span className="text-foreground">{rdv.telephone}</span>
+                        </div>
+                      )}
+
+                      {rdv.description && (
+                        <div className="flex items-start gap-2 text-xs">
                           <span className="text-muted-foreground">📝</span>
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            <strong>Notes:</strong> {rdv.notes}
+                          <p className="text-muted-foreground line-clamp-2">
+                            {rdv.description}
                           </p>
                         </div>
                       )}
                     </div>
 
+                    {/* Notes */}
+                    {rdv.notes && (
+                      <div className="mb-3 pt-2 border-t border-gray-100">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          <span className="font-semibold">Notes:</span> {rdv.notes}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Actions */}
-                    <div className="pt-4 border-t border-gray-200 space-y-2">
-                      {/* Case à cocher "Effectué" */}
-                      {isPast && statut !== 'annule' && statut !== 'annulé' && (
-                        <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
-                          <input
-                            type="checkbox"
-                            id={`effectue-${rdv._id || rdv.id}`}
-                            checked={rdv.effectue || false}
-                            onChange={async (e) => {
-                              if (e.target.checked) {
+                    <div className="pt-3 border-t border-gray-200">
+                      <div className="flex items-center justify-end">
+                        <div className="flex items-center gap-2">
+                          {/* Case à cocher "Effectué" */}
+                          {!rdv.effectue && statut !== 'annule' && statut !== 'annulé' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8 border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400"
+                              onClick={async () => {
                                 // Si on coche "effectué", proposer d'ouvrir un dossier
                                 setAppointmentForDossier(rdv);
                                 setDossierFormData({
@@ -614,91 +735,117 @@ export default function AdminRendezVousPage() {
                                   priorite: 'normale'
                                 });
                                 setShowCreateDossierModal(true);
-                              } else {
-                                // Si on décoche, simplement mettre à jour
+                              }}
+                            >
+                              ✅ Marquer effectué
+                            </Button>
+                          )}
+                          {statut === 'en_attente' && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8 border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400"
+                                onClick={async () => {
+                                  try {
+                                    const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { statut: 'confirme' });
+                                    if (response.data.success) {
+                                      await loadAppointments();
+                                    }
+                                  } catch (err: any) {
+                                    console.error('Erreur lors de l\'acceptation:', err);
+                                    setError(err.response?.data?.message || 'Erreur lors de l\'acceptation');
+                                  }
+                                }}
+                              >
+                                ✓ Accepter
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                                onClick={async () => {
+                                  if (confirm('Êtes-vous sûr de vouloir refuser ce rendez-vous ?')) {
+                                    try {
+                                      const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { statut: 'annule' });
+                                      if (response.data.success) {
+                                        await loadAppointments();
+                                      }
+                                    } catch (err: any) {
+                                      console.error('Erreur lors du refus:', err);
+                                      setError(err.response?.data?.message || 'Erreur lors du refus');
+                                    }
+                                  }
+                                }}
+                              >
+                                ✗ Refuser
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-8"
+                            onClick={() => {
+                              const dateObj = rdv.date ? new Date(rdv.date) : new Date();
+                              const formattedDate = dateObj.toISOString().split('T')[0];
+                              
+                              setEditFormData({
+                                statut: rdv.statut || 'en_attente',
+                                date: formattedDate,
+                                heure: rdv.heure || '',
+                                motif: rdv.motif || '',
+                                description: rdv.description || '',
+                                notes: rdv.notes || ''
+                              });
+                              setEditingRdv(rdv);
+                            }}
+                          >
+                            ✏️ Modifier
+                          </Button>
+                          {!rdv.archived ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8 border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                              onClick={async () => {
+                                if (confirm('Êtes-vous sûr de vouloir archiver ce rendez-vous ?')) {
+                                  try {
+                                    const response = await appointmentsAPI.archiveAppointment(rdv._id || rdv.id, true);
+                                    if (response.data.success) {
+                                      await loadAppointments();
+                                    }
+                                  } catch (err: any) {
+                                    console.error('Erreur lors de l\'archivage:', err);
+                                    setError(err.response?.data?.message || 'Erreur lors de l\'archivage');
+                                  }
+                                }
+                              }}
+                            >
+                              📦 Archiver
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8 border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
+                              onClick={async () => {
                                 try {
-                                  const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { 
-                                    effectue: false 
-                                  });
+                                  const response = await appointmentsAPI.archiveAppointment(rdv._id || rdv.id, false);
                                   if (response.data.success) {
                                     await loadAppointments();
                                   }
                                 } catch (err: any) {
-                                  console.error('Erreur lors de la mise à jour:', err);
-                                  setError(err.response?.data?.message || 'Erreur lors de la mise à jour');
+                                  console.error('Erreur lors du désarchivage:', err);
+                                  setError(err.response?.data?.message || 'Erreur lors du désarchivage');
                                 }
-                              }
-                            }}
-                            className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
-                          />
-                          <label 
-                            htmlFor={`effectue-${rdv._id || rdv.id}`}
-                            className="text-sm font-medium text-foreground cursor-pointer"
-                          >
-                            Rendez-vous effectué
-                          </label>
+                              }}
+                            >
+                              📂 Désarchiver
+                            </Button>
+                          )}
                         </div>
-                      )}
-                      {statut === 'en_attente' && (
-                        <div className="flex gap-2 mb-2">
-                          <Button
-                            variant="default"
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs"
-                            onClick={async () => {
-                              try {
-                                const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { statut: 'confirme' });
-                                if (response.data.success) {
-                                  await loadAppointments();
-                                }
-                              } catch (err: any) {
-                                console.error('Erreur lors de l\'acceptation:', err);
-                                setError(err.response?.data?.message || 'Erreur lors de l\'acceptation');
-                              }
-                            }}
-                          >
-                            ✓ Accepter
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            className="flex-1 text-xs"
-                            onClick={async () => {
-                              if (confirm('Êtes-vous sûr de vouloir refuser ce rendez-vous ?')) {
-                                try {
-                                  const response = await appointmentsAPI.updateAppointment(rdv._id || rdv.id, { statut: 'annule' });
-                                  if (response.data.success) {
-                                    await loadAppointments();
-                                  }
-                                } catch (err: any) {
-                                  console.error('Erreur lors du refus:', err);
-                                  setError(err.response?.data?.message || 'Erreur lors du refus');
-                                }
-                              }
-                            }}
-                          >
-                            ✗ Refuser
-                          </Button>
-                        </div>
-                      )}
-                      <Button
-                        variant="outline"
-                        className="w-full text-xs"
-                        onClick={() => {
-                          const dateObj = rdv.date ? new Date(rdv.date) : new Date();
-                          const formattedDate = dateObj.toISOString().split('T')[0];
-                          
-                          setEditFormData({
-                            statut: rdv.statut || 'en_attente',
-                            date: formattedDate,
-                            heure: rdv.heure || '',
-                            motif: rdv.motif || '',
-                            description: rdv.description || '',
-                            notes: rdv.notes || ''
-                          });
-                          setEditingRdv(rdv);
-                        }}
-                      >
-                        ✏️ Modifier le rendez-vous
-                      </Button>
+                      </div>
                     </div>
                   </div>
                 );
