@@ -242,6 +242,7 @@ async function sendNotificationSMS(to, type, data = {}, options = {}) {
         message_received: `Vous avez reçu un nouveau message de {{senderName}}. Connectez-vous pour le consulter. Paw Legal.`,
         task_assigned: `Une nouvelle tâche vous a été assignée: {{taskTitle}}. Paw Legal.`,
         task_reminder: `Rappel: La tâche "{{taskTitle}}" est due le {{dateEcheance}}. Paw Legal.`,
+        task_overdue: `⚠️ ALERTE: La tâche "{{taskTitle}}" assignée à {{assignedTo}} est en retard de {{daysOverdue}} jour(s). Échéance: {{deadlineDate}}. Paw Legal.`,
       };
       
       const defaultTemplate = defaultMessages[type] || data.message || 'Vous avez reçu une notification de Paw Legal.';

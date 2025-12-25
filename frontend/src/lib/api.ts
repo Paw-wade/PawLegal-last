@@ -601,6 +601,11 @@ export const tasksAPI = {
   deleteTask: (id: string) => {
     return api.delete(`/tasks/${id}`);
   },
+  
+  // Vérifier et notifier les tâches en retard (Admin)
+  checkOverdueTasks: () => {
+    return api.post('/tasks/check-overdue');
+  },
 };
 
 export const dossiersAPI = {
@@ -671,15 +676,19 @@ export const notificationsAPI = {
 };
 
 export const messagesAPI = {
-  // Récupérer les messages
-  getMessages: (params?: { type?: 'all' | 'received' | 'sent' | 'unread' }) =>
+  // Récupérer les messages (retourne aussi les threads)
+  getMessages: (params?: { type?: 'all' | 'received' | 'sent' | 'unread'; dossierId?: string; expediteurId?: string; destinataireId?: string }) =>
     api.get('/messages', { params }),
+  
+  // Récupérer un thread complet par threadId
+  getThread: (threadId: string) =>
+    api.get(`/messages/thread/${threadId}`),
   
   // Récupérer le nombre de messages non lus
   getUnreadCount: () =>
     api.get('/messages/unread-count'),
   
-  // Récupérer un message spécifique
+  // Récupérer un message spécifique (retourne aussi le thread complet)
   getMessage: (id: string) =>
     api.get(`/messages/${id}`),
   

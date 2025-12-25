@@ -87,6 +87,19 @@ const taskSchema = new mongoose.Schema({
   dateEffectue: {
     type: Date
   },
+  completedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false
+  },
+  archived: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  archivedAt: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -103,6 +116,7 @@ taskSchema.index({ createdBy: 1 });
 taskSchema.index({ dossier: 1 });
 taskSchema.index({ dateEcheance: 1 });
 taskSchema.index({ statut: 1, priorite: 1 });
+taskSchema.index({ archived: 1, statut: 1 });
 
 // Mettre à jour updatedAt avant de sauvegarder et normaliser assignedTo
 taskSchema.pre('save', function(next) {

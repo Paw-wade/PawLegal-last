@@ -60,6 +60,7 @@ export default function AdminMessagesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<any[]>([]);
+  const [threads, setThreads] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'received' | 'sent' | 'unread'>('all');
@@ -132,9 +133,10 @@ export default function AdminMessagesPage() {
     setIsLoading(true);
     setError(null);
     try {
+      const allThreads: any[] = [];
       const allMessages: any[] = [];
       
-      // Charger les messages internes
+      // Charger les messages internes (threads)
       try {
         const params: any = { type: filter };
         if (selectedDossierId) {
@@ -148,11 +150,21 @@ export default function AdminMessagesPage() {
         }
         const response = await messagesAPI.getMessages(params);
         if (response.data.success) {
+          // Utiliser les threads si disponibles, sinon fallback sur messages
+          if (response.data.threads && response.data.threads.length > 0) {
+            const internalThreads = response.data.threads.map((t: any) => ({ 
+              ...t, 
+              isContactThread: false 
+            }));
+            allThreads.push(...internalThreads);
+          } else {
+            // Fallback : créer des threads à partir des messages
           const internalMessages = (response.data.messages || []).map((m: any) => ({ 
             ...m, 
             isContactMessage: false 
           }));
           allMessages.push(...internalMessages);
+          }
         }
       } catch (err: any) {
         console.error('Erreur lors du chargement des messages internes:', err);
@@ -187,14 +199,21 @@ export default function AdminMessagesPage() {
         }
       }
       
+      // Utiliser les threads si disponibles, sinon utiliser les messages
+      if (allThreads.length > 0) {
+        setThreads(allThreads);
+        setMessages([]);
+      } else {
       // Trier par date de création (plus récent en premier)
       allMessages.sort((a: any, b: any) => {
         const dateA = new Date(a.createdAt).getTime();
         const dateB = new Date(b.createdAt).getTime();
         return dateB - dateA;
       });
-      
       setMessages(allMessages);
+        setThreads([]);
+      }
+      
       setSelectedMessages(new Set()); // Réinitialiser la sélection
     } catch (err: any) {
       console.error('Erreur lors du chargement des messages:', err);
@@ -509,13 +528,18 @@ export default function AdminMessagesPage() {
   }
 
   // IMPORTANT: "Non lus" = non lus PAR MOI (uniquement si je suis destinataire ou en copie, ou si c'est un message de contact)
-  const unreadCount = messages.filter(m => {
+  const unreadCount = threads.length > 0
+    ? threads.filter(t => t.hasUnread).length
+    : messages.filter(m => {
     if (m.isContactMessage) {
       // Pour les messages de contact, tous les admins peuvent les marquer comme lus
       return !isMessageRead(m);
     }
     return canCurrentUserMarkAsRead(m) && !isMessageRead(m);
   }).length;
+  
+  const displayItems = threads.length > 0 ? threads : messages;
+  const isThreadView = threads.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
@@ -697,15 +721,184 @@ export default function AdminMessagesPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Chargement des messages...</p>
           </div>
-        ) : messages.length === 0 ? (
+        ) : displayItems.length === 0 ? (
           <div className="bg-white rounded-xl shadow-lg p-16 text-center border border-border">
             <div className="text-6xl mb-6">📭</div>
             <p className="text-muted-foreground mb-6 text-lg">
-              Aucun message {filter !== 'all' ? `(${filter})` : ''}
+              Aucun {isThreadView ? 'thread' : 'message'} {filter !== 'all' ? `(${filter})` : ''}
             </p>
             <Button onClick={() => setShowComposeModal(true)}>Envoyer un message</Button>
           </div>
+        ) : isThreadView ? (
+          // Affichage des threads
+          <div className="space-y-3">
+            {threads.map((thread) => {
+              const rootMessage = thread.root || thread.lastMessage;
+              const lastMessage = thread.lastMessage;
+              const userId = (session?.user as any)?.id;
+              
+              // Déterminer les participants (noms)
+              const participants: any[] = [];
+              const participantsMap = new Map();
+              
+              if (thread.messages && thread.messages.length > 0) {
+                thread.messages.forEach((m: any) => {
+                  if (m.expediteur?._id && !participantsMap.has(m.expediteur._id.toString())) {
+                    participantsMap.set(m.expediteur._id.toString(), m.expediteur);
+                    participants.push(m.expediteur);
+                  }
+                  if (m.destinataires && Array.isArray(m.destinataires)) {
+                    m.destinataires.forEach((d: any) => {
+                      if (d._id && !participantsMap.has(d._id.toString())) {
+                        participantsMap.set(d._id.toString(), d);
+                        participants.push(d);
+                      }
+                    });
+                  }
+                });
+              }
+              
+              const participantsNames = participants
+                .map(p => `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.email)
+                .filter(Boolean)
+                .slice(0, 3); // Limiter à 3 pour l'affichage
+              
+              const hasMoreParticipants = participants.length > 3;
+              
+              // Formater la date du dernier message
+              const lastMessageDate = new Date(lastMessage.createdAt);
+              const isToday = lastMessageDate.toDateString() === new Date().toDateString();
+              const isYesterday = lastMessageDate.toDateString() === new Date(Date.now() - 86400000).toDateString();
+              const dateDisplay = isToday 
+                ? `Aujourd'hui à ${lastMessageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : isYesterday
+                ? `Hier à ${lastMessageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : formatDate(lastMessage.createdAt);
+              
+              const expediteurLastMessage = lastMessage.expediteur;
+              const expediteurName = expediteurLastMessage?.firstName && expediteurLastMessage?.lastName
+                ? `${expediteurLastMessage.firstName} ${expediteurLastMessage.lastName}`
+                : expediteurLastMessage?.email || 'Expéditeur inconnu';
+              const expediteurInitials = expediteurLastMessage?.firstName && expediteurLastMessage?.lastName
+                ? `${expediteurLastMessage.firstName[0]}${expediteurLastMessage.lastName[0]}`
+                : expediteurLastMessage?.email?.[0]?.toUpperCase() || '?';
+              
+              return (
+                <div
+                  key={thread.threadId}
+                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-xl cursor-pointer ${
+                    thread.hasUnread
+                      ? 'border-primary bg-gradient-to-r from-primary/5 via-primary/2 to-white' 
+                      : 'border-gray-300 bg-white'
+                  }`}
+                  onClick={() => {
+                    router.push(`/admin/messages/${thread.root?._id || thread.lastMessage?._id || ''}`);
+                  }}
+                >
+                  <div className="p-6">
+                    <div className="flex items-start gap-4">
+                      {/* Avatar du dernier expéditeur */}
+                      <div className={`flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md ${
+                        thread.hasUnread 
+                          ? 'bg-gradient-to-br from-primary to-primary/80' 
+                          : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                      }`}>
+                        {expediteurInitials}
+                      </div>
+
+                      {/* Contenu principal */}
+                      <div className="flex-1 min-w-0">
+                        {/* En-tête avec sujet et badges */}
+                        <div className="flex items-start justify-between gap-4 mb-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <h3 className={`font-bold text-lg ${
+                                thread.hasUnread ? 'text-gray-900' : 'text-gray-700'
+                              }`}>
+                                {rootMessage.sujet || rootMessage.subject}
+                              </h3>
+                              {thread.hasUnread && (
+                                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-primary text-white text-xs font-bold shadow-sm">
+                                  ✉️ Nouveau
+                                </span>
+                              )}
+                              <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                thread.hasUnread 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {thread.hasUnread ? '● Non lu' : '✓ Lu'}
+                              </span>
+                              {thread.messageCount > 1 && (
+                                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                                  {thread.messageCount} message{thread.messageCount > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Aperçu du dernier message */}
+                            <p className={`text-sm mb-3 line-clamp-2 ${
+                              thread.hasUnread ? 'text-gray-800' : 'text-gray-600'
+                            }`}>
+                              {lastMessage.contenu || lastMessage.message}
+                            </p>
+                            
+                            {/* Métadonnées */}
+                            <div className="space-y-2 text-xs">
+                              {/* Participants */}
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground font-medium min-w-[90px]">
+                                  👥 Participants:
+                                </span>
+                                <span className="text-foreground font-semibold">
+                                  {participantsNames.join(', ')}
+                                  {hasMoreParticipants && ` et ${participants.length - 3} autre${participants.length - 3 > 1 ? 's' : ''}`}
+                                </span>
+                              </div>
+                              
+                              {/* Dernier message */}
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground font-medium min-w-[90px]">
+                                  💬 Dernier message:
+                                </span>
+                                <span className="text-foreground">
+                                  {expediteurName}
+                                </span>
+                              </div>
+                              
+                              {/* Date */}
+                              <div className="flex items-center gap-4 flex-wrap pt-1 border-t border-gray-100">
+                                <div className="flex items-center gap-1.5">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="text-muted-foreground font-medium">{dateDisplay}</span>
+                                </div>
+                                
+                                {/* Dossier lié */}
+                                {thread.dossier && thread.dossier.titre && (
+                                  <div className="flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                    </svg>
+                                    <span className="text-muted-foreground font-medium">
+                                      {thread.dossier.titre}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          // Affichage des messages (fallback)
           <div className="space-y-3">
             {/* Checkbox pour sélectionner tous */}
             <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-lg border border-border">
@@ -738,17 +931,41 @@ export default function AdminMessagesPage() {
               const isRead = isMessageRead(message);
               const messageId = message._id || message.id;
               const isSelected = selectedMessages.has(messageId);
+              const expediteurName = expediteur?.firstName && expediteur?.lastName
+                ? `${expediteur.firstName} ${expediteur.lastName}`
+                : expediteur?.email || 'Expéditeur inconnu';
+              const expediteurInitials = expediteur?.firstName && expediteur?.lastName
+                ? `${expediteur.firstName[0]}${expediteur.lastName[0]}`
+                : expediteur?.email?.[0]?.toUpperCase() || '?';
+              
+              // Formater la date avec plus de détails
+              const messageDate = new Date(message.createdAt);
+              const isToday = messageDate.toDateString() === new Date().toDateString();
+              const isYesterday = messageDate.toDateString() === new Date(Date.now() - 86400000).toDateString();
+              const dateDisplay = isToday 
+                ? `Aujourd'hui à ${messageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : isYesterday
+                ? `Hier à ${messageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : formatDate(message.createdAt);
+              
+              // Obtenir les destinataires (sauf pour les messages reçus)
+              const destinatairesList = !isReceived && message.destinataires
+                ? message.destinataires.map((d: any) => `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email).filter(Boolean)
+                : [];
+              
+              // Obtenir la copie
+              const copieList = message.copie?.map((c: any) => `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email).filter(Boolean) || [];
               
               return (
                 <div
                   key={messageId}
-                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-lg ${
+                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-xl ${
                     (isReceived && !isRead)
-                      ? 'border-primary bg-gradient-to-r from-primary/5 to-white' 
+                      ? 'border-primary bg-gradient-to-r from-primary/5 via-primary/2 to-white' 
                       : 'border-gray-300 bg-white'
                   } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
-                  <div className="p-5">
+                  <div className="p-6">
                     <div className="flex items-start gap-4">
                       {/* Checkbox */}
                       <input
@@ -756,23 +973,24 @@ export default function AdminMessagesPage() {
                         checked={isSelected}
                         onChange={() => toggleMessageSelection(messageId)}
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-1 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                        className="mt-1.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
                       />
 
-                      {/* Avatar/Initiale */}
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
-                        (isReceived && !isRead) ? 'bg-primary' : 'bg-gray-400'
+                      {/* Avatar/Initiale avec gradient */}
+                      <div className={`flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md ${
+                        (isReceived && !isRead) 
+                          ? 'bg-gradient-to-br from-primary to-primary/80' 
+                          : 'bg-gradient-to-br from-gray-400 to-gray-500'
                       }`}>
-                        {expediteur?.firstName?.[0]?.toUpperCase() || expediteur?.email?.[0]?.toUpperCase() || '?'}
+                        {expediteurInitials}
                       </div>
 
-                      {/* Contenu */}
+                      {/* Contenu principal */}
                       <div 
                         className="flex-1 cursor-pointer min-w-0"
                         onClick={async () => {
                           setSelectedMessage(message);
                           if (!isRead && (isContactMessage || canCurrentUserMarkAsRead(message))) {
-                            // Supprimer le badge "Nouveau" immédiatement côté UI
                             markMessageAsReadOptimistic(messageId);
                             if (isContactMessage) {
                               const { contactAPI } = await import('@/lib/api');
@@ -783,54 +1001,101 @@ export default function AdminMessagesPage() {
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between gap-4 mb-2">
+                        {/* En-tête avec sujet et badges */}
+                        <div className="flex items-start justify-between gap-4 mb-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className={`font-semibold text-lg truncate ${
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <h3 className={`font-bold text-lg ${
                                 isRead ? 'text-gray-700' : 'text-gray-900'
                               }`}>
                                 {isContactMessage ? message.subject : message.sujet}
                               </h3>
                               {isReceived && !isRead && (
-                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-primary text-white text-xs font-semibold">
-                                  Nouveau
+                                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-primary text-white text-xs font-bold shadow-sm">
+                                  ✉️ Nouveau
                                 </span>
                               )}
                               {isContactMessage && (
-                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">
-                                  Envoyé depuis le formulaire de contact
+                                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-blue-500 text-white text-xs font-semibold">
+                                  📋 Contact
                                 </span>
                               )}
+                              <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                isRead 
+                                  ? 'bg-gray-100 text-gray-600' 
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {isRead ? '✓ Lu' : '● Non lu'}
+                              </span>
                             </div>
-                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                            
+                            {/* Aperçu du contenu */}
+                            <p className={`text-sm mb-3 line-clamp-2 ${
+                              isRead ? 'text-gray-600' : 'text-gray-800'
+                            }`}>
                               {isContactMessage ? message.message : message.contenu}
                             </p>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                              <span className="font-medium">
-                                {isReceived ? 'De' : 'À'}:{' '}
-                                <span className="text-foreground">
+                            
+                            {/* Métadonnées détaillées */}
+                            <div className="space-y-2 text-xs">
+                              {/* Expéditeur/Destinataire */}
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground font-medium min-w-[70px]">
+                                  {isReceived ? '📤 De' : '📥 À'}:
+                                </span>
+                                <span className="text-foreground font-semibold">
                                   {isReceived 
-                                    ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
+                                    ? expediteurName
                                     : message.typeMessage === 'user_to_admins'
-                                    ? 'Tous les administrateurs'
-                                    : message.destinataires?.map((d: any) => 
-                                        `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
-                                      ).join(', ')
+                                    ? '👥 Tous les administrateurs'
+                                    : destinatairesList.length > 0
+                                    ? destinatairesList.join(', ')
+                                    : 'Aucun destinataire'
                                   }
                                 </span>
-                              </span>
-                              <span>•</span>
-                              <span>{formatDate(message.createdAt)}</span>
+                              </div>
+                              
+                              {/* Copie */}
+                              {copieList.length > 0 && (
+                                <div className="flex items-start gap-2">
+                                  <span className="text-muted-foreground font-medium min-w-[70px]">📋 Copie:</span>
+                                  <span className="text-foreground">{copieList.join(', ')}</span>
+                                </div>
+                              )}
+                              
+                              {/* Date et pièces jointes */}
+                              <div className="flex items-center gap-4 flex-wrap pt-1 border-t border-gray-100">
+                                <div className="flex items-center gap-1.5">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="text-muted-foreground font-medium">{dateDisplay}</span>
+                                </div>
+                                
                               {(isContactMessage ? message.documents : message.piecesJointes) && 
                                (isContactMessage ? message.documents : message.piecesJointes).length > 0 && (
-                                <>
-                                  <span>•</span>
-                                  <span className="flex items-center gap-1">
-                                    <span>📎</span>
-                                    <span>{(isContactMessage ? message.documents : message.piecesJointes).length} pièce(s) jointe(s)</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                    </svg>
+                                    <span className="text-muted-foreground font-medium">
+                                      {(isContactMessage ? message.documents : message.piecesJointes).length} pièce{(isContactMessage ? message.documents : message.piecesJointes).length > 1 ? 's' : ''} jointe{(isContactMessage ? message.documents : message.piecesJointes).length > 1 ? 's' : ''}
                                   </span>
-                                </>
-                              )}
+                                  </div>
+                                )}
+                                
+                                {/* Dossier lié */}
+                                {message.dossier && message.dossier.titre && (
+                                  <div className="flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                    </svg>
+                                    <span className="text-muted-foreground font-medium">
+                                      Dossier: {message.dossier.titre}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>

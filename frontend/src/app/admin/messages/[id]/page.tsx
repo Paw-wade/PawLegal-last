@@ -54,6 +54,8 @@ export default function AdminMessageDetailPage() {
   const messageId = params?.id as string;
   
   const [message, setMessage] = useState<any>(null);
+  const [threadMessages, setThreadMessages] = useState<any[]>([]);
+  const [rootMessage, setRootMessage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messageNotifications, setMessageNotifications] = useState<any[]>([]);
@@ -144,7 +146,22 @@ export default function AdminMessageDetailPage() {
       }
       
       if (response && response.data.success && fetchedMessage) {
-        setMessage({ ...fetchedMessage, isContactMessage });
+        const msg = { ...fetchedMessage, isContactMessage };
+        setMessage(msg);
+        
+        // Si le backend retourne les messages du thread, les utiliser
+        if (response.data.threadMessages && Array.isArray(response.data.threadMessages)) {
+          setThreadMessages(response.data.threadMessages);
+          if (response.data.root) {
+            setRootMessage(response.data.root);
+          } else {
+            setRootMessage(response.data.threadMessages.find((m: any) => !m.messageParent) || response.data.threadMessages[0]);
+          }
+        } else {
+          // Sinon, créer un thread avec un seul message
+          setThreadMessages([msg]);
+          setRootMessage(msg);
+        }
 
         // Marquer comme lu automatiquement à l'ouverture
         const userId = (session?.user as any)?.id?.toString?.();

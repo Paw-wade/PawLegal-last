@@ -366,11 +366,13 @@ const startServer = async () => {
       
       // Démarrer le système de vérification des échéances de tâches
       try {
-        const { checkTaskDeadlines } = require('./utils/taskDeadlineNotifications');
+        const { checkTaskDeadlines, checkOverdueTasks } = require('./utils/taskDeadlineNotifications');
         
         // Vérifier immédiatement au démarrage
         console.log('⏰ Vérification initiale des échéances de tâches...');
         await checkTaskDeadlines();
+        console.log('🔔 Vérification initiale des tâches en retard...');
+        await checkOverdueTasks();
         
         // Vérifier toutes les 24 heures (à minuit)
         const scheduleDeadlineCheck = () => {
@@ -383,8 +385,12 @@ const startServer = async () => {
           
           setTimeout(() => {
             checkTaskDeadlines();
+            checkOverdueTasks();
             // Répéter toutes les 24 heures
-            setInterval(checkTaskDeadlines, 24 * 60 * 60 * 1000);
+            setInterval(() => {
+              checkTaskDeadlines();
+              checkOverdueTasks();
+            }, 24 * 60 * 60 * 1000);
           }, msUntilMidnight);
         };
         

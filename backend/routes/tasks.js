@@ -6,13 +6,14 @@ const Task = require('../models/Task');
 const User = require('../models/User');
 const Dossier = require('../models/Dossier');
 const Notification = require('../models/Notification');
+const { sendNotificationSMS, formatPhoneNumber } = require('../sendSMS');
 
 // @route   GET /api/tasks
 // @desc    Récupérer toutes les tâches (Admin seulement)
 // @access  Private/Admin
 router.get('/', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const { statut, assignedTo, createdBy, dossier, priorite } = req.query;
+    const { statut, assignedTo, createdBy, dossier, priorite, includeArchived } = req.query;
     
     const filter = {};
     if (statut) filter.statut = statut;
@@ -20,10 +21,16 @@ router.get('/', protect, authorize('admin', 'superadmin'), async (req, res) => {
     if (createdBy) filter.createdBy = createdBy;
     if (dossier) filter.dossier = dossier;
     if (priorite) filter.priorite = priorite;
+    
+    // Par défaut, exclure les tâches archivées sauf si includeArchived=true
+    if (includeArchived !== 'true') {
+      filter.archived = { $ne: true };
+    }
 
     const tasks = await Task.find(filter)
       .populate('assignedTo', 'firstName lastName email role')
       .populate('createdBy', 'firstName lastName email role')
+      .populate('completedBy', 'firstName lastName email role')
       .populate('dossier', 'titre numero statut')
       .sort({ createdAt: -1 });
 
@@ -47,12 +54,17 @@ router.get('/', protect, authorize('admin', 'superadmin'), async (req, res) => {
 // @access  Private
 router.get('/my', protect, async (req, res) => {
   try {
-    const { statut, priorite } = req.query;
+    const { statut, priorite, includeArchived } = req.query;
     
     // Filtrer les tâches où l'utilisateur est dans le tableau assignedTo
     const filter = { assignedTo: req.user.id };
     if (statut) filter.statut = statut;
     if (priorite) filter.priorite = priorite;
+    
+    // Par défaut, exclure les tâches archivées sauf si includeArchived=true
+    if (includeArchived !== 'true') {
+      filter.archived = { $ne: true };
+    }
 
     const tasks = await Task.find(filter)
       .populate('assignedTo', 'firstName lastName email role')
@@ -83,6 +95,7 @@ router.get('/:id', protect, async (req, res) => {
     const task = await Task.findById(req.params.id)
       .populate('assignedTo', 'firstName lastName email role')
       .populate('createdBy', 'firstName lastName email role')
+      .populate('completedBy', 'firstName lastName email role')
       .populate('dossier', 'titre numero statut')
       .populate('commentaires.utilisateur', 'firstName lastName email role');
 
@@ -241,33 +254,36 @@ router.post(
       const taskPopulated = await Task.findById(task._id)
         .populate('assignedTo', 'firstName lastName email role')
         .populate('createdBy', 'firstName lastName email role')
+        .populate('completedBy', 'firstName lastName email role')
         .populate('dossier', 'titre numero statut');
 
-      // Notifier tous les utilisateurs assignés à la nouvelle tâche
-      try {
-        const creator = req.user;
-        const creatorName = `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.email;
+      // Notifier tous les utilisateurs assignés à la nouvelle tâche (seulement s'il y en a)
+      if (assignedToArray.length > 0) {
+        try {
+          const creator = req.user;
+          const creatorName = `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.email;
 
-        for (const assignedUserId of assignedToArray) {
-          try {
-            await Notification.create({
-              user: assignedUserId,
-              type: 'other',
-              titre: 'Nouvelle tâche assignée',
-              message: `${creatorName} vous a assigné une nouvelle tâche : "${task.titre}".`,
-              lien: '/admin/taches',
-              metadata: {
-                taskId: task._id.toString(),
-                dossierId: dossier || null,
-                createdBy: creator._id.toString()
-              }
-            });
-          } catch (notifError) {
-            console.error('Erreur lors de la notification d\'un utilisateur assigné:', notifError);
+          for (const assignedUserId of assignedToArray) {
+            try {
+              await Notification.create({
+                user: assignedUserId,
+                type: 'other',
+                titre: 'Nouvelle tâche assignée',
+                message: `${creatorName} vous a assigné une nouvelle tâche : "${task.titre}".`,
+                lien: '/admin/taches',
+                metadata: {
+                  taskId: task._id.toString(),
+                  dossierId: dossier || null,
+                  createdBy: creator._id.toString()
+                }
+              });
+            } catch (notifError) {
+              console.error('Erreur lors de la notification d\'un utilisateur assigné:', notifError);
+            }
           }
+        } catch (notifError) {
+          console.error('Erreur lors de la notification des utilisateurs assignés:', notifError);
         }
-      } catch (notifError) {
-        console.error('Erreur lors de la notification des utilisateurs assignés:', notifError);
       }
 
       // Si la tâche est liée à un dossier, notifier les autres membres de l'équipe du dossier
@@ -417,22 +433,15 @@ router.put(
         commentaireEffectue
       } = req.body;
 
-      // Normaliser assignedTo en tableau si fourni
+      // Normaliser assignedTo en tableau si fourni (optionnel)
       let assignedToArray = null;
       if (assignedTo !== undefined) {
         if (Array.isArray(assignedTo)) {
-          assignedToArray = assignedTo;
+          assignedToArray = assignedTo.filter(id => id); // Filtrer les valeurs vides
         } else if (assignedTo) {
           assignedToArray = [assignedTo];
         } else {
-          assignedToArray = [];
-        }
-
-        if (assignedToArray.length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'La tâche doit être assignée à au moins un membre'
-          });
+          assignedToArray = []; // Permettre un tableau vide
         }
 
         // Seuls les admins peuvent réassigner
@@ -443,13 +452,15 @@ router.put(
           });
         }
 
-        // Vérifier que tous les utilisateurs assignés existent
-        const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
-        if (assignedUsers.length !== assignedToArray.length) {
-          return res.status(404).json({
-            success: false,
-            message: 'Un ou plusieurs utilisateurs assignés non trouvés'
-          });
+        // Vérifier que tous les utilisateurs assignés existent (seulement s'il y en a)
+        if (assignedToArray.length > 0) {
+          const assignedUsers = await User.find({ _id: { $in: assignedToArray } });
+          if (assignedUsers.length !== assignedToArray.length) {
+            return res.status(404).json({
+              success: false,
+              message: 'Un ou plusieurs utilisateurs assignés non trouvés'
+            });
+          }
         }
       }
 
@@ -481,12 +492,13 @@ router.put(
       if (dossier !== undefined) task.dossier = dossier || null;
       if (notes !== undefined) task.notes = notes;
 
-      // Gérer le statut effectué (seul l'utilisateur assigné peut modifier)
+      // Gérer le statut effectué (n'importe quel utilisateur connecté peut marquer une tâche comme effectuée)
       const wasEffectue = task.effectue;
-      if (req.body.effectue !== undefined && isAssigned) {
+      if (req.body.effectue !== undefined) {
         task.effectue = req.body.effectue;
         if (req.body.effectue) {
           task.dateEffectue = new Date();
+          task.completedBy = req.user.id; // Enregistrer qui a effectué la tâche
           // Si marqué comme effectué, mettre le statut à "termine" si ce n'est pas déjà fait
           if (task.statut !== 'termine') {
             task.statut = 'termine';
@@ -494,41 +506,76 @@ router.put(
               task.dateFin = new Date();
             }
           }
+          // Archiver automatiquement la tâche terminée
+          if (!task.archived) {
+            task.archived = true;
+            task.archivedAt = new Date();
+          }
         } else {
           task.dateEffectue = null;
+          task.completedBy = null;
+          // Désarchiver si la tâche n'est plus effectuée
+          if (task.archived) {
+            task.archived = false;
+            task.archivedAt = null;
+          }
         }
       }
       
-      // Gérer le commentaire (seul l'utilisateur assigné peut modifier)
-      if (req.body.commentaireEffectue !== undefined && isAssigned) {
+      // Gérer le commentaire (peut être modifié par n'importe qui si la tâche est marquée comme effectuée)
+      if (req.body.commentaireEffectue !== undefined) {
         task.commentaireEffectue = req.body.commentaireEffectue || null;
       }
 
-      // Si le statut passe à "termine", enregistrer la date de fin
-      if (statut === 'termine' && !task.dateFin) {
-        task.dateFin = new Date();
+      // Si le statut passe à "termine", enregistrer la date de fin et archiver
+      if (statut === 'termine' || (statut === undefined && task.statut === 'termine' && oldStatut !== 'termine')) {
+        if (!task.dateFin) {
+          task.dateFin = new Date();
+        }
+        // Archiver automatiquement la tâche terminée
+        if (!task.archived) {
+          task.archived = true;
+          task.archivedAt = new Date();
+        }
+      } else if (statut !== undefined && statut !== 'termine' && oldStatut === 'termine') {
+        // Si le statut change de "termine" à autre chose, désarchiver
+        if (task.archived) {
+          task.archived = false;
+          task.archivedAt = null;
+        }
       }
 
-      // Créer une notification pour le créateur si la tâche est marquée comme effectuée
-      if (req.body.effectue === true && !wasEffectue && task.createdBy) {
+      // Créer des notifications pour tous les membres de l'équipe si la tâche est marquée comme effectuée
+      if (req.body.effectue === true && !wasEffectue) {
         try {
-          const assignedUser = await User.findById(req.user.id);
-          const assignedUserName = assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Un utilisateur';
+          const completedUser = await User.findById(req.user.id);
+          const completedUserName = completedUser ? `${completedUser.firstName} ${completedUser.lastName}` : 'Un utilisateur';
           
-          await Notification.create({
-            user: task.createdBy,
+          // Récupérer tous les utilisateurs de l'équipe (admins et superadmins)
+          const teamUsers = await User.find({ 
+            role: { $in: ['admin', 'superadmin'] },
+            _id: { $ne: req.user.id } // Exclure l'utilisateur qui a effectué la tâche
+          });
+          
+          // Créer une notification pour chaque membre de l'équipe
+          const notifications = teamUsers.map(user => ({
+            user: user._id,
             type: 'other',
             titre: 'Tâche effectuée',
-            message: `${assignedUserName} a marqué la tâche "${task.titre}" comme effectuée.${req.body.commentaireEffectue ? ` Commentaire: ${req.body.commentaireEffectue}` : ''}`,
+            message: `${completedUserName} a marqué la tâche "${task.titre || 'Sans titre'}" comme effectuée.${req.body.commentaireEffectue ? ` Commentaire: ${req.body.commentaireEffectue}` : ''}`,
             lien: `/admin/taches`,
             metadata: {
               taskId: task._id.toString(),
-              assignedUserId: req.user.id,
+              completedBy: req.user.id,
               commentaire: req.body.commentaireEffectue || null
             }
-          });
+          }));
+          
+          if (notifications.length > 0) {
+            await Notification.insertMany(notifications);
+          }
         } catch (notifError) {
-          console.error('Erreur lors de la création de la notification:', notifError);
+          console.error('Erreur lors de la création des notifications:', notifError);
         }
       }
 
@@ -633,6 +680,7 @@ router.put(
       const taskPopulated = await Task.findById(task._id)
         .populate('assignedTo', 'firstName lastName email role')
         .populate('createdBy', 'firstName lastName email role')
+        .populate('completedBy', 'firstName lastName email role')
         .populate('dossier', 'titre numero statut');
 
       console.log('✅ Tâche mise à jour avec succès');
@@ -800,6 +848,65 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
     });
   } catch (error) {
     console.error('Erreur lors de la suppression de la tâche:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/tasks/check-overdue
+// @desc    Vérifier et notifier les tâches en retard (Admin seulement)
+// @access  Private/Admin
+router.post('/check-overdue', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { checkOverdueTasks } = require('../utils/taskDeadlineNotifications');
+    const result = await checkOverdueTasks();
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erreur lors de la vérification des tâches en retard:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// @route   PUT /api/tasks/:id/archive
+// @desc    Archiver ou désarchiver une tâche (Admin seulement)
+// @access  Private/Admin
+router.put('/:id/archive', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { archived } = req.body;
+    
+    if (typeof archived !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Le paramètre "archived" doit être un booléen'
+      });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tâche non trouvée'
+      });
+    }
+
+    task.archived = archived;
+    task.archivedAt = archived ? new Date() : null;
+    await task.save();
+
+    res.json({
+      success: true,
+      message: archived ? 'Tâche archivée avec succès' : 'Tâche désarchivée avec succès',
+      task
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'archivage/désarchivage de la tâche:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur',

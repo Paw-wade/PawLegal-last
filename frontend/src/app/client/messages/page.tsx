@@ -630,16 +630,36 @@ export default function MessagesPage() {
               const messageId = message._id || message.id;
               const isSelected = selectedMessages.has(messageId);
               
+              const expediteurName = expediteur?.firstName && expediteur?.lastName
+                ? `${expediteur.firstName} ${expediteur.lastName}`
+                : expediteur?.email || 'Expéditeur inconnu';
+              const expediteurInitials = expediteur?.firstName && expediteur?.lastName
+                ? `${expediteur.firstName[0]}${expediteur.lastName[0]}`
+                : expediteur?.email?.[0]?.toUpperCase() || '?';
+              
+              // Formater la date avec plus de détails
+              const messageDate = new Date(message.createdAt);
+              const isToday = messageDate.toDateString() === new Date().toDateString();
+              const isYesterday = messageDate.toDateString() === new Date(Date.now() - 86400000).toDateString();
+              const dateDisplay = isToday 
+                ? `Aujourd'hui à ${messageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : isYesterday
+                ? `Hier à ${messageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                : formatDate(message.createdAt);
+              
+              // Obtenir la copie
+              const copieList = message.copie?.map((c: any) => `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email).filter(Boolean) || [];
+              
               return (
                 <div
                   key={messageId}
-                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-lg ${
+                  className={`bg-white rounded-xl shadow-md border-l-4 transition-all duration-200 hover:shadow-xl ${
                     (isReceived && !isRead)
-                      ? 'border-primary bg-gradient-to-r from-primary/5 to-white' 
+                      ? 'border-primary bg-gradient-to-r from-primary/5 via-primary/2 to-white' 
                       : 'border-gray-300 bg-white'
                   } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
-                  <div className="p-5">
+                  <div className="p-6">
                     <div className="flex items-start gap-4">
                       {/* Checkbox */}
                       <input
@@ -647,24 +667,25 @@ export default function MessagesPage() {
                         checked={isSelected}
                         onChange={() => toggleMessageSelection(messageId)}
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-1 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                        className="mt-1.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
                       />
 
-                      {/* Avatar/Initiale */}
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
-                        (isReceived && !isRead) ? 'bg-primary' : 'bg-gray-400'
+                      {/* Avatar/Initiale avec gradient */}
+                      <div className={`flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md ${
+                        (isReceived && !isRead) 
+                          ? 'bg-gradient-to-br from-primary to-primary/80' 
+                          : 'bg-gradient-to-br from-gray-400 to-gray-500'
                       }`}>
-                        {expediteur?.firstName?.[0]?.toUpperCase() || expediteur?.email?.[0]?.toUpperCase() || '?'}
+                        {expediteurInitials}
                       </div>
 
-                      {/* Contenu */}
+                      {/* Contenu principal */}
                       <div 
                         className="flex-1 cursor-pointer min-w-0"
                         onClick={async () => {
                           setSelectedMessage(message);
                           if (!isRead && canCurrentUserMarkAsRead(message)) {
                             try {
-                              // Supprimer le badge "Nouveau" immédiatement côté UI
                               markMessageAsReadOptimistic(messageId);
                               await messagesAPI.markAsRead(messageId);
                               await loadMessages();
@@ -677,44 +698,91 @@ export default function MessagesPage() {
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between gap-4 mb-2">
+                        {/* En-tête avec sujet et badges */}
+                        <div className="flex items-start justify-between gap-4 mb-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className={`font-semibold text-lg truncate ${
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <h3 className={`font-bold text-lg ${
                                 isRead ? 'text-gray-700' : 'text-gray-900'
                               }`}>
                                 {message.sujet}
                               </h3>
                               {isReceived && !isRead && (
-                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-primary text-white text-xs font-semibold">
-                                  Nouveau
+                                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-primary text-white text-xs font-bold shadow-sm">
+                                  ✉️ Nouveau
                                 </span>
                               )}
+                              <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                isRead 
+                                  ? 'bg-gray-100 text-gray-600' 
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {isRead ? '✓ Lu' : '● Non lu'}
+                              </span>
                             </div>
-                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                            
+                            {/* Aperçu du contenu */}
+                            <p className={`text-sm mb-3 line-clamp-2 ${
+                              isRead ? 'text-gray-600' : 'text-gray-800'
+                            }`}>
                               {message.contenu}
                             </p>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                              <span className="font-medium">
-                                {isReceived ? 'De' : 'À'}:{' '}
-                                <span className="text-foreground">
+                            
+                            {/* Métadonnées détaillées */}
+                            <div className="space-y-2 text-xs">
+                              {/* Expéditeur/Destinataire */}
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground font-medium min-w-[70px]">
+                                  {isReceived ? '📤 De' : '📥 À'}:
+                                </span>
+                                <span className="text-foreground font-semibold">
                                   {isReceived 
-                                    ? `${expediteur?.firstName || ''} ${expediteur?.lastName || ''}`.trim() || expediteur?.email
-                                    : 'Tous les administrateurs'
+                                    ? expediteurName
+                                    : '👥 Tous les administrateurs'
                                   }
                                 </span>
-                              </span>
-                              <span>•</span>
-                              <span>{formatDate(message.createdAt)}</span>
-                              {message.piecesJointes && message.piecesJointes.length > 0 && (
-                                <>
-                                  <span>•</span>
-                                  <span className="flex items-center gap-1">
-                                    <span>📎</span>
-                                    <span>{message.piecesJointes.length} pièce(s) jointe(s)</span>
-                                  </span>
-                                </>
+                              </div>
+                              
+                              {/* Copie */}
+                              {copieList.length > 0 && (
+                                <div className="flex items-start gap-2">
+                                  <span className="text-muted-foreground font-medium min-w-[70px]">📋 Copie:</span>
+                                  <span className="text-foreground">{copieList.join(', ')}</span>
+                                </div>
                               )}
+                              
+                              {/* Date et pièces jointes */}
+                              <div className="flex items-center gap-4 flex-wrap pt-1 border-t border-gray-100">
+                                <div className="flex items-center gap-1.5">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="text-muted-foreground font-medium">{dateDisplay}</span>
+                                </div>
+                                
+                                {message.piecesJointes && message.piecesJointes.length > 0 && (
+                                  <div className="flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                    </svg>
+                                    <span className="text-muted-foreground font-medium">
+                                      {message.piecesJointes.length} pièce{message.piecesJointes.length > 1 ? 's' : ''} jointe{message.piecesJointes.length > 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                {/* Dossier lié */}
+                                {message.dossier && message.dossier.titre && (
+                                  <div className="flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                    </svg>
+                                    <span className="text-muted-foreground font-medium">
+                                      Dossier: {message.dossier.titre}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>

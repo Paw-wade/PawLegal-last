@@ -209,86 +209,93 @@ router.get('/', async (req, res) => {
       .populate('expediteur', 'firstName lastName email role')
       .populate('destinataires', 'firstName lastName email role')
       .populate('copie', 'firstName lastName email role')
+      .populate('dossierId', 'titre numero statut')
       .populate('messageParent', 'sujet expediteur')
-      .limit(100);
+      .sort({ createdAt: -1 })
+      .limit(1000); // Augmenter la limite pour avoir tous les messages des threads
 
     console.log('✅ Messages trouvés:', messages.length);
 
-    // Trier les messages : non lus en premier, puis lus, chaque groupe par date décroissante
-    messages.sort((a, b) => {
-      // Vérifier si le message est lu par l'utilisateur
-      const aIsRead = a.lu?.some((l) => 
-        (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
-      );
-      const bIsRead = b.lu?.some((l) => 
-        (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
-      );
-
-      // Priorité aux messages non lus
-      if (!aIsRead && bIsRead) return -1;
-      if (aIsRead && !bIsRead) return 1;
-
-      // Dans le même groupe (lus ou non lus), trier par date décroissante (plus récents en premier)
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    // Regrouper les messages par threadId
+    const threadMap = new Map();
+    const allThreadIds = new Set();
+    
+    messages.forEach(message => {
+      const threadId = message.threadId || message._id.toString();
+      allThreadIds.add(threadId);
+      
+      if (!threadMap.has(threadId)) {
+        threadMap.set(threadId, []);
+      }
+      threadMap.get(threadId).push(message);
     });
 
-    // Par défaut, ne pas casser l'API si la logique de threads pose problème
-    let threads = [];
-
-    try {
-      // Regrouper les messages par fil de discussion (thread)
-      // Un fil de discussion commence par un message sans parent
-      // Tous les messages avec le même parent ou qui remontent au même message racine forment un fil
-      const threadMap = new Map();
-      const rootMessages = [];
+    // Construire les threads avec les informations nécessaires
+    const threads = Array.from(allThreadIds).map(threadId => {
+      const threadMessages = threadMap.get(threadId) || [];
       
-      messages.forEach(message => {
-        if (!message.messageParent) {
-          // Message racine (sans parent)
-          rootMessages.push(message);
-          threadMap.set(message._id.toString(), [message]);
-        } else {
-          // Message réponse - trouver le message racine
-          let rootId = message.messageParent._id?.toString() || message.messageParent.toString();
-          let currentMessage = messages.find(m => m._id.toString() === rootId);
-          
-          // Remonter jusqu'au message racine
-          while (currentMessage && currentMessage.messageParent) {
-            rootId = currentMessage.messageParent._id?.toString() || currentMessage.messageParent.toString();
-            currentMessage = messages.find(m => m._id.toString() === rootId);
-          }
-          
-          if (!threadMap.has(rootId)) {
-            threadMap.set(rootId, []);
-          }
-          threadMap.get(rootId).push(message);
+      // Trier les messages du thread par date croissante (plus ancien en premier)
+      threadMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      
+      // Le message racine est celui sans parent (ou le premier si tous ont un parent)
+      const rootMessage = threadMessages.find(m => !m.messageParent) || threadMessages[0];
+      const lastMessage = threadMessages[threadMessages.length - 1];
+      
+      // Déterminer si le thread est non lu (au moins un message non lu)
+      const hasUnreadMessage = threadMessages.some(m => {
+        return !m.lu?.some((l: any) => 
+          (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
+        );
+      });
+      
+      // Obtenir tous les participants du thread (expéditeurs et destinataires uniques)
+      const participants = new Set();
+      threadMessages.forEach(m => {
+        if (m.expediteur?._id) {
+          participants.add(m.expediteur._id.toString());
+        }
+        if (m.destinataires && Array.isArray(m.destinataires)) {
+          m.destinataires.forEach((d: any) => {
+            if (d._id) participants.add(d._id.toString());
+          });
+        }
+        if (m.copie && Array.isArray(m.copie)) {
+          m.copie.forEach((c: any) => {
+            if (c._id) participants.add(c._id.toString());
+          });
         }
       });
       
-      // Organiser les messages par fil de discussion
-      threads = rootMessages.map(root => {
-        const threadMessages = threadMap.get(root._id.toString()) || [root];
-        // Trier les messages du fil par date
-        threadMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        return {
-          root: root,
-          messages: threadMessages,
-          lastMessage: threadMessages[threadMessages.length - 1]
-        };
-      });
+      return {
+        threadId: threadId,
+        root: rootMessage,
+        messages: threadMessages,
+        lastMessage: lastMessage,
+        messageCount: threadMessages.length,
+        hasUnread: hasUnreadMessage,
+        participants: Array.from(participants),
+        dossierId: rootMessage.dossierId?._id || rootMessage.dossierId,
+        dossier: rootMessage.dossierId
+      };
+    });
+
+    // Trier les threads par date du dernier message (plus récent en premier)
+    // Les threads non lus en premier
+    threads.sort((a, b) => {
+      // Priorité aux threads non lus
+      if (a.hasUnread && !b.hasUnread) return -1;
+      if (!a.hasUnread && b.hasUnread) return 1;
       
-      // Trier les fils par date du dernier message
-      threads.sort((a, b) => new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt));
-    } catch (threadError) {
-      console.error('⚠️ Erreur lors de la construction des fils de discussion:', threadError);
-      // On continue quand même en renvoyant simplement la liste des messages
-      threads = [];
-    }
+      // Dans le même groupe (lus ou non lus), trier par date du dernier message
+      const dateA = new Date(a.lastMessage.createdAt).getTime();
+      const dateB = new Date(b.lastMessage.createdAt).getTime();
+      return dateB - dateA;
+    });
 
     res.json({
       success: true,
-      messages: messages,
-      threads: threads // Fils de discussion (peut être vide en cas d'erreur)
+      messages: messages, // Garder pour compatibilité
+      threads: threads
     });
   } catch (error) {
     console.error('❌ Erreur lors de la récupération des messages:', error);
@@ -941,8 +948,80 @@ router.post('/batch/delete', async (req, res) => {
   }
 });
 
+// @route   GET /api/messages/thread/:threadId
+// @desc    Récupérer tous les messages d'un thread spécifique
+// @access  Private
+router.get('/thread/:threadId', async (req, res) => {
+  try {
+    const userId = getEffectiveUserId(req);
+    const threadId = req.params.threadId;
+
+    // Récupérer tous les messages du thread
+    const messages = await MessageInterne.find({
+      threadId: threadId,
+      $or: [
+        { expediteur: userId },
+        { destinataires: userId },
+        { copie: userId }
+      ],
+      'archive.user': { $ne: userId }
+    })
+      .populate('expediteur', 'firstName lastName email role')
+      .populate('destinataires', 'firstName lastName email role')
+      .populate('copie', 'firstName lastName email role')
+      .populate('dossierId', 'titre numero statut')
+      .populate('messageParent', 'sujet expediteur')
+      .sort({ createdAt: 1 }); // Trier par date croissante (ordre chronologique)
+
+    if (!messages || messages.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Thread non trouvé'
+      });
+    }
+
+    // Marquer tous les messages non lus comme lus
+    for (const message of messages) {
+      const isRecipient = message.destinataires.some((d: any) => d._id.toString() === userId.toString()) ||
+                          (message.copie && message.copie.some((c: any) => c._id.toString() === userId.toString()));
+      
+      if (isRecipient) {
+        const dejaLu = message.lu?.some((l: any) => 
+          (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
+        );
+        
+        if (!dejaLu) {
+          if (!message.lu) message.lu = [];
+          message.lu.push({
+            user: userId,
+            luAt: new Date()
+          });
+          await message.save();
+        }
+      }
+    }
+
+    const rootMessage = messages.find(m => !m.messageParent) || messages[0];
+
+    res.json({
+      success: true,
+      threadId: threadId,
+      root: rootMessage,
+      messages: messages,
+      messageCount: messages.length
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération du thread:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
 // @route   GET /api/messages/:id
-// @desc    Récupérer un message spécifique
+// @desc    Récupérer un message spécifique et son thread complet
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
@@ -959,7 +1038,9 @@ router.get('/:id', async (req, res) => {
       'archive.user': { $ne: userId }
     })
       .populate('expediteur', 'firstName lastName email role')
-      .populate('destinataires', 'firstName lastName email role');
+      .populate('destinataires', 'firstName lastName email role')
+      .populate('copie', 'firstName lastName email role')
+      .populate('dossierId', 'titre numero statut');
 
     if (!message) {
       return res.status(404).json({
@@ -968,21 +1049,54 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Marquer comme lu si l'utilisateur est destinataire
-    if (message.destinataires.some(d => d._id.toString() === userId.toString())) {
-      const dejaLu = message.lu.some(l => l.user.toString() === userId.toString());
-      if (!dejaLu) {
-        message.lu.push({
-          user: userId,
-          luAt: new Date()
-        });
-        await message.save();
+    // Récupérer tous les messages du thread pour affichage complet
+    const threadId = message.threadId || message._id.toString();
+    const threadMessages = await MessageInterne.find({
+      threadId: threadId,
+      $or: [
+        { expediteur: userId },
+        { destinataires: userId },
+        { copie: userId }
+      ],
+      'archive.user': { $ne: userId }
+    })
+      .populate('expediteur', 'firstName lastName email role')
+      .populate('destinataires', 'firstName lastName email role')
+      .populate('copie', 'firstName lastName email role')
+      .populate('dossierId', 'titre numero statut')
+      .populate('messageParent', 'sujet expediteur')
+      .sort({ createdAt: 1 }); // Trier par date croissante (ordre chronologique)
+
+    // Marquer tous les messages comme lus si l'utilisateur est destinataire
+    for (const msg of threadMessages) {
+      const isRecipient = msg.destinataires.some((d: any) => d._id.toString() === userId.toString()) ||
+                          (msg.copie && msg.copie.some((c: any) => c._id.toString() === userId.toString()));
+      
+      if (isRecipient) {
+        const dejaLu = msg.lu?.some((l: any) => 
+          (l.user?._id?.toString() || l.user?.toString()) === userId.toString()
+        );
+        
+        if (!dejaLu) {
+          if (!msg.lu) msg.lu = [];
+          msg.lu.push({
+            user: userId,
+            luAt: new Date()
+          });
+          await msg.save();
+        }
       }
     }
 
+    const rootMessage = threadMessages.find(m => !m.messageParent) || threadMessages[0];
+
     res.json({
       success: true,
-      message: message
+      message: message,
+      threadId: threadId,
+      threadMessages: threadMessages,
+      root: rootMessage,
+      messageCount: threadMessages.length
     });
   } catch (error) {
     console.error('Erreur lors de la récupération du message:', error);

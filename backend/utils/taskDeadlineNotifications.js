@@ -1,6 +1,7 @@
 const Task = require('../models/Task');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { sendNotificationSMS, formatPhoneNumber } = require('../sendSMS');
 
 /**
  * Vérifie les tâches avec échéance et envoie des notifications
@@ -136,5 +137,150 @@ async function checkTaskDeadlines() {
   }
 }
 
-module.exports = { checkTaskDeadlines };
+/**
+ * Vérifie les tâches en retard et envoie des notifications à tous les administrateurs
+ */
+async function checkOverdueTasks() {
+  try {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    // Récupérer toutes les tâches en retard (dateEcheance < aujourd'hui) qui ne sont pas terminées ou annulées
+    const overdueTasks = await Task.find({
+      dateEcheance: { $exists: true, $ne: null, $lt: now },
+      statut: { $nin: ['termine', 'annule'] },
+      effectue: { $ne: true }
+    })
+      .populate('assignedTo', 'firstName lastName email role phone')
+      .populate('createdBy', 'firstName lastName email role')
+      .populate('dossier', 'titre numero statut');
+
+    if (overdueTasks.length === 0) {
+      return { success: true, count: 0, notificationsSent: 0, smsSent: 0 };
+    }
+
+    // Récupérer tous les administrateurs
+    const admins = await User.find({
+      role: { $in: ['admin', 'superadmin'] },
+      isActive: { $ne: false }
+    });
+
+    let notificationsSent = 0;
+    let smsSent = 0;
+
+    // Pour chaque tâche en retard
+    for (const task of overdueTasks) {
+      const assignedToArray = Array.isArray(task.assignedTo) 
+        ? task.assignedTo 
+        : [task.assignedTo].filter(Boolean);
+      
+      // Obtenir le nom de la personne assignée (ou plusieurs)
+      const assignedNames = assignedToArray
+        .map((assigned) => {
+          if (assigned && assigned.firstName && assigned.lastName) {
+            return `${assigned.firstName} ${assigned.lastName}`;
+          } else if (assigned && assigned.email) {
+            return assigned.email;
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .join(', ') || 'Non assignée';
+
+      const deadlineDate = new Date(task.dateEcheance);
+      deadlineDate.setHours(0, 0, 0, 0);
+      const daysOverdue = Math.floor((now.getTime() - deadlineDate.getTime()) / (1000 * 60 * 60 * 24));
+      const taskTitle = task.titre || 'Sans titre';
+      const deadlineDateFormatted = new Date(task.dateEcheance).toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      // Vérifier si une notification a déjà été envoyée aujourd'hui pour cette tâche
+      const todayStart = new Date(now);
+      const todayEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      
+      const existingNotifications = await Notification.find({
+        type: 'other',
+        'metadata.taskId': task._id.toString(),
+        'metadata.overdueNotification': true,
+        createdAt: {
+          $gte: todayStart,
+          $lt: todayEnd
+        }
+      });
+
+      // Si des notifications ont déjà été envoyées aujourd'hui, passer cette tâche
+      if (existingNotifications.length > 0) {
+        continue;
+      }
+
+      // Créer des notifications pour tous les administrateurs
+      const notifications = admins.map(admin => ({
+        user: admin._id,
+        type: 'other',
+        titre: 'Tâche en retard',
+        message: `La tâche "${taskTitle}" assignée à ${assignedNames} est en retard de ${daysOverdue} jour${daysOverdue > 1 ? 's' : ''} (échéance: ${deadlineDateFormatted}).`,
+        lien: '/admin/taches',
+        metadata: {
+          taskId: task._id.toString(),
+          assignedTo: assignedToArray.map((a) => (a?._id || a)?.toString()),
+          daysOverdue: daysOverdue,
+          deadlineDate: task.dateEcheance,
+          overdueNotification: true
+        }
+      }));
+
+      if (notifications.length > 0) {
+        try {
+          await Notification.insertMany(notifications);
+          notificationsSent += notifications.length;
+          console.log(`✅ ${notifications.length} notifications créées pour la tâche en retard: ${taskTitle}`);
+        } catch (notifError) {
+          console.error('❌ Erreur lors de la création des notifications:', notifError);
+        }
+      }
+
+      // Envoyer des SMS à tous les administrateurs qui ont un numéro de téléphone
+      for (const admin of admins) {
+        if (admin.phone) {
+          try {
+            const formattedPhone = formatPhoneNumber(admin.phone);
+            if (formattedPhone) {
+              await sendNotificationSMS(
+                formattedPhone,
+                'task_overdue',
+                {
+                  taskTitle: taskTitle,
+                  assignedTo: assignedNames,
+                  daysOverdue: daysOverdue.toString(),
+                  deadlineDate: deadlineDateFormatted
+                },
+                {
+                  userId: admin._id.toString(),
+                  context: 'task',
+                  contextId: task._id.toString(),
+                  skipPreferences: true
+                }
+              );
+              smsSent++;
+              console.log(`✅ SMS envoyé à ${admin.email} (${formattedPhone}) pour la tâche en retard`);
+            }
+          } catch (smsError) {
+            console.error(`⚠️ Erreur lors de l'envoi du SMS à ${admin.email}:`, smsError.message);
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Vérification des tâches en retard terminée. ${notificationsSent} notification(s) et ${smsSent} SMS envoyé(s).`);
+    return { success: true, count: overdueTasks.length, notificationsSent, smsSent };
+  } catch (error) {
+    console.error('❌ Erreur lors de la vérification des tâches en retard:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+module.exports = { checkTaskDeadlines, checkOverdueTasks };
 
