@@ -144,3 +144,7 @@ dist/
 # Remote entries
 .DS_Store
 frontend/node_modules/
+
+.next
+node_modules
+.env*
